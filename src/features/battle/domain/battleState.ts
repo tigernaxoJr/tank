@@ -1,0 +1,290 @@
+/**
+ * Battle Slice (中大型複雜模組 - 完整 DDD 輕量分層)
+ * 支援 1v1 ~ 5v5 (最多 10 台坦克) 與模組化 TankBlueprint / MapBlueprint 引擎
+ */
+import type { BotLevel, MapPresetId, PlayerId, RosterSlot, TankArchetypeId, TeamId } from '@/shared/kernel/types'
+import type { TankCorePort } from '@/shared/wasm'
+import { MAP_REGISTRY } from './mapRegistry'
+import { TANK_REGISTRY } from './tankRegistry'
+
+export type TurnPhase = 'AIMING' | 'FIRING' | 'GAME_OVER'
+
+export interface TankEntity {
+  readonly id: PlayerId
+  name: string
+  team: TeamId
+  tankId: TankArchetypeId
+  x: number
+  y: number
+  hp: number
+  maxHp: number
+  angle: number
+  power: number
+  slopeDeg: number
+  moveFuel: number
+  maxMoveFuel: number
+  isBot: boolean
+  botLevel: BotLevel
+}
+
+export interface BattleState {
+  turnId: number
+  activePlayer: PlayerId
+  turnOrder: PlayerId[]
+  wind: number
+  seed: number
+  mapId: MapPresetId
+  tanks: Record<PlayerId, TankEntity>
+  phase: TurnPhase
+  winner: TeamId | 'draw' | null
+  lastShotPath: { x: number; y: number }[]
+  lastExplosion: { x: number; y: number; radius: number; timestamp: number } | null
+}
+
+const DEFAULT_ROSTER: RosterSlot[] = [
+  { id: 'p1', name: 'Player 1', team: 'A', tankId: 'aegis', isHost: true },
+  { id: 'p2', name: 'Player 2', team: 'B', tankId: 'goliath', isHost: false },
+]
+
+export function buildInterleavedTurnOrder(roster: RosterSlot[]): PlayerId[] {
+  const teamA = roster.filter((r) => r.team === 'A').map((r) => r.id)
+  const teamB = roster.filter((r) => r.team === 'B').map((r) => r.id)
+  const order: PlayerId[] = []
+  const maxLen = Math.max(teamA.length, teamB.length)
+  for (let i = 0; i < maxLen; i++) {
+    if (i < teamA.length) order.push(teamA[i])
+    if (i < teamB.length) order.push(teamB[i])
+  }
+  return order.length > 0 ? order : ['p1', 'p2']
+}
+
+export function createInitialBattleState(
+  seed = 1024,
+  roster: RosterSlot[] = DEFAULT_ROSTER,
+  mapId: MapPresetId = 'harvest_plains',
+): BattleState {
+  const mapSpec = MAP_REGISTRY[mapId] ?? MAP_REGISTRY.harvest_plains
+  const arenaWidth = mapSpec.width
+  const effectiveRoster = roster.length >= 2 ? roster : DEFAULT_ROSTER
+  const teamASlots = effectiveRoster.filter((r) => r.team === 'A')
+  const teamBSlots = effectiveRoster.filter((r) => r.team === 'B')
+
+  const tanks: Record<PlayerId, TankEntity> = {}
+
+  // Team A 部署於大型地圖左翼
+  const leftMargin = 180
+  const leftSpan = Math.floor(arenaWidth * 0.32)
+  teamASlots.forEach((slot, idx) => {
+    const spec = TANK_REGISTRY[slot.tankId] ?? TANK_REGISTRY.aegis
+    const count = teamASlots.length
+    const step = count > 1 ? Math.floor(leftSpan / (count - 1)) : 0
+    const x = count === 1 ? leftMargin + Math.floor(leftSpan * 0.35) : leftMargin + idx * step
+    tanks[slot.id] = {
+      id: slot.id,
+      name: slot.name,
+      team: 'A',
+      tankId: spec.id,
+      x,
+      y: 400,
+      hp: spec.maxHp,
+      maxHp: spec.maxHp,
+      angle: 45,
+      power: 65,
+      slopeDeg: 0,
+      moveFuel: spec.moveFuel,
+      maxMoveFuel: spec.moveFuel,
+      isBot: slot.isBot === true,
+      botLevel: slot.botLevel ?? 'hard',
+    }
+  })
+
+  // Team B 部署於大型地圖右翼
+  const rightMargin = 180
+  const rightSpan = Math.floor(arenaWidth * 0.32)
+  teamBSlots.forEach((slot, idx) => {
+    const spec = TANK_REGISTRY[slot.tankId] ?? TANK_REGISTRY.aegis
+    const count = teamBSlots.length
+    const step = count > 1 ? Math.floor(rightSpan / (count - 1)) : 0
+    const x =
+      count === 1
+        ? arenaWidth - rightMargin - Math.floor(rightSpan * 0.35)
+        : arenaWidth - rightMargin - idx * step
+    tanks[slot.id] = {
+      id: slot.id,
+      name: slot.name,
+      team: 'B',
+      tankId: spec.id,
+      x,
+      y: 400,
+      hp: spec.maxHp,
+      maxHp: spec.maxHp,
+      angle: 135,
+      power: 65,
+      slopeDeg: 0,
+      moveFuel: spec.moveFuel,
+      maxMoveFuel: spec.moveFuel,
+      isBot: slot.isBot === true,
+      botLevel: slot.botLevel ?? 'hard',
+    }
+  })
+
+  const turnOrder = buildInterleavedTurnOrder(effectiveRoster)
+
+  return {
+    turnId: 1,
+    activePlayer: turnOrder[0],
+    turnOrder,
+    wind: 0,
+    seed,
+    mapId,
+    tanks,
+    phase: 'AIMING',
+    winner: null,
+    lastShotPath: [],
+    lastExplosion: null,
+  }
+}
+
+/** 砲口初速（千分位整數），開火結算、瞄準預覽與電腦 AI 共用同一公式以確保一致 */
+export function launchVelocity(
+  angleDeg: number,
+  power: number,
+  speedMultiplier = 1,
+): { vxMilli: number; vyMilli: number } {
+  const rad = (angleDeg * Math.PI) / 180
+  const speed = power * 165 * speedMultiplier
+  return {
+    vxMilli: Math.round(Math.cos(rad) * speed),
+    vyMilli: -Math.round(Math.sin(rad) * speed),
+  }
+}
+
+/** 坦克容器原點距離地表的高度 (px)；砲彈從 tank.y - MUZZLE_RISE 射出 */
+export const TANK_GROUND_OFFSET = 12
+export const MUZZLE_RISE = 12
+
+/** 下墜超過此高度才開始計算摔落傷害 */
+const FALL_SAFE_PX = 30
+const FALL_PX_PER_DAMAGE = 6
+const MAX_FALL_DAMAGE = 30
+
+export function fallDamageFor(dropPx: number): number {
+  if (dropPx <= FALL_SAFE_PX) return 0
+  return Math.min(MAX_FALL_DAMAGE, Math.floor((dropPx - FALL_SAFE_PX) / FALL_PX_PER_DAMAGE))
+}
+
+export function syncTankToSurface(tank: TankEntity, surfaceY: number, slopeDeg: number): void {
+  tank.y = surfaceY - TANK_GROUND_OFFSET
+  tank.slopeDeg = slopeDeg
+}
+
+/** 每水平移動 1px 最多可爬升的高度（約 70°），更陡的牆面會擋住坦克 */
+export const MAX_CLIMB_PER_PX = 3
+/** 坦克車身高度：前方地形的淨空不足（例如橋下、洞穴天花板太低）就無法通過 */
+const TANK_HEADROOM = 18
+
+/** 坦克腳下的地面 y（多層地形時從坦克目前高度往下找，而不是整欄最上層） */
+export function groundUnderTank(core: TankCorePort, tank: Pick<TankEntity, 'x' | 'y'>): number {
+  return core.groundBelow(tank.x, tank.y + TANK_GROUND_OFFSET - MAX_CLIMB_PER_PX)
+}
+
+export function slopeAt(core: TankCorePort, x: number, groundY: number): number {
+  return core.surfaceSlopeDeg(x, 6, groundY - 12)
+}
+
+/**
+ * 沿地形逐像素行走：可爬上緩坡、走下台階，但會被陡壁、低矮天花板擋住。
+ * 前方沒有地面（橋面 / 浮空島邊緣、深淵）或落差超過 FALL_SAFE_PX（懸崖）時：預設停在邊緣（供電腦規劃走位，不會自殺）；
+ * allowFall = true（玩家真的走出去）則踏空下墜，回傳 fell = true，由呼叫端判定陣亡。
+ */
+export function walkAlongTerrain(
+  core: TankCorePort,
+  startX: number,
+  startGroundY: number,
+  deltaX: number,
+  allowFall = false,
+): { x: number; groundY: number; fell?: boolean } {
+  const dir = Math.sign(deltaX)
+  const minX = 30
+  const maxX = core.width - 30
+  let x = startX
+  let groundY = startGroundY
+  for (let i = 0; i < Math.abs(Math.round(deltaX)); i++) {
+    const nx = x + dir
+    if (nx < minX || nx > maxX) break
+    const probe = groundY - MAX_CLIMB_PER_PX
+    if (core.isSolid(nx, probe)) break
+    const ng = core.groundBelow(nx, probe)
+    // 前方沒有地面，或落差超過安全高度（懸崖）：踏出去就是墜落
+    if (ng >= core.height || ng - groundY > FALL_SAFE_PX) {
+      if (allowFall) return { x: nx, groundY: ng, fell: true }
+      break
+    }
+    if (core.isSolid(nx, ng - TANK_HEADROOM)) break
+    x = nx
+    groundY = ng
+  }
+  return { x, groundY }
+}
+
+/** 出生點：取該欄最上層地表；若該欄是深淵（浮空島地圖的空隙）就往兩側尋找最近的地面 */
+export function findSpawnGround(core: TankCorePort, x: number): { x: number; groundY: number } {
+  for (let d = 0; d < core.width; d += 4) {
+    for (const cx of [x + d, x - d]) {
+      if (cx < 30 || cx > core.width - 30) continue
+      const g = core.surfaceY(cx)
+      if (g < core.height) return { x: cx, groundY: g }
+    }
+  }
+  return { x, groundY: core.height }
+}
+
+export function applyDamageAndCheckWinner(
+  state: BattleState,
+  damageByPlayer: Record<PlayerId, number>,
+): void {
+  for (const [pid, dmg] of Object.entries(damageByPlayer)) {
+    const tank = state.tanks[pid]
+    if (tank && dmg > 0) {
+      tank.hp = Math.max(0, Math.min(tank.maxHp, tank.hp - dmg))
+    }
+  }
+
+  const allTanks = Object.values(state.tanks)
+  const teamAAlive = allTanks.some((t) => t.team === 'A' && t.hp > 0)
+  const teamBAlive = allTanks.some((t) => t.team === 'B' && t.hp > 0)
+
+  if (!teamAAlive || !teamBAlive) {
+    state.phase = 'GAME_OVER'
+    if (!teamAAlive && !teamBAlive) {
+      state.winner = 'draw'
+    } else if (!teamAAlive) {
+      state.winner = 'B'
+    } else {
+      state.winner = 'A'
+    }
+  }
+}
+
+export function advanceTurn(state: BattleState, nextWind: number): void {
+  state.turnId += 1
+  state.wind = nextWind
+
+  if (state.phase === 'GAME_OVER') {
+    return
+  }
+
+  const order = state.turnOrder
+  const currentIdx = order.indexOf(state.activePlayer)
+  for (let offset = 1; offset <= order.length; offset++) {
+    const candidateId = order[(currentIdx + offset) % order.length]
+    const candidateTank = state.tanks[candidateId]
+    if (candidateTank && candidateTank.hp > 0) {
+      state.activePlayer = candidateId
+      candidateTank.moveFuel = candidateTank.maxMoveFuel
+      break
+    }
+  }
+
+  state.phase = 'AIMING'
+}

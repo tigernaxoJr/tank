@@ -1,0 +1,14 @@
+services:
+  signaling:
+    build:
+      context: ./server
+      dockerfile: Dockerfile
+    container_name: tank-artillery-signaling
+    restart: unless-stopped
+    ports:
+      - "${PEER_PORT:-9000}:9000"
+    environment:
+      - PORT=9000
+      - PEER_PATH=${PEER_PATH:-/signaling}
+      - PEER_KEY=${PEER_KEY:-peerjs}
+      - ALLOW_DISCOVERY=false

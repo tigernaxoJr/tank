@@ -1,0 +1,15 @@
+{
+  "name": "tank-artillery-signaling-server",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Lightweight PeerJS WebRTC signaling server for Tank Artillery Web",
+  "scripts": {
+    "start": "node index.js",
+    "test": "node --test"
+  },
+  "dependencies": {
+    "express": "^4.21.2",
+    "peer": "^1.0.2"
+  }
+}

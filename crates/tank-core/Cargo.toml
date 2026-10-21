@@ -1,0 +1,11 @@
+[package]
+name = "tank-core"
+version = "0.1.0"
+edition = "2021"
+description = "Deterministic physics & terrain engine for Tank Artillery Web (VSA + Pragmatic DDD)"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+wasm-bindgen = "0.2"
