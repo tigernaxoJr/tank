@@ -223,7 +223,12 @@ function handleHostReceivePeerMessage(peerSlotId: PlayerId, msg: ProtocolMessage
 
   if (isForgedAction(msg, peerSlotId)) return
 
-  if (msg.type === 'ACTION_FIRE' || msg.type === 'ACTION_MOVE' || msg.type === 'SYNC_HASH') {
+  if (
+    msg.type === 'ACTION_FIRE' ||
+    msg.type === 'ACTION_MOVE' ||
+    msg.type === 'ACTION_PASS' ||
+    msg.type === 'SYNC_HASH'
+  ) {
     transport.broadcast(msg, peerSlotId)
     emit('remote-message', msg)
     return

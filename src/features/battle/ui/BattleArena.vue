@@ -7,6 +7,7 @@ import type {
   FireActionCommand,
   MapPresetId,
   MoveActionCommand,
+  PassActionCommand,
   PlayerId,
   ProtocolMessage,
   ResyncRequestEvent,
@@ -17,6 +18,7 @@ import type {
 import { createTankCore, DEFAULT_WORLD_HEIGHT, DEFAULT_WORLD_WIDTH } from '@/shared/wasm'
 import {
   commitFireImpact,
+  executePassAction,
   finalizeTurnAfterHold,
   forfeitPlayer,
   moveActiveTank,
@@ -85,15 +87,15 @@ const bulletType = computed<BulletType>(() => {
   return chosen && shots.includes(chosen) ? chosen : shots[0]
 })
 
-// --- 回合倒數：輪到真人時開始計時，歸零就以目前瞄準自動開火（走一般開火流程，P2P 會同步廣播） ---
-const TURN_TIME_SEC = 30
+// --- 回合倒數：輪到真人時開始計時，歸零就跳過回合（走一般 PASS 流程，P2P 會同步廣播） ---
+const TURN_TIME_SEC = 10
 const turnSecondsLeft = ref(TURN_TIME_SEC)
 let turnDeadline = Date.now() + TURN_TIME_SEC * 1000
 const turnClock = setInterval(() => {
   if (state.phase !== 'AIMING') return
   const left = Math.max(0, Math.ceil((turnDeadline - Date.now()) / 1000))
   turnSecondsLeft.value = left
-  if (left === 0 && canControl.value) handleFire()
+  if (left === 0 && canControl.value) handlePass()
 }, 250)
 watch(
   () => [state.turnId, state.phase],
@@ -260,6 +262,36 @@ function applyFireCommand(cmd: FireActionCommand, isLocal: boolean): void {
   })
 }
 
+function handlePass(): void {
+  if (!canControl.value) return
+  const cmd: PassActionCommand = {
+    type: 'ACTION_PASS',
+    turnId: state.turnId,
+    playerId: state.activePlayer,
+  }
+  applyPassCommand(cmd, true)
+}
+
+function applyPassCommand(cmd: PassActionCommand, isLocal: boolean): void {
+  const ok = executePassAction(state, cmd)
+  if (!ok) return
+
+  emitBattleSound('ui_click')
+  if (props.mode === 'p2p' && isLocal) {
+    emit('outgoing-message', cmd)
+  }
+
+  afterTurnSettled()
+  if (props.mode === 'p2p' && isLocal) {
+    const hashMsg: SyncHashEvent = {
+      type: 'SYNC_HASH',
+      turnId: state.turnId,
+      stateHash: battleStateHash(state, core.getStateHash()),
+    }
+    emit('outgoing-message', hashMsg)
+  }
+}
+
 /** 回合結算完（沒有砲彈在飛）時：套用延後的快照、補送欠的快照、比對對手雜湊 */
 function afterTurnSettled(): void {
   if (props.mode !== 'p2p' || state.phase === 'FIRING') return
@@ -342,6 +374,10 @@ function handleRemoteMessage(msg: ProtocolMessage): void {
   }
   if (msg.type === 'ACTION_FIRE') {
     applyFireCommand(msg, false)
+    return
+  }
+  if (msg.type === 'ACTION_PASS') {
+    applyPassCommand(msg, false)
     return
   }
   if (msg.type === 'SYNC_HASH') {
@@ -524,6 +560,7 @@ defineExpose({
         @update-aim="handleUpdateAim"
         @change-bullet="(b) => (bulletChoice[state.activePlayer] = b)"
         @fire="handleFire"
+        @pass="handlePass"
         @reset-match="handleRequestNewMatch"
         @toggle-mute="handleToggleMute"
         @leave-game="emit('leave-game')"

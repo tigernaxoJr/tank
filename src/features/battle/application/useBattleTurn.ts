@@ -5,7 +5,7 @@
  *   2. `commitFireImpact`: 砲彈實際飛抵落點瞬間，才執行挖坑、扣血、坦克下墜（含摔落/墜入深淵傷害）。
  *   3. `finalizeTurnAfterHold`: 爆炸停留結束後才切換回合與風向。
  */
-import type { BotLevel, BulletType, FireActionCommand, PlayerId } from '@/shared/kernel/types'
+import type { BotLevel, BulletType, FireActionCommand, PassActionCommand, PlayerId } from '@/shared/kernel/types'
 import {
   DEFAULT_WORLD_HEIGHT,
   DEFAULT_WORLD_WIDTH,
@@ -316,6 +316,19 @@ export function executeFireAction(
   if (!plan) return
   commitFireImpact(state, plan, core)
   finalizeTurnAfterHold(state)
+}
+
+/**
+ * 執行跳過回合動作（主動 PASS 或倒數計時超時）
+ */
+export function executePassAction(
+  state: BattleState,
+  cmd: PassActionCommand,
+): boolean {
+  if (state.phase !== 'AIMING' || isGameOver(state)) return false
+  if (cmd.turnId !== state.turnId || cmd.playerId !== state.activePlayer) return false
+  finalizeTurnAfterHold(state)
+  return true
 }
 
 function isGameOver(state: BattleState): boolean {

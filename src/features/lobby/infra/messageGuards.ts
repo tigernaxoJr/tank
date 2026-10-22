@@ -5,5 +5,8 @@ import type { PlayerId, ProtocolMessage } from '@/shared/kernel/types'
  * 不符（替別人的坦克開火 / 移動）一律視為偽造，不轉發也不處理。其他類型的訊息不受此規則限制。
  */
 export function isForgedAction(msg: ProtocolMessage, senderSlotId: PlayerId): boolean {
-  return (msg.type === 'ACTION_FIRE' || msg.type === 'ACTION_MOVE') && msg.playerId !== senderSlotId
+  return (
+    (msg.type === 'ACTION_FIRE' || msg.type === 'ACTION_MOVE' || msg.type === 'ACTION_PASS') &&
+    msg.playerId !== senderSlotId
+  )
 }

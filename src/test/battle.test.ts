@@ -1,8 +1,9 @@
 import { describe, expect, it } from 'vitest'
-import type { FireActionCommand, RosterSlot } from '@/shared/kernel/types'
+import type { FireActionCommand, PassActionCommand, RosterSlot } from '@/shared/kernel/types'
 import {
   commitFireImpact,
   executeFireAction,
+  executePassAction,
   finalizeTurnAfterHold,
   forfeitPlayer,
   moveActiveTank,
@@ -65,6 +66,28 @@ describe('回合與傷害結算', () => {
     expect(state.tanks.a2.moveFuel).toBe(state.tanks.a2.maxMoveFuel)
     expect(state.wind).toBe(3)
     expect(state.turnId).toBe(2)
+  })
+
+  it('executePassAction 正確跳過回合並換下一位玩家', () => {
+    const { state } = setupBattle()
+    expect(state.activePlayer).toBe('p1')
+    expect(state.turnId).toBe(1)
+    state.tanks.p1.moveFuel = 10
+
+    const cmd: PassActionCommand = { type: 'ACTION_PASS', turnId: 1, playerId: 'p1' }
+    const ok = executePassAction(state, cmd)
+    expect(ok).toBe(true)
+    expect(state.activePlayer).toBe('p2')
+    expect(state.turnId).toBe(2)
+    expect(state.tanks.p2.moveFuel).toBe(state.tanks.p2.maxMoveFuel)
+  })
+
+  it('executePassAction 拒絕非當前回合或非當前玩家的跳過請求', () => {
+    const { state } = setupBattle()
+    expect(executePassAction(state, { type: 'ACTION_PASS', turnId: 99, playerId: 'p1' })).toBe(false)
+    expect(executePassAction(state, { type: 'ACTION_PASS', turnId: 1, playerId: 'p2' })).toBe(false)
+    state.phase = 'GAME_OVER'
+    expect(executePassAction(state, { type: 'ACTION_PASS', turnId: 1, playerId: 'p1' })).toBe(false)
   })
 })
 
@@ -317,12 +340,14 @@ describe('玩家斷線 · 電腦接手 (takeOverWithBot)', () => {
 
 describe('遠端動作來源驗證', () => {
   const fireMsg = (playerId: string) => ({ type: 'ACTION_FIRE', turnId: 1, playerId, angle: 45, power: 60, wind: 0, bulletType: 'MISSILE_STANDARD' }) as const
-  it('自稱別人的開火 / 移動視為偽造', () => {
+  it('自稱別人的開火 / 移動 / 跳過視為偽造', () => {
     expect(isForgedAction(fireMsg('p1'), 'p2')).toBe(true)
     expect(isForgedAction({ type: 'ACTION_MOVE', turnId: 1, playerId: 'p1', targetX: 10 }, 'p2')).toBe(true)
+    expect(isForgedAction({ type: 'ACTION_PASS', turnId: 1, playerId: 'p1' }, 'p2')).toBe(true)
   })
   it('本人的動作與非動作訊息放行', () => {
     expect(isForgedAction(fireMsg('p2'), 'p2')).toBe(false)
+    expect(isForgedAction({ type: 'ACTION_PASS', turnId: 1, playerId: 'p2' }, 'p2')).toBe(false)
     expect(isForgedAction({ type: 'SYNC_HASH', turnId: 1, stateHash: 1 }, 'p2')).toBe(false)
   })
 })

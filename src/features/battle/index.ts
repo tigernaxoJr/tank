@@ -46,6 +46,7 @@ export {
 } from './domain/projectileRegistry'
 export {
   executeFireAction,
+  executePassAction,
   prepareFireTrajectory,
   commitFireImpact,
   finalizeTurnAfterHold,

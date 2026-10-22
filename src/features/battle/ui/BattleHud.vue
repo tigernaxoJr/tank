@@ -35,6 +35,7 @@ const emit = defineEmits<{
   (e: 'update-aim', angle: number, power: number): void
   (e: 'change-bullet', bullet: BulletType): void
   (e: 'fire'): void
+  (e: 'pass'): void
   (e: 'reset-match'): void
   (e: 'toggle-mute'): void
   (e: 'leave-game'): void
@@ -134,6 +135,7 @@ const {
   onUpdateAim: (angle, power) => emit('update-aim', angle, power),
   onChangeBullet: (bullet) => emit('change-bullet', bullet),
   onFire: () => emit('fire'),
+  onPass: () => emit('pass'),
 })
 
 // 每位玩家各自的「上一發力道」游標（熱座輪流時互不干擾）
@@ -165,7 +167,8 @@ const lastFiredPower = computed(() => lastFiredPowerByPlayer[props.state.activeP
             <span
               v-if="turnSecondsLeft != null && state.phase === 'AIMING'"
               class="rounded-full border-2 px-2 py-0.5 font-mono text-[11px] font-black"
-              :class="turnSecondsLeft <= 5 ? 'animate-pulse border-rose-500 bg-rose-500 text-white' : 'border-emerald-500/60 bg-emerald-100 text-emerald-800'"
+              :class="turnSecondsLeft <= 3 ? 'animate-pulse border-rose-500 bg-rose-500 text-white' : 'border-emerald-500/60 bg-emerald-100 text-emerald-800'"
+              :title="turnSecondsLeft <= 3 ? '時間快到了！時間歸零將自動 PASS' : '回合剩餘時間（預設 10 秒）'"
             >
               ⏱ {{ String(turnSecondsLeft).padStart(2, '0') }}
             </span>
@@ -353,20 +356,30 @@ const lastFiredPower = computed(() => lastFiredPowerByPlayer[props.state.activeP
           </div>
         </div>
 
-        <!-- 4. FIRE -->
-        <div class="col-span-12 flex items-center lg:col-span-2">
+        <!-- 4. FIRE & PASS -->
+        <div class="col-span-12 flex items-center gap-2 lg:col-span-2">
           <button
             type="button"
             :disabled="controlsDisabled"
             :class="[
-              'w-full cursor-pointer touch-none select-none rounded-2xl border-[3px] border-white px-3 py-2.5 text-center font-black tracking-wider shadow-[0_6px_0_rgba(194,65,12,0.55),0_10px_20px_rgba(8,60,80,0.3)] transition active:translate-y-1 active:shadow-[0_2px_0_rgba(194,65,12,0.55)]',
+              'flex-1 cursor-pointer touch-none select-none rounded-2xl border-[3px] border-white px-2.5 py-2.5 text-center font-black tracking-wider shadow-[0_6px_0_rgba(194,65,12,0.55),0_10px_20px_rgba(8,60,80,0.3)] transition active:translate-y-1 active:shadow-[0_2px_0_rgba(194,65,12,0.55)]',
               isCharging ? 'scale-95 animate-pulse bg-gradient-to-b from-rose-400 to-orange-600 text-white' : 'bg-gradient-to-b from-amber-300 via-amber-400 to-orange-500 text-slate-950 hover:brightness-110',
               controlsDisabled && 'cursor-not-allowed opacity-40',
             ]"
             @pointerdown="onPointerDownCharge"
           >
             <div class="text-base leading-tight">{{ isCharging ? `⚡ ${(activeTank?.power ?? 0).toFixed(2)}%` : '🔥 FIRE' }}</div>
-            <div class="text-[10px] font-bold opacity-75">{{ isCharging ? '放開開火' : '按住蓄力 · Space' }}</div>
+            <div class="text-[10px] font-bold opacity-75">{{ isCharging ? '放開開火' : 'Space' }}</div>
+          </button>
+          <button
+            type="button"
+            :disabled="controlsDisabled"
+            class="flex flex-col items-center justify-center shrink-0 rounded-2xl border-[3px] border-white bg-gradient-to-b from-slate-100 to-slate-200 px-3 py-2 font-black text-slate-700 shadow-[0_4px_0_rgba(100,116,139,0.45)] transition hover:bg-slate-50 active:translate-y-1 active:shadow-none disabled:opacity-40 cursor-pointer"
+            title="跳過本回合（快捷鍵 P）"
+            @click="emit('pass')"
+          >
+            <div class="text-base leading-tight">⏭</div>
+            <div class="text-[10px] font-extrabold text-slate-600">PASS · P</div>
           </button>
         </div>
       </div>

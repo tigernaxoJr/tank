@@ -79,6 +79,12 @@ export interface MoveActionCommand {
   readonly targetX: number
 }
 
+export interface PassActionCommand {
+  readonly type: 'ACTION_PASS'
+  readonly turnId: number
+  readonly playerId: PlayerId
+}
+
 export interface SyncHashEvent {
   readonly type: 'SYNC_HASH'
   readonly turnId: number
@@ -144,6 +150,7 @@ export interface StartBattleEvent {
 export type ProtocolMessage =
   | FireActionCommand
   | MoveActionCommand
+  | PassActionCommand
   | SyncHashEvent
   | ResyncRequestEvent
   | PlayerLeftEvent

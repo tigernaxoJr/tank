@@ -18,6 +18,7 @@ export interface BattleInputContext {
   onUpdateAim: (angle: number, power: number) => void
   onChangeBullet: (bullet: BulletType) => void
   onFire: () => void
+  onPass?: () => void
 }
 
 export function useBattleInput(ctx: BattleInputContext) {
@@ -177,6 +178,9 @@ export function useBattleInput(ctx: BattleInputContext) {
       e.preventDefault()
       if (e.repeat) return
       startCharging()
+    } else if (e.key === 'p' || e.key === 'P') {
+      e.preventDefault()
+      ctx.onPass?.()
     }
   }
 
