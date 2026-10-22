@@ -18,7 +18,7 @@
    - 功能依 `src/features/<slice>`（`battle`、`lobby`、`audio`）垂直隔離，跨切片僅能透過 `src/shared/kernel/types.ts` 或各 Slice 的 `index.ts` 互動。
    - 中大型模組分層（`domain/`、`application/`、`engine/`、`infra/`、`ui/`），小型模組（如 `audio`、`prng`、`combat`）維持單檔實作，禁止過度設計（YAGNI）。
 2. **三大模組化基底註冊表（Registry Pattern）**：
-   - 2.5D 坦克（[`tankRegistry.ts`](./src/features/battle/domain/tankRegistry.ts)）、跨螢幕大地圖（[`mapRegistry.ts`](./src/features/battle/domain/mapRegistry.ts)）、砲彈與尾焰特效（[`projectileRegistry.ts`](./src/features/battle/domain/projectileRegistry.ts)）皆採資料驅動註冊表設計，以利日後擴充。
+   - 2.5D 坦克（[`tankRegistry.ts`](./src/features/battle/domain/tankRegistry.ts)）、跨螢幕大地圖（[`mapRegistry.ts`](./src/features/battle/domain/mapRegistry.ts)）、砲彈與尾焰特效（[`projectileRegistry.ts`](./src/features/battle/domain/projectileRegistry.ts)）皆採資料驅動註冊表設計，以利日後擴充；坦克與砲彈採「一檔一模組」（`domain/tanks/<id>.ts`、`domain/projectiles/<name>.ts`），由註冊表以 `import.meta.glob` 自動收集，新增項目只需新增一個檔。
 3. **投籃拋物線節奏 (Basketball Arc Pacing)**：
    - 開火後必須先由 Phaser 3 鏡頭平滑跟隨砲彈飛行（約 `1.6s ~ 3.3s` 滯空並噴發尾焰），抵達落點瞬間才挖坑扣血，且爆炸後鏡頭需停留約 `1s`（`postImpactHoldMs`）再移交下一回合。
 4. **彈道物理一致性**：

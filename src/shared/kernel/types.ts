@@ -7,7 +7,8 @@ export type TeamId = 'A' | 'B'
 
 export type PlayerId = string
 
-export type TankArchetypeId = 'aegis' | 'goliath' | 'zephyr'
+/** 機種 id：由 battle/domain/tanks/<id>.ts 的檔案決定（自動收集），型別不另列字面值；一致性由 registry.test.ts 守住 */
+export type TankArchetypeId = string
 
 export type MapPresetId =
   | 'harvest_plains'
@@ -19,7 +20,8 @@ export type MapPresetId =
   | 'floating_isles'
   | 'templar_ruins'
 
-export type BulletType = 'MISSILE_STANDARD' | 'MISSILE_HEAVY' | 'MISSILE_PLASMA' | 'MISSILE_RAILGUN'
+/** 砲彈 id：由 battle/domain/projectiles/<name>.ts 的檔案決定（自動收集），型別不另列字面值 */
+export type BulletType = string
 
 /** 電腦難度：由弱到強。perfect 為百發百中，hard 為舊版預設（次強） */
 export type BotLevel = 'rookie' | 'weak' | 'normal' | 'hard' | 'perfect'
