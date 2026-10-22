@@ -1,5 +1,5 @@
 /**
- * Paint the original (non-Kenney) map art themes as SVG, then rasterize them for the game.
+ * Paint the original map art themes as SVG, then rasterize them for the game.
  *
  *   node tools/assets/paint_map_themes.mjs          (or: npm run paint:maps)
  *
@@ -15,7 +15,6 @@
  *   terrain_cap / terrain_fill / bedrock              128×128 seamless tiles (cap row 0 = ground surface)
  *   prop<N>                                           ground decorations (origin = bottom centre)
  *   hang<N>                                           decorations hanging under floating terrain (origin = top centre)
- * Kenney themes only get the generated bedrock + hang tiles; their backdrops come from bake_kenney_assets.py.
  */
 import { execSync } from 'node:child_process'
 import { existsSync, mkdirSync, readdirSync, writeFileSync } from 'node:fs'
@@ -294,9 +293,60 @@ function barn(x, baseY, s) {
 
 // ───────────────────────── themes ─────────────────────────
 
+/** Palm bent by a steady wind: curved segmented trunk, fronds streaming downwind (to the right). */
+function windPalm(x, baseY, h, trunk, leaf, leafLight, lean = 1) {
+  const tx = x + h * 0.32 * lean
+  const ty = baseY - h * 0.92
+  const cx = x - h * 0.02
+  const cy = baseY - h * 0.55
+  const w = Math.max(4, h * 0.06)
+  let out = `<path d="M${f1(x - w)},${f1(baseY)} Q${f1(cx - w * 0.6)},${f1(cy)} ${f1(tx - w * 0.5)},${f1(ty)} L${f1(tx + w * 0.5)},${f1(ty + 2)} Q${f1(cx + w * 0.8)},${f1(cy)} ${f1(x + w)},${f1(baseY)}Z" fill="${trunk}"/>`
+  // trunk rings
+  for (let i = 1; i < 7; i++) {
+    const t = i / 7
+    const px = (1 - t) * (1 - t) * x + 2 * t * (1 - t) * cx + t * t * tx
+    const py = (1 - t) * (1 - t) * baseY + 2 * t * (1 - t) * cy + t * t * ty
+    out += `<path d="M${f1(px - w * 0.9)},${f1(py)} q${f1(w * 0.9)},${f1(w * 0.5)} ${f1(w * 1.8)},0" stroke="#000" stroke-opacity="0.18" stroke-width="1.5" fill="none"/>`
+  }
+  // fronds: [end dx, end dy, droop] — mostly blown to the right
+  const fronds = [[0.62, 0.06, 0.1], [0.5, 0.3, 0.12], [0.3, 0.42, 0.08], [0.55, -0.14, 0.08], [0.2, -0.22, 0.06], [-0.22, 0.12, 0.08]]
+  fronds.forEach(([dx, dy, droop], i) => {
+    const ex = tx + dx * h * lean
+    const ey = ty + dy * h
+    const mx = (tx + ex) / 2
+    const my = (ty + ey) / 2 - droop * h
+    const thick = h * 0.07
+    const col = i % 2 ? leafLight : leaf
+    out += `<path d="M${f1(tx)},${f1(ty)} Q${f1(mx)},${f1(my - thick)} ${f1(ex)},${f1(ey)} Q${f1(mx)},${f1(my + thick)} ${f1(tx)},${f1(ty + 3)}Z" fill="${col}"/>`
+    // leaflet notches
+    for (let k = 1; k < 4; k++) {
+      const t = k / 4
+      const px = (1 - t) * (1 - t) * tx + 2 * t * (1 - t) * mx + t * t * ex
+      const py = (1 - t) * (1 - t) * ty + 2 * t * (1 - t) * my + t * t * ey
+      out += `<path d="M${f1(px)},${f1(py)} l${f1(h * 0.05 * lean)},${f1(h * 0.05)}" stroke="${col}" stroke-width="${f1(Math.max(1.5, h * 0.018))}" stroke-linecap="round"/>`
+    }
+  })
+  out += `<circle cx="${f1(tx - 2)}" cy="${f1(ty + 4)}" r="${f1(h * 0.035)}" fill="#7a4a24"/><circle cx="${f1(tx + h * 0.03)}" cy="${f1(ty + 6)}" r="${f1(h * 0.03)}" fill="#8f5a2c"/>`
+  return out
+}
+
+/** Thatched fishing hut on stilts. */
+function stiltHut(x, baseY, s) {
+  const k = (n) => f1(n * s)
+  return (
+    [-30, -10, 10, 30].map((dx) => `<rect x="${f1(x + dx * s - 2.5 * s)}" y="${f1(baseY - 40 * s)}" width="${k(5)}" height="${k(42)}" fill="#7a4e2e"/>`).join('') +
+    `<rect x="${f1(x - 40 * s)}" y="${f1(baseY - 44 * s)}" width="${k(80)}" height="${k(6)}" fill="#9a6a3c"/>` +
+    `<rect x="${f1(x - 30 * s)}" y="${f1(baseY - 78 * s)}" width="${k(60)}" height="${k(34)}" fill="#c99a62"/>` +
+    `<rect x="${f1(x - 8 * s)}" y="${f1(baseY - 66 * s)}" width="${k(16)}" height="${k(22)}" fill="#5a3a22"/>` +
+    `<rect x="${f1(x + 14 * s)}" y="${f1(baseY - 70 * s)}" width="${k(10)}" height="${k(10)}" fill="#7fdcf0"/>` +
+    `<path d="M${f1(x - 44 * s)},${f1(baseY - 74 * s)} L${f1(x)},${f1(baseY - 108 * s)} L${f1(x + 46 * s)},${f1(baseY - 72 * s)} Z" fill="#e2b45a"/>` +
+    `<path d="M${f1(x - 44 * s)},${f1(baseY - 74 * s)} L${f1(x)},${f1(baseY - 108 * s)} L${f1(x - 4 * s)},${f1(baseY - 74 * s)} Z" fill="#f2cf78"/>` +
+    [0, 1, 2, 3, 4].map((i) => `<path d="M${f1(x - 38 * s + i * 18 * s)},${f1(baseY - 73 * s)} l${k(3)},${k(7)}" stroke="#c99033" stroke-width="${k(2)}"/>`).join('')
+  )
+}
+
 const THEMES = {
   desert_temple: {
-    kind: 'original',
     clouds_far() {
       let out = ''
       const r = rng(11)
@@ -383,7 +433,6 @@ const THEMES = {
   },
 
   harvest_farm: {
-    kind: 'original',
     clouds_far() {
       let out = ''
       const r = rng(201)
@@ -513,7 +562,6 @@ const THEMES = {
   },
 
   volcano_rift: {
-    kind: 'original',
     clouds_far() {
       // drifting ash clouds + glowing embers
       let out = ''
@@ -653,7 +701,6 @@ const THEMES = {
   },
 
   sky_meadow: {
-    kind: 'original',
     clouds_far() {
       let out = ''
       const r = rng(111)
@@ -737,7 +784,6 @@ const THEMES = {
   },
 
   aurora_night: {
-    kind: 'original',
     clouds_far() {
       const defs = `<linearGradient id="a" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#5eead4" stop-opacity="0"/><stop offset="0.55" stop-color="#5eead4" stop-opacity="0.75"/><stop offset="1" stop-color="#a78bfa" stop-opacity="0"/></linearGradient>`
       let out = ''
@@ -831,7 +877,6 @@ const THEMES = {
   },
 
   moon_ruins: {
-    kind: 'original',
     clouds_far() {
       let out = ''
       const r = rng(301)
@@ -919,21 +964,184 @@ const THEMES = {
     hangs: [() => chain(9), () => vines(10, '#4b3a5a', '#6d8f4e'), () => roots(11, '#3a2b36', '#2a1e27')],
   },
 
-  // Kenney themes: only the generated bedrock + hanging decorations
-  emerald_valley: {
-    kind: 'kenney',
-    bedrock: () => carvedBedrock({ base: ['#6f7d86', '#788790', '#66747d'], mortar: '#3f4a52', moss: '#80be1f', seed: 401 }),
-    hangs: [() => roots(12, '#8a5a33', '#6a4024'), () => vines(13, '#5a9f2c', '#80be1f')],
-  },
-  sunset_canyon: {
-    kind: 'kenney',
-    bedrock: () => carvedBedrock({ base: ['#5c4a52', '#66525b', '#54434b'], mortar: '#33272d', inlay: '#e2b84a', seed: 411 }),
-    hangs: [() => roots(14, '#8a4524', '#6a3218'), () => roots(15, '#9a5530', '#7a3c1e')],
-  },
-  polar_glacier: {
-    kind: 'kenney',
-    bedrock: () => crystalBedrock(),
-    hangs: [() => icicles(16), () => icicles(17)],
+  tropic_coast: {
+    clouds_far() {
+      // trade-wind clouds: flattened puffs dragged into long streaks, plus gulls
+      let out = ''
+      const r = rng(501)
+      for (let i = 0; i < 6; i++) {
+        const x = r() * W
+        const y = 70 + r() * 120
+        const w = 170 + r() * 150
+        out += wrap(x, w * 0.75, (xx) =>
+          `<g transform="translate(${f1(xx)} ${f1(y)}) scale(1 0.62) translate(${f1(-xx)} ${f1(-y)})">${puffCloud(xx, y, w, '#ffffff', '#d4f3fa')}</g>` +
+          `<rect x="${f1(xx - w * 0.95)}" y="${f1(y - w * 0.035)}" width="${f1(w * 0.75)}" height="${f1(w * 0.05)}" rx="${f1(w * 0.025)}" fill="#ffffff" opacity="0.75"/>` +
+          `<rect x="${f1(xx - w * 1.15)}" y="${f1(y + w * 0.02)}" width="${f1(w * 0.55)}" height="${f1(w * 0.03)}" rx="${f1(w * 0.015)}" fill="#ffffff" opacity="0.5"/>`,
+        )
+      }
+      for (let i = 0; i < 18; i++) {
+        const x = r() * W
+        const y = 40 + r() * 260
+        out += wrap(x, 30, (xx) => `<path d="M${f1(xx - 18)},${f1(y)} q9,-5 18,2 q9,-7 18,-2" stroke="#ffffff" stroke-width="2.6" fill="none" opacity="0.65" stroke-linecap="round"/>`)
+      }
+      for (let i = 0; i < 6; i++) {
+        const x = r() * W
+        const y = 150 + r() * 120
+        const s = 0.7 + r() * 0.5
+        out += wrap(x, 14, (xx) => `<path d="M${f1(xx - 11 * s)},${f1(y)} q${f1(5 * s)},${f1(-6 * s)} ${f1(11 * s)},0 q${f1(6 * s)},${f1(-6 * s)} ${f1(11 * s)},0" stroke="#2f5b6e" stroke-width="2.2" fill="none" stroke-linecap="round"/>`)
+      }
+      return svg(W, H, out)
+    },
+    mountains() {
+      // open sea to the horizon: distant green islets, a striped lighthouse, sailboats
+      const horizon = 205
+      let out = ''
+      for (const [x, w, h] of [[150, 260, 70], [430, 120, 34], [820, 330, 95]]) {
+        out += wrap(x, w / 2, (xx) =>
+          `<path d="M${xx - w / 2},${horizon} Q${xx - w * 0.25},${horizon - h} ${xx},${horizon - h * 0.95} Q${xx + w * 0.2},${horizon - h * 1.05} ${xx + w / 2},${horizon}Z" fill="#7fb9a4"/>` +
+          `<path d="M${xx - w / 2},${horizon} Q${xx - w * 0.25},${horizon - h} ${xx},${horizon - h * 0.95} L${xx - w * 0.1},${horizon}Z" fill="#94c9b2"/>`,
+        )
+      }
+      // lighthouse on the big islet
+      out += wrap(905, 30, (xx) => {
+        const b = horizon - 70
+        return (
+          `<polygon points="${xx - 12},${b} ${xx + 12},${b} ${xx + 8},${b - 70} ${xx - 8},${b - 70}" fill="#fffaf0"/>` +
+          [0, 1, 2].map((i) => `<polygon points="${f1(xx - 12 + i * 1.6 + 1.2)},${b - 14 - i * 22} ${f1(xx + 12 - i * 1.6 - 1.2)},${b - 14 - i * 22} ${f1(xx + 11 - i * 1.6 - 1.6)},${b - 24 - i * 22} ${f1(xx - 11 + i * 1.6 + 1.6)},${b - 24 - i * 22}" fill="#e2574c"/>`).join('') +
+          `<rect x="${xx - 11}" y="${b - 76}" width="22" height="6" fill="#3a4a5a"/><rect x="${xx - 7}" y="${b - 90}" width="14" height="14" fill="#ffe27a"/><path d="M${xx - 9},${b - 90} L${xx},${b - 102} L${xx + 9},${b - 90}Z" fill="#e2574c"/>` +
+          `<polygon points="${xx + 7},${b - 86} ${xx + 90},${b - 100} ${xx + 90},${b - 72}" fill="#fff4b8" opacity="0.35"/>`
+        )
+      })
+      // sea body with depth bands and sparkle dashes
+      out += `<rect x="0" y="${horizon}" width="${W}" height="${H - horizon}" fill="#2fb3c9"/>`
+      out += `<rect x="0" y="${horizon}" width="${W}" height="5" fill="#9ee6f0"/>`
+      out += `<rect x="0" y="${horizon + 40}" width="${W}" height="${H - horizon - 40}" fill="#24a1bd"/>`
+      out += `<rect x="0" y="${horizon + 100}" width="${W}" height="${H - horizon - 100}" fill="#1d8fae"/>`
+      const r = rng(511)
+      for (let i = 0; i < 60; i++) {
+        const x = r() * W
+        const y = horizon + 10 + r() * 170
+        const len = 8 + r() * 26
+        out += wrap(x, len, (xx) => `<rect x="${f1(xx)}" y="${f1(y)}" width="${f1(len)}" height="2.5" rx="1.2" fill="#d8fbff" opacity="${f1(0.4 + r() * 0.5)}"/>`)
+      }
+      // sailboats
+      for (const [x, s] of [[300, 1], [620, 0.75], [1000, 0.6]]) {
+        out += wrap(x, 40 * s, (xx) => {
+          const y = horizon + 18 + (1 - s) * -10
+          return (
+            `<path d="M${f1(xx - 22 * s)},${f1(y)} h${f1(44 * s)} l${f1(-7 * s)},${f1(9 * s)} h${f1(-30 * s)}z" fill="#8a4f2e"/>` +
+            `<path d="M${f1(xx)},${f1(y - 2)} V${f1(y - 50 * s)} L${f1(xx + 26 * s)},${f1(y - 6 * s)}Z" fill="#ffffff"/>` +
+            `<path d="M${f1(xx - 2)},${f1(y - 4)} V${f1(y - 40 * s)} L${f1(xx - 20 * s)},${f1(y - 6 * s)}Z" fill="#ff9a6a"/>`
+          )
+        })
+      }
+      return svg(W, H, out)
+    },
+    hills_far() {
+      // coral-pink sandstone headlands with wind-bent palms and stilt huts
+      const pts = ridge(521, 175, [[2, 22], [5, 9], [9, 4]])
+      let out = rimmed(pts, '#e38f7c', '#f7d9b0', 7)
+      const r = rng(522)
+      // sandstone layering
+      for (let i = 0; i < 4; i++) {
+        out += `<path d="${ridgePath(pts.map(([x, y]) => [x, y + 26 + i * 30 + Math.sin(x / 60 + i) * 4]))}" fill="${['#d97f6c', '#cf735f', '#c46a58', '#b86050'][i]}"/>`
+      }
+      const yAt = (x) => pts[Math.round((((x % W) + W) % W) / 8)]?.[1] ?? 175
+      for (const x of [90, 140, 390, 610, 660, 905]) {
+        const h = 70 + r() * 35
+        out += wrap(x, h * 0.6, (xx) => windPalm(xx, yAt(x) + 4, h, '#a8693c', '#3f9a54', '#64c26c', 0.9))
+      }
+      for (const x of [250, 760]) {
+        out += wrap(x, 50, (xx) => stiltHut(xx, yAt(x) + 2, 0.9))
+      }
+      return svg(W, H, out)
+    },
+    hills_near() {
+      // white-sand dunes with wind-combed beach grass and a rope fence
+      const pts = ridge(531, 160, [[2, 20], [3, 9], [7, 3]])
+      let out = rimmed(pts, '#f1dcab', '#fff6dc', 8)
+      const r = rng(532)
+      const yAt = (x) => pts[Math.round((((x % W) + W) % W) / 8)]?.[1] ?? 160
+      for (let i = 0; i < 40; i++) {
+        const x = r() * W
+        out += wrap(x, 20, (xx) => {
+          let g = ''
+          for (let k = 0; k < 5; k++) {
+            const bx = xx - 8 + k * 4
+            const h = 16 + r() * 16
+            g += `<path d="M${f1(bx)},${f1(yAt(x) + 6)} q${f1(h * 0.2)},${f1(-h * 0.6)} ${f1(h * 0.7)},${f1(-h)}" stroke="${k % 2 ? '#8fbf5a' : '#b5d46a'}" stroke-width="2.4" fill="none" stroke-linecap="round"/>`
+          }
+          return g
+        })
+      }
+      for (const x of [180, 700]) {
+        const h = 120 + r() * 30
+        out += wrap(x, h * 0.7, (xx) => windPalm(xx, yAt(x) + 10, h, '#9a5f36', '#2f8a4a', '#58b860', 1))
+      }
+      const fy = (x) => yAt(x) + 46
+      let fence = ''
+      for (let x = 20; x < W; x += 64) fence += `<rect x="${x}" y="${f1(fy(x) - 26)}" width="6" height="32" rx="2" fill="#a8774a"/>`
+      fence += `<path d="${pts.map(([x], i) => `${i ? 'L' : 'M'}${x},${f1(fy(x) - 18 + Math.sin((x / 64) * TAU) * 3)}`).join('')}" stroke="#d6b07a" stroke-width="3" fill="none"/>`
+      out += fence
+      out += rimmed(ridge(533, 215, [[1, 10], [4, 5]]), '#ead0a0', '#f8e6bf', 6)
+      for (let i = 0; i < 26; i++) {
+        const x = r() * W
+        const y = 240 + r() * 140
+        out += wrap(x, 6, (xx) => `<ellipse cx="${f1(xx)}" cy="${f1(y)}" rx="${f1(2 + r() * 3)}" ry="${f1(1.5 + r() * 1.5)}" fill="${r() < 0.5 ? '#ffffff' : '#f5a99a'}" opacity="0.8"/>`)
+      }
+      return svg(W, H, out)
+    },
+    terrain_cap() {
+      const fill = this.fillBody()
+      const defs = fill.defs + noiseFilter('n', T, 0.1, 23)
+      let out = fill.out
+      // white sand over a wet-sand seam, with shells and pebbles in the top
+      out += band(541, 0, 26, 3, 2, '#d9b98a')
+      out += band(542, 0, 22, 2.5, 3, '#f3e2b8')
+      out += band(543, 0, 12, 2, 4, '#fffaea')
+      out += speckles(544, 9, [4, 18], ['#ffffff', '#f7b3a3', '#e8c48f'], 1.4, 2.6)
+      out += noiseRect('n', T, 0.12)
+      return svg(T, T, out, defs)
+    },
+    fillBody() {
+      const defs = noiseFilter('nf', T, 0.07, 29)
+      let out = strata(551, ['#e8937e', '#de8670', '#f0a28a', '#d47a65', '#e99a83'], 5)
+      out += speckles(552, 10, [6, 124], ['#c96a56', '#f6bca8', '#b45c4a'], 2, 5)
+      const r = rng(553)
+      // fossil shells: tiny spirals and scallops
+      for (let i = 0; i < 4; i++) {
+        const x = 12 + r() * 104
+        const y = 24 + r() * 92
+        out += i % 2
+          ? `<path d="M${f1(x - 5)},${f1(y + 3)} q5,-10 10,0z" fill="#fde3d4" opacity="0.8"/><path d="M${f1(x)},${f1(y + 3)} v-6 M${f1(x - 3)},${f1(y + 3)} l1.5,-5 M${f1(x + 3)},${f1(y + 3)} l-1.5,-5" stroke="#d98a76" stroke-width="0.8"/>`
+          : `<path d="M${f1(x)},${f1(y)} m-1,0 a1.5,1.5 0 1 1 2.5,1.5 a3,3 0 1 1 -4.5,-3 a4.5,4.5 0 1 1 6,5" stroke="#fde3d4" stroke-width="1.3" fill="none" opacity="0.85"/>`
+      }
+      out += noiseRect('n', T, 0.22)
+      return { defs, out: out.replaceAll('url(#n)', 'url(#nf)') }
+    },
+    terrain_fill() {
+      const { defs, out } = this.fillBody()
+      return svg(T, T, out, defs)
+    },
+    bedrock: () => carvedBedrock({ base: ['#4f8a8c', '#589496', '#467f81'], mortar: '#2b5557', moss: '#7fd6b4', seed: 561 }),
+    props: [
+      // wind-bent palm
+      () => svg(240, 260, windPalm(60, 260, 200, '#a8693c', '#2f8a4a', '#58b860', 1)),
+      // red-white buoy
+      () => svg(70, 90, `<path d="M35,6 V22" stroke="#3a4a5a" stroke-width="3"/><circle cx="35" cy="6" r="4" fill="#ffd84d"/><path d="M14,30 h42 l6,46 h-54z" fill="#ffffff"/><path d="M12,44 h46 l2,14 h-50z" fill="#e2574c"/><path d="M14,30 h42 l-2,-8 h-38z" fill="#e2574c"/><ellipse cx="35" cy="78" rx="30" ry="9" fill="#3a4a5a"/><rect x="20" y="34" width="5" height="38" fill="#ffffff" opacity="0.5"/>`),
+      // stacked cargo crates with rope
+      () => svg(120, 100, [[6, 52, 52, '#c48a52'], [62, 52, 52, '#b47c48'], [32, 6, 50, '#d39a5e']].map(([x, y, s, c]) => `<rect x="${x}" y="${y}" width="${s}" height="${s - 6}" rx="3" fill="${c}"/><path d="M${x + 4},${y + 4} L${x + s - 4},${y + s - 10} M${x + s - 4},${y + 4} L${x + 4},${y + s - 10}" stroke="#8a5a33" stroke-width="4"/><rect x="${x}" y="${y}" width="${s}" height="${s - 6}" rx="3" fill="none" stroke="#8a5a33" stroke-width="4"/>`).join('') + `<path d="M30,52 q30,14 60,0" stroke="#f0d9a8" stroke-width="3" fill="none"/>`),
+      // striped beach umbrella
+      () => svg(130, 150, `<path d="M64,40 L70,150" stroke="#f4ead8" stroke-width="5"/><path d="M8,52 Q60,-8 122,40 Z" fill="#ffffff"/>${[0, 1, 2].map((i) => { const a = 8 + i * 38; return `<path d="M${a},${52 - i * 4} Q${a + 30},${4 - i * 2} ${a + 38},${48 - i * 4} Z" fill="${['#ff7a5c', '#2fb3c9', '#ffd84d'][i]}"/>` }).join('')}<ellipse cx="66" cy="146" rx="40" ry="5" fill="#000" opacity="0.12"/>`),
+      // shipwreck bow + anchor
+      () => svg(150, 110, `<path d="M6,104 L18,40 Q60,30 112,60 L126,104Z" fill="#7a4a2c"/><path d="M18,40 Q60,30 112,60 L108,70 Q60,44 20,52Z" fill="#9a6440"/>${[56, 72, 88].map((y) => `<path d="M${14 + (y - 40) * 0.2},${y} Q64,${y - 12} ${116 + (y - 60) * 0.1},${y + 8}" stroke="#5a341e" stroke-width="3" fill="none"/>`).join('')}<path d="M18,40 L10,8" stroke="#5a341e" stroke-width="6"/><circle cx="54" cy="70" r="7" fill="#3a2414"/><g stroke="#4a5a68" stroke-width="5" fill="none" stroke-linecap="round"><path d="M134,40 V100"/><path d="M118,86 q16,22 32,0"/><path d="M126,50 h16"/></g><circle cx="134" cy="36" r="5" fill="none" stroke="#4a5a68" stroke-width="4"/>`),
+    ],
+    hangs: [
+      // little waterfall spilling from an island underside
+      () => svg(50, 140, `<path d="M14,0 h22 q2,70 4,124 h-30 q2,-54 4,-124z" fill="#7fdcf0" opacity="0.85"/><path d="M20,0 q-1,60 -2,120 M30,0 q1,60 3,120" stroke="#e6fbff" stroke-width="2.5" fill="none" opacity="0.9"/><ellipse cx="25" cy="126" rx="22" ry="9" fill="#e6fbff" opacity="0.8"/><circle cx="12" cy="122" r="5" fill="#ffffff" opacity="0.7"/><circle cx="38" cy="124" r="6" fill="#ffffff" opacity="0.7"/>`),
+      () => vines(51, '#2f8a6a', '#58c49a'),
+      () => roots(52, '#c46a58', '#a85a4a'),
+    ],
   },
 }
 
@@ -1068,13 +1276,11 @@ function emit(theme, name, svgText) {
 const manifest = {}
 for (const [theme, spec] of Object.entries(THEMES)) {
   const files = ['clouds_far', 'mountains', 'hills_far', 'hills_near', 'terrain_cap', 'terrain_fill']
-  if (spec.kind === 'original') {
-    for (const f of files) emit(theme, f, spec[f]())
-    spec.props.forEach((p, i) => emit(theme, `prop${i}`, p()))
-  }
+  for (const f of files) emit(theme, f, spec[f]())
+  spec.props.forEach((p, i) => emit(theme, `prop${i}`, p()))
   emit(theme, 'bedrock', spec.bedrock())
   spec.hangs.forEach((h, i) => emit(theme, `hang${i}`, h()))
-  manifest[theme] = { props: spec.props?.length ?? 0, hangs: spec.hangs.length }
+  manifest[theme] = { props: spec.props.length, hangs: spec.hangs.length }
 }
 emit('_common', 'moon', moon())
 

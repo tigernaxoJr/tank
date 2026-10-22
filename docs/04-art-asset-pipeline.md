@@ -2,8 +2,8 @@
 
 戰場上所有可見美術一律來自兩種來源，都經過可重現的腳本產生，執行期不再臨時拼裝或上色：
 
-1. **Kenney CC0 開源素材**（三個原始地圖主題、木箱油桶、爆炸與煙霧序列影格）→ `public/assets/kenney/`
-2. **專案原創向量美術**（`desert_temple` / `sky_meadow` / `aurora_night` / `moon_ruins` 四個地圖主題，以及所有主題的基岩紋理與懸掛裝飾）→ `public/assets/maps/`，由程式繪製，不引用任何第三方圖片（見 §五）。
+1. **Kenney CC0 開源素材**（木箱油桶、太陽、爆炸與煙霧序列影格）→ `public/assets/kenney/`。早期三個 Kenney 地圖主題（`emerald_valley` / `sunset_canyon` / `polar_glacier`）已改為原創主題並刪除。
+2. **專案原創向量美術**（全部地圖主題：`harvest_farm` / `volcano_rift` / `tropic_coast` / `desert_temple` / `sky_meadow` / `aurora_night` / `moon_ruins`，含基岩紋理與懸掛裝飾）→ `public/assets/maps/`，由程式繪製，不引用任何第三方圖片（見 §五）。
 3. **專案原創坦克 / 砲彈 / 粒子美術** → `public/assets/units/`，由 `tools/assets/paint_units.mjs` 繪製（見 §六）。`public/assets/kenney/tanks/` 與彈體 `bullet*.png` 已不再被遊戲引用。
 
 ## 一、素材來源（全部 CC0，作者 Kenney，取自 opengameart.org）
@@ -11,8 +11,7 @@
 | 素材包 | 用途 | 原始檔 |
 | :--- | :--- | :--- |
 | Tank Pack (side view) | 坦克車身 + 履帶 + 分離砲管、彈體、木箱/油桶 | `kenney_tanksPack.zip` |
-| Background Elements Redux | 遠山、中丘、近丘、雲海、樹木/仙人掌/灌木、太陽 | `Background Elements Redux.zip` |
-| Platformer Pack Redux | 地表磚 (`grassMid`/`sandMid`/`snowMid`) 與土壤磚 (`*Center`) | `Platformer Pack Redux (360 assets).zip` |
+| Background Elements Redux | 太陽 | `Background Elements Redux.zip` |
 | Smoke Particle Assets | 爆炸、砲口閃光、白煙、黑煙序列影格 | `smokeParticleAssets.zip` |
 
 授權與出處完整列於專案根目錄 [`CREDITS.md`](../CREDITS.md)。**新增任何素材前必須確認授權為 CC0 或相容授權，並同步更新 `CREDITS.md`**；禁止使用來源不明或「僅供個人使用」的素材。
@@ -20,7 +19,7 @@
 ## 二、烘焙腳本：`tools/assets/bake_kenney_assets.py`
 
 ```bash
-# 1. 下載上述 4 個 zip，各自解壓到 <packs>/tanks、<packs>/bg、<packs>/platformer、<packs>/smoke
+# 1. 下載上述 3 個 zip，各自解壓到 <packs>/tanks、<packs>/bg、<packs>/smoke
 # 2. 只需要 Pillow
 python3 tools/assets/bake_kenney_assets.py <packs>
 ```
@@ -30,9 +29,6 @@ python3 tools/assets/bake_kenney_assets.py <packs>
 | 輸出 | 說明 |
 | :--- | :--- |
 | `tanks/<id>_<a|b>_hull.png` / `_barrel.png` | 以像素比對自動把車身與履帶疊回 Kenney 原廠組裝位置；A 隊 Desert 塗裝、B 隊 Navy 塗裝 |
-| `maps/<mapId>/terrain_cap.png` / `terrain_fill.png` | 128×128 地表磚與土壤磚（峽谷整體偏紅） |
-| `maps/<mapId>/mountains|hills_far|hills_near|clouds_far.png` | 依地圖色調以「亮度比例」重新上色的視差剪影；雲海底部漸隱 |
-| `maps/<mapId>/prop<N>.png` / `thumbnail.png` | 地表裝飾、大廳地圖縮圖 |
 | `props/*.png` | 太陽、木箱/油桶、彈體 |
 | `fx/explosion|flash|puff|smoke.png` | 橫向排列的序列影格 (spritesheet) |
 
@@ -91,8 +87,8 @@ npm run paint:maps   # node tools/assets/paint_map_themes.mjs
 
 * **流程**：程式以種子 PRNG 產生 SVG（`tools/assets/map-art/<theme>/*.svg`）→ `@resvg/resvg-js` 點陣化到 `public/assets/maps/<theme>/*.png` → SVGO 壓縮 SVG 原始檔、ImageMagick `mogrify -strip` 去除 PNG metadata（兩者不在 PATH 時自動略過）。輸出固定，重跑結果逐位元組相同。
 * **不需要 vtracer / rembg**：這裡沒有點陣來源圖，全部直接以向量繪製；§四的點陣轉向量管線留給外部生圖素材。
-* **產出**：視差四層（1024×400，水平無縫：波形用整數週期、跨邊界的形狀以 `wrap()` 平移複製同一份標記）、`terrain_cap` / `terrain_fill` / `bedrock`（128×128 四方向無縫；地層 `strata()` 頂部與底部同色，地表磚以土壤磚為底再疊磚塊/草皮）、`prop<N>`、`hang<N>`，以及共用的 `_common/moon.png`。Kenney 主題只額外產生 `bedrock` 與 `hang<N>`。
-* **主題登錄**：`mapRegistry.ts` 的 `THEME_REGISTRY` 記錄每個主題的來源（`kenney` / `original`）、裝飾數量、懸掛數量與太陽/月亮位置（`kind: 'none'` 表示不畫，例如火山濃煙）；`mapAssetUrl` 依來源切換資料夾。
+* **產出**：視差四層（1024×400，水平無縫：波形用整數週期、跨邊界的形狀以 `wrap()` 平移複製同一份標記）、`terrain_cap` / `terrain_fill` / `bedrock`（128×128 四方向無縫；地層 `strata()` 頂部與底部同色，地表磚以土壤磚為底再疊磚塊/草皮）、`prop<N>`、`hang<N>`，以及共用的 `_common/moon.png`。
+* **主題登錄**：`mapRegistry.ts` 的 `THEME_REGISTRY` 記錄每個主題的裝飾數量、懸掛數量與太陽/月亮位置（`kind: 'none'` 表示不畫，例如火山濃煙）；`mapAssetUrl` 回傳 `public/assets/maps/<theme>/` 下的檔案。
 * **美術守則**：
   * 扁平向量 + 頂緣亮邊，與 Kenney 風格一致；Phaser 使用 Canvas Renderer，配色必須在繪製時決定（不能執行期 tint）。
   * 深淵地圖的 `hills_near` 必須是雲海 / 霧氣而非地面，否則底部看起來像實地。

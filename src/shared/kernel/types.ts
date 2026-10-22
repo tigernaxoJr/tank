@@ -12,7 +12,7 @@ export type TankArchetypeId = 'aegis' | 'goliath' | 'zephyr'
 export type MapPresetId =
   | 'harvest_plains'
   | 'volcano_gorge'
-  | 'polar_glacier'
+  | 'gale_coast'
   | 'sphinx_steps'
   | 'twin_valley'
   | 'heaven_bridge'

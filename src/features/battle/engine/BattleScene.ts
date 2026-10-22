@@ -4,9 +4,10 @@
  * 架構定位 (VSA + Pragmatic DDD)：
  * - 物理與狀態同步仍 100% 由確定性核心 (`TankCorePort` + `BattleState`) 驅動，確保 WebRTC P2P 跨瀏覽器零誤差。
  *   本檔只負責「看起來」的部分：任何隨機性（粒子、裝飾擺放抖動）都不會回寫到戰鬥狀態。
- * - 美術全部來自 Kenney CC0 素材包（經 tools/assets/bake_kenney_assets.py 烘焙至 public/assets/kenney/）：
+ * - 地圖主題與坦克 / 砲彈為原創程式繪製美術（public/assets/maps/、public/assets/units/），
+ *   木箱油桶、太陽、爆炸序列影格來自 Kenney CC0（public/assets/kenney/）：
  *   天空漸層 → 隨風飄移的雲層 → 遠山 → 中丘 → 近丘（手動視差） → 可破壞地形（地表磚/土壤磚逐像素取樣）
- *   → 地表裝飾（樹木/仙人掌/木箱，會被炸飛或隨地形下墜） → 坦克 → 砲彈與爆炸序列影格。
+ *   → 地表裝飾（主題裝飾/木箱，會被炸飛或隨地形下墜） → 坦克 → 砲彈與爆炸序列影格。
  * - 使用 Canvas Renderer（不支援 tint），所以配色差異一律在烘焙階段完成，執行期不做 setTint。
  */
 import Phaser from 'phaser'

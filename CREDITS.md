@@ -6,8 +6,7 @@ Third-party in-game art is from the following packs by **Kenney** ([kenney.nl](h
 | Pack | Source | Used for |
 | :--- | :--- | :--- |
 | Tank Pack (side view) | https://opengameart.org/content/tank-pack-80 | Crates and oil barrels (the tanks and shells are now original, see below) |
-| Background Elements Redux | https://opengameart.org/content/background-elements-redux | Parallax mountains, hills and clouds; trees, cacti, bushes, sun |
-| Platformer Pack Redux | https://opengameart.org/content/platformer-pack-redux-360-assets | Terrain surface and soil tiles |
+| Background Elements Redux | https://opengameart.org/content/background-elements-redux | Sun |
 | Smoke Particle Assets | https://opengameart.org/content/smoke-particle-assets | Explosion, muzzle flash, white puff and black smoke frames |
 
 Processed copies live in `public/assets/kenney/` and are produced by `tools/assets/bake_kenney_assets.py`
@@ -15,7 +14,8 @@ Processed copies live in `public/assets/kenney/` and are produced by `tools/asse
 
 ## Original art
 
-The map themes `desert_temple`, `sky_meadow`, `aurora_night` and `moon_ruins`, the bedrock textures, the hanging
+All map themes (`harvest_farm`, `volcano_rift`, `tropic_coast`, `desert_temple`, `sky_meadow`, `aurora_night`,
+`moon_ruins`), including the terrain tiles, parallax layers, props, bedrock textures, the hanging
 decorations and the moon in `public/assets/maps/` are original to this project. They are drawn procedurally by
 `tools/assets/paint_map_themes.mjs` (SVG sources in `tools/assets/map-art/`) and use no third-party images.
 

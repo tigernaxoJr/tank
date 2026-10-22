@@ -3,18 +3,16 @@
  * 日後要新增地圖，只需在 MAP_REGISTRY 新增一筆 MapBlueprint：
  *   - `waveProfile` 決定基礎波形地表；`layout` 再疊加浮空島、吊橋、挖空、不可破壞基岩等版型特徵
  *     （版型設計守則見 docs/05-map-layout-design.md）。
- *   - `theme` 指定美術主題（THEME_REGISTRY）。主題有兩種來源：
- *       'kenney'   Kenney CC0 素材，由 tools/assets/bake_kenney_assets.py 烘焙到 public/assets/kenney/maps/<theme>/
- *       'original' 專案原創向量美術，由 tools/assets/paint_map_themes.mjs 程式繪製到 public/assets/maps/<theme>/
- *     不論來源，基岩紋理 bedrock.png 與懸掛裝飾 hang<N>.png 一律由 paint_map_themes.mjs 產生於 public/assets/maps/<theme>/。
+ *   - `theme` 指定美術主題（THEME_REGISTRY）。所有主題都是專案原創向量美術，
+ *     由 tools/assets/paint_map_themes.mjs 程式繪製到 public/assets/maps/<theme>/。
  *
  * 每個美術主題的資產：
- *   terrain_cap.png / terrain_fill.png  128×128 無縫地表與土壤磚（Platformer Pack Redux）
- *   mountains / hills_far / hills_near  1024×400 可水平無縫捲動的視差剪影（Background Elements Redux，依地圖重新上色）
- *   clouds_far                          隨風向飄移的雲層（底部已漸隱）
- *   prop<N>.png                         地表裝飾（樹、灌木、仙人掌），爆炸會摧毀或使其下墜
+ *   terrain_cap.png / terrain_fill.png  128×128 四向無縫地表與土壤磚
+ *   mountains / hills_far / hills_near  1024×400 可水平無縫捲動的視差圖層
+ *   clouds_far                          隨風向飄移的雲層
+ *   prop<N>.png                         地表裝飾，爆炸會摧毀或使其下墜
  *   bedrock.png                         128×128 不可破壞基岩紋理
- *   hang<N>.png                         懸掛在浮島 / 橋面底下的樹根、藤蔓、冰柱、鎖鏈
+ *   hang<N>.png                         懸掛在浮島 / 橋面底下的樹根、藤蔓、冰柱、鎖鏈、瀑布
  * 大廳縮圖改用依版型即時繪製的地形剪影預覽（renderMapPreview）。
  */
 import type { MapPresetId } from '@/shared/kernel/types'
@@ -23,9 +21,7 @@ import type { TerrainFeature, TerrainWaveOptions } from '@/shared/wasm'
 export type MapThemeId =
   | 'harvest_farm'
   | 'volcano_rift'
-  | 'emerald_valley'
-  | 'sunset_canyon'
-  | 'polar_glacier'
+  | 'tropic_coast'
   | 'desert_temple'
   | 'sky_meadow'
   | 'aurora_night'
@@ -33,7 +29,6 @@ export type MapThemeId =
 
 export interface MapTheme {
   readonly id: MapThemeId
-  readonly source: 'kenney' | 'original'
   /** prop0 ~ prop<N-1>.png */
   readonly propCount: number
   /** hang0 ~ hang<N-1>.png */
@@ -43,15 +38,13 @@ export interface MapTheme {
 }
 
 export const THEME_REGISTRY: Record<MapThemeId, MapTheme> = {
-  volcano_rift: { id: 'volcano_rift', source: 'original', propCount: 5, hangCount: 2, celestial: { kind: 'none', x: 0, y: 0 } },
-  harvest_farm: { id: 'harvest_farm', source: 'original', propCount: 5, hangCount: 2, celestial: { kind: 'sun', x: 0.78, y: 105 } },
-  emerald_valley: { id: 'emerald_valley', source: 'kenney', propCount: 7, hangCount: 2, celestial: { kind: 'sun', x: 0.8, y: 120 } },
-  sunset_canyon: { id: 'sunset_canyon', source: 'kenney', propCount: 7, hangCount: 2, celestial: { kind: 'sun', x: 0.62, y: 210 } },
-  polar_glacier: { id: 'polar_glacier', source: 'kenney', propCount: 6, hangCount: 2, celestial: { kind: 'sun', x: 0.8, y: 120 } },
-  desert_temple: { id: 'desert_temple', source: 'original', propCount: 5, hangCount: 2, celestial: { kind: 'sun', x: 0.3, y: 230 } },
-  sky_meadow: { id: 'sky_meadow', source: 'original', propCount: 5, hangCount: 3, celestial: { kind: 'sun', x: 0.82, y: 110 } },
-  aurora_night: { id: 'aurora_night', source: 'original', propCount: 4, hangCount: 3, celestial: { kind: 'moon', x: 0.78, y: 120 } },
-  moon_ruins: { id: 'moon_ruins', source: 'original', propCount: 5, hangCount: 3, celestial: { kind: 'moon', x: 0.22, y: 150 } },
+  volcano_rift: { id: 'volcano_rift', propCount: 5, hangCount: 2, celestial: { kind: 'none', x: 0, y: 0 } },
+  tropic_coast: { id: 'tropic_coast', propCount: 5, hangCount: 3, celestial: { kind: 'sun', x: 0.2, y: 95 } },
+  harvest_farm: { id: 'harvest_farm', propCount: 5, hangCount: 2, celestial: { kind: 'sun', x: 0.78, y: 105 } },
+  desert_temple: { id: 'desert_temple', propCount: 5, hangCount: 2, celestial: { kind: 'sun', x: 0.3, y: 230 } },
+  sky_meadow: { id: 'sky_meadow', propCount: 5, hangCount: 3, celestial: { kind: 'sun', x: 0.82, y: 110 } },
+  aurora_night: { id: 'aurora_night', propCount: 4, hangCount: 3, celestial: { kind: 'moon', x: 0.78, y: 120 } },
+  moon_ruins: { id: 'moon_ruins', propCount: 5, hangCount: 3, celestial: { kind: 'moon', x: 0.22, y: 150 } },
 }
 
 export interface MapBlueprint {
@@ -91,9 +84,9 @@ export interface MapBlueprint {
   readonly debrisColors: number[]
 }
 
-/** 主題的背景、地表磚與地表裝飾（依主題來源分資料夾） */
+/** 主題的背景、地表磚與地表裝飾 */
 export function mapAssetUrl(theme: MapThemeId, file: string): string {
-  return THEME_REGISTRY[theme].source === 'kenney' ? `./assets/kenney/maps/${theme}/${file}` : `./assets/maps/${theme}/${file}`
+  return `./assets/maps/${theme}/${file}`
 }
 
 /** paint_map_themes.mjs 為所有主題產生的素材（bedrock、hang<N>），以及共用的 _common/moon */
@@ -127,9 +120,6 @@ function mirrored(features: TerrainFeature[]): TerrainFeature[] {
   })
   return [...features, ...flipped]
 }
-
-const POLAR_SKY = { top: '#1e3a8a', bottom: '#e0f2fe' }
-const POLAR_DEBRIS = [0xffffff, 0xd6eff3, 0x9bacad]
 
 export const MAP_REGISTRY: Record<MapPresetId, MapBlueprint> = {
   harvest_plains: {
@@ -198,30 +188,31 @@ export const MAP_REGISTRY: Record<MapPresetId, MapBlueprint> = {
     maxWind: 9,
     debrisColors: [0x2b2226, 0x4a2a26, 0xff7a2a],
   },
-  polar_glacier: {
-    id: 'polar_glacier',
-    theme: 'polar_glacier',
-    name: '極地冰封雪原 (Polar Glacier)',
-    badge: '2600 × 1150 · 冰川雙峰台地',
-    description: '覆蓋厚重白雪與冰晶岩脈的極地戰場，上空懸著兩塊浮冰，視野開闊但強風對拋物線影響極大。',
+  gale_coast: {
+    id: 'gale_coast',
+    theme: 'tropic_coast',
+    name: '強風珊瑚海岸 (Gale Coast)',
+    badge: '2600 × 1150 · 沙丘 + 對稱雙浮島',
+    description: '白沙與珊瑚砂岩的熱帶海岸，信風終年把椰子樹吹彎；中央上空懸著兩座椰林浮島，強風讓拋物線大幅偏移。',
     width: 2600,
     height: 1150,
     waveProfile: {
       baseHeightRatio: 0.64,
-      amp1: [110, 165],
-      amp2: [35, 60],
-      amp3: [10, 22],
-      wavelength1: 290,
+      amp1: [60, 90],
+      amp2: [20, 34],
+      amp3: [5, 10],
+      wavelength1: 300,
       wavelength2: 130,
       wavelength3: 55,
+      jitter: 8,
     },
     layout: {
-      features: mirrored([{ kind: 'island', cx: 0.38, y: 0.24, w: 0.08, depth: 0.06 }]),
+      features: mirrored([{ kind: 'island', cx: 0.45, y: 0.3, w: 0.08, depth: 0.06 }]),
     },
-    sky: POLAR_SKY,
-    props: { spacing: [90, 220] },
+    sky: { top: '#3fc6e0', bottom: '#d9fbff' },
+    props: { spacing: [100, 230] },
     maxWind: 14,
-    debrisColors: POLAR_DEBRIS,
+    debrisColors: [0xf3e2b8, 0xe8937e, 0xffffff],
   },
 
   // ───── 以下為多層 / 懸空版型地圖 ─────

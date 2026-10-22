@@ -9,13 +9,13 @@
 | Q 版原創坦克（aegis / goliath / zephyr × 琥珀 / 皇家藍）、三種砲彈、光暈 / 火花 / 衝擊波粒子 | ✅ 完成，`tools/assets/paint_units.mjs`，風格規範在 docs/04 §六 |
 | 地圖 1：`harvest_plains`（主題 `harvest_farm`，晨光風車農場，平原 + 每側兩座低土丘） | ✅ 完成，已和使用者確認 |
 | 地圖 2：`volcano_gorge`（主題 `volcano_rift`，火山熔岩，兩側高台 + 中央深谷 + 石拱） | ✅ 完成，已和使用者確認 |
-| 地圖 3：取代舊 `polar_glacier` | ⏳ **待辦**：版型已定為「保留強風 + 左右對稱雙浮島」，**風格尚未選定**（我提的選項：強風熱帶海岸（推薦）、叢林遺跡、櫻花春景、蒸汽龐克廢鐵場）。先用 AskUserQuestion 問使用者風格再動工 |
-| 清理舊 Kenney 主題 | ⏳ 地圖 3 完成後：從 `MapThemeId` / `THEME_REGISTRY` / `paint_map_themes.mjs` 的 Kenney 段移除 `emerald_valley`、`sunset_canyon`、`polar_glacier` 主題，以及 `POLAR_SKY` 等常數；`public/assets/kenney/maps/*` 不再被引用時可刪（刪檔前先問使用者） |
+| 地圖 3：`gale_coast`（主題 `tropic_coast`，強風熱帶海岸，沙丘 + 中央對稱雙浮島，maxWind 14；取代舊 `polar_glacier`） | ✅ 完成，已在瀏覽器驗證（使用者選定風格）；新輔助函式 `windPalm`（被風吹彎的椰子樹）、`stiltHut` |
+| 清理舊 Kenney 地圖主題 | ✅ 完成：`emerald_valley` / `sunset_canyon` / `polar_glacier` 主題、`public/assets/kenney/maps/`、bake 腳本的地圖烘焙段皆已刪除；`public/assets/kenney/` 只剩木箱油桶、太陽、爆炸序列與舊坦克圖 |
 
 ## 使用者規則（重要）
 
 - **每張地圖都要先和使用者討論風格與內容**（AskUserQuestion，2~4 個選項附 preview），選定後才畫；畫完在瀏覽器驗證再進下一張。
-- 每張地圖的配色 / 題材不得與其他地圖重複。已用：黃昏沙漠、藍天浮島、極光冰夜、紫色月夜遺跡、晨光農場、火山熔岩。
+- 每張地圖的配色 / 題材不得與其他地圖重複。已用：黃昏沙漠、藍天浮島、極光冰夜、紫色月夜遺跡、晨光農場、火山熔岩、熱帶強風海岸。
 - 版權：可以參考經典砲術遊戲的 Q 版「畫風」，但造型、名稱、配色組合、地圖一律原創；不得把對方圖片放進專案或拿來描圖（docs/05 §一、docs/04 §六）。
 - 新的設計規則要同步寫進 `docs/`；**沒有使用者明確指示不得 commit**。
 - 工作目錄裡可能有其他 session 的未提交改動（例如 HUD、`windRules.ts`、docs/06），commit 時只 stage 自己的檔案。
