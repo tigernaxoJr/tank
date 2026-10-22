@@ -95,8 +95,21 @@ export function syncAllTanksToTerrain(state: BattleState, core: TankCorePort): v
  * 第一階段：計算確定性彈道並將狀態切為 'FIRING'，此時尚未挖坑或扣血（等待砲彈飛抵目標）
  */
 /** 砲彈吸附（放大判定）：吸附半徑與直擊倍率由各砲彈 blueprint 決定；此為坦克本體碰撞半徑與直擊判定半徑 */
-const TANK_HIT_RADIUS_PX = 22
-const DIRECT_HIT_RADIUS_PX = 30
+export const TANK_HIT_RADIUS_PX = 22
+/** 可命中範圍：砲彈飛過此圈就引爆（比車身大，免得像在瞄一個點）；越靠中心傷害越高 */
+export const HIT_CAPTURE_RADIUS_PX = 36
+/** 核心：約車身面積 1/4~1/5（π·10² ≈ π·22²/4.8），核心內吃滿傷害 */
+export const HIT_CORE_RADIUS_PX = 10
+/** 捕捉圈邊緣的傷害比例（核心 = 1，往外線性遞減到此值） */
+export const HIT_EDGE_DAMAGE_RATIO = 0.4
+
+/** 命中點離車心 dist 時的傷害比例：核心內 1，往捕捉圈邊緣線性降到 HIT_EDGE_DAMAGE_RATIO */
+export function hitGradeRatio(dist: number): number {
+  if (dist <= HIT_CORE_RADIUS_PX) return 1
+  if (dist >= HIT_CAPTURE_RADIUS_PX) return HIT_EDGE_DAMAGE_RATIO
+  const t = (dist - HIT_CORE_RADIUS_PX) / (HIT_CAPTURE_RADIUS_PX - HIT_CORE_RADIUS_PX)
+  return 1 - t * (1 - HIT_EDGE_DAMAGE_RATIO)
+}
 
 /** 兩點間是否沒有地形遮擋（每 3px 取樣，略過終點附近 8px 以免誤判坦克所貼的地面） */
 function hasClearLine(core: TankCorePort, x0: number, y0: number, x1: number, y1: number): boolean {
@@ -123,7 +136,7 @@ function simulatePellet(
   aliveOthers: readonly TankEntity[],
 ): TracedShell[] {
   const { vxMilli, vyMilli } = launchVelocity(angle, power, projSpec.speedMultiplier)
-  const magnetRadius = Math.max(TANK_HIT_RADIUS_PX, projSpec.magnetRadius)
+  const magnetRadius = Math.max(HIT_CAPTURE_RADIUS_PX, projSpec.magnetRadius)
   const magnetRadiusSq = magnetRadius * magnetRadius
 
   // 吸附力：不分敵我（友傷是刻意的技術風險），進入坦克本體碰撞半徑則一定命中
@@ -138,14 +151,26 @@ function simulatePellet(
         return distSq <= TANK_HIT_RADIUS_PX * TANK_HIT_RADIUS_PX || hasClearLine(engine, pt.x, pt.y, t.x, t.y - 10)
       })
       if (target) {
-        // 不彎折彈道：砲彈沿原拋物線飛行，進入放大的判定範圍就在該點引爆（肉眼看不出吸附）
+        // 不彎折彈道：砲彈沿原拋物線飛行，在判定範圍內取最接近車心的那一點引爆（越靠中心傷害越高）
+        let best = i
+        let bestSq = Infinity
+        for (let j = i; j < hit.path.length; j++) {
+          const q = hit.path[j]
+          const d2 = (q.x - target.x) ** 2 + (q.y - (target.y - 10)) ** 2
+          if (d2 > magnetRadiusSq) break
+          if (d2 < bestSq) {
+            bestSq = d2
+            best = j
+          }
+        }
+        const bp = hit.path[best]
         return {
-          hitX: pt.x,
-          hitY: pt.y,
+          hitX: bp.x,
+          hitY: bp.y,
           impactedTerrain: false,
           hitTank: true,
-          stepsTaken: Math.max(1, i * 2),
-          path: hit.path.slice(0, i + 1),
+          stepsTaken: Math.max(1, best * 2),
+          path: hit.path.slice(0, best + 1),
         }
       }
     }
@@ -294,9 +319,11 @@ export function commitFireImpact(
       const spec = getTankSpec(tank.tankId)
       if (maxDamage > 0) {
         const base = engine.computeExplosionDamage(ex, ey, tank.x, tank.y, damageRadius, maxDamage)
-        const isDirect = hit.hitTank && Math.hypot(ex - tank.x, ey - (tank.y - 10)) <= DIRECT_HIT_RADIUS_PX
-        // 直擊（爆心落在放大判定範圍內）吃滿傷害，不吃距離衰減
-        const raw = isDirect ? Math.round(maxDamage * directHitMultiplier) : base
+        const centerDist = Math.hypot(ex - tank.x, ey - (tank.y - 10))
+        const inCapture = hit.hitTank && centerDist <= Math.max(HIT_CAPTURE_RADIUS_PX, proj.magnetRadius)
+        // 命中（爆心落在可命中範圍內）：核心吃滿傷害，往外遞減；不低於一般爆炸衰減
+        const graded = inCapture ? Math.round(maxDamage * directHitMultiplier * hitGradeRatio(centerDist)) : 0
+        const raw = Math.max(base, graded)
         const dmg = mitigateForTank(tank, spec, 'explosion', raw)
         if (dmg > 0) {
           blastByPlayer[tank.id] = (blastByPlayer[tank.id] ?? 0) + dmg

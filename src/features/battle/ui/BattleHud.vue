@@ -176,7 +176,7 @@ const dialSweep = computed(() => {
 const lastFiredPower = computed(() => lastFiredPowerByPlayer[props.panelPlayerId] ?? null)
 
 function shotSprite(key: string | undefined): string | null {
-  return key ? `/assets/units/projectiles/${key}.png` : null
+  return key ? `${import.meta.env.BASE_URL}assets/units/projectiles/${key}.png` : null
 }
 const hexColor = (n: number) => `#${n.toString(16).padStart(6, '0')}`
 
@@ -436,7 +436,7 @@ onUnmounted(() => {
 
       <!-- 右手：彈種、跳過與發射鈕 -->
       <div class="pointer-events-auto order-3 flex shrink-0 items-end gap-2">
-        <div class="flex flex-col items-center gap-1.5">
+        <div class="pad-shots flex flex-col items-center gap-1.5">
           <button
             v-for="proj in activeShots ?? []"
             :key="proj.id"
@@ -454,7 +454,7 @@ onUnmounted(() => {
           <button
             type="button"
             :disabled="controlsDisabled"
-            class="toon-btn h-8 rounded-full px-2.5 text-xs"
+            class="toon-btn pad-pass h-8 rounded-full px-2.5 text-xs"
             @click="emit('pass')"
           >
             跳過
@@ -728,10 +728,21 @@ onUnmounted(() => {
   width: 5.75rem;
   height: 5.75rem;
 }
+/* 手機橫拿（高度很矮）：控制面板縮到最小，把畫面留給戰場；中間資訊面板半透明 */
 @media (max-height: 420px) {
-  .dpad { width: 7.75rem; height: 7.75rem; }
-  .pad-fire { width: 5rem; height: 5rem; }
-  .pad-shot { width: 2.6rem; height: 2.6rem; }
+  .pad-root { row-gap: 0; padding-bottom: max(0.35rem, env(safe-area-inset-bottom)); }
+  .dpad { width: 5.9rem; height: 5.9rem; }
+  .dpad .pad-key { border-radius: 10px; }
+  .pad-shots { gap: 0.25rem; }
+  .pad-pass { height: 1.5rem; padding: 0 0.5rem; font-size: 0.65rem; }
+  .pad-fire { width: 4rem; height: 4rem; }
+  .pad-fire span { font-size: 0.9rem; }
+  .pad-fire span + span { display: none; }
+  .pad-shot { width: 2rem; height: 2rem; border-width: 2px; box-shadow: 0 2px 0 var(--color-ink); }
+  .pad-shot span { width: 1.4rem; height: 1.4rem; }
+  .pad-shot img { width: 1rem; height: 1rem; }
+  .pad-root .toon-panel { opacity: 0.88; padding-top: 0.2rem; padding-bottom: 0.2rem; margin-bottom: 0; }
+  .pad-root .power-track { height: 1.25rem; }
 }
 .hp-track {
   border: 2.5px solid var(--color-ink);

@@ -54,7 +54,7 @@ function hexColor(n: number): string {
 }
 
 function shotSprite(key: string | undefined): string | null {
-  return key ? `/assets/units/projectiles/${key}.png` : null
+  return key ? `${import.meta.env.BASE_URL}assets/units/projectiles/${key}.png` : null
 }
 
 const currentChoice = computed<TankChoice>(() => (props.random ? RANDOM_TANK : props.selectedTankId))

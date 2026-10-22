@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest'
 import type { FireActionCommand, PassActionCommand, RosterSlot } from '@/shared/kernel/types'
 import {
   commitFireImpact,
+  HIT_CAPTURE_RADIUS_PX,
+  HIT_CORE_RADIUS_PX,
   executeFireAction,
   executePassAction,
   finalizeTurnAfterHold,
@@ -123,24 +125,30 @@ describe('開火流程', () => {
     a.state.tanks.p2.hp -= 1
     expect(battleStateHash(a.state, a.core.getStateHash())).not.toBe(h)
   })
-  it('直擊吃滿傷害（回歸：不被車身中心偏移衰減）', () => {
+  it('命中分級：核心內吃滿傷害，往外遞減但仍有傷害', () => {
     const { state, core } = setupBattle()
     const spec = TANK_REGISTRY.bastion
     const proj = PROJECTILE_REGISTRY.SCORPION_ACID
-    const expected = Math.max(1, Math.round(proj.maxDamage * TANK_REGISTRY.scorpion.damageMultiplier) - spec.armor)
-    let found = false
-    outer: for (let power = 30; power <= 100; power++) {
+    const full = Math.max(1, Math.round(proj.maxDamage * TANK_REGISTRY.scorpion.damageMultiplier) - spec.armor)
+    let coreDmg: number | null = null
+    let edgeDmg: number | null = null
+    for (let power = 30; power <= 100; power += 0.5) {
       for (let angle = 20; angle <= 80; angle++) {
         const s = structuredClone(state)
         const plan = prepareFireTrajectory(s, fire({ angle, power }), core)
-        if (plan?.shots[0].hit.hitTank) {
-          expect(commitFireImpact(s, plan, core).damageByPlayer.p2).toBe(expected)
-          found = true
-          break outer
-        }
+        const hit = plan?.shots[0].hit
+        if (!plan || !hit?.hitTank) continue
+        const t = s.tanks.p2
+        const dist = Math.hypot(hit.hitX - t.x, hit.hitY - (t.y - 10))
+        const dmg = commitFireImpact(s, plan, core).damageByPlayer.p2
+        if (dist <= HIT_CORE_RADIUS_PX) coreDmg = dmg
+        else if (dist >= HIT_CAPTURE_RADIUS_PX - 4) edgeDmg = dmg
       }
     }
-    expect(found).toBe(true)
+    expect(coreDmg).toBe(full)
+    expect(edgeDmg).not.toBeNull()
+    expect(edgeDmg!).toBeGreaterThan(0)
+    expect(edgeDmg!).toBeLessThan(full)
   })
   it('預設樣式為單發，單發傷害 = 砲彈傷害 × 機種倍率', () => {
     const { state, core } = setupBattle()

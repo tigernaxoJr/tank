@@ -19,9 +19,11 @@ export default defineConfig({
         short_name: '空域砲決',
         description: '回合制砲擊對戰：單機練習或用房號連線對打',
         lang: 'zh-Hant',
+        id: './',
         start_url: './',
         scope: './',
-        display: 'fullscreen',
+        display: 'standalone',
+        display_override: ['fullscreen', 'standalone'],
         orientation: 'landscape',
         background_color: '#bfe4ff',
         theme_color: '#4cb2ff',
@@ -37,6 +39,15 @@ export default defineConfig({
         globIgnores: ['icons/splash-*.png'],
         maximumFileSizeToCacheInBytes: 4 * 1024 * 1024,
         navigateFallback: 'index.html',
+        cleanupOutdatedCaches: true,
+        // 字型來自 Google Fonts：離線 / 弱網時走快取，不讓字型請求拖住啟動
+        runtimeCaching: [
+          {
+            urlPattern: /^https:\/\/fonts\.(googleapis|gstatic)\.com\/.*/i,
+            handler: 'StaleWhileRevalidate',
+            options: { cacheName: 'google-fonts', expiration: { maxEntries: 20, maxAgeSeconds: 60 * 60 * 24 * 365 } },
+          },
+        ],
       },
     }),
   ],
