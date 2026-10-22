@@ -41,6 +41,18 @@ const TEAMS = {
   a: { name: 'amber', light: '#ffe48e', base: '#ffad33', dark: '#e0731a', deep: '#9c4a14', trim: '#fff6d8' },
   b: { name: 'royal', light: '#b0d8ff', base: '#4b8fff', dark: '#2a5fd6', deep: '#1a3484', trim: '#e6f2ff' },
 }
+// Paper-doll rule: each tank's body wears its own signature colour (who it is); only a few fixed
+// upper parts (turret / flag / scarf / claws / saddle / helmet / emblem) wear the team colour (whose side).
+// Signature colours steer clear of both team hues so the two never blur together.
+const SKINS = {
+  bastion: { light: '#f3f1ea', base: '#c9c4b6', dark: '#9b9586', deep: '#625d52' },
+  zephyr: { light: '#ffffff', base: '#f1ecdd', dark: '#cbc2a8', deep: '#8c836b' },
+  scorpion: { light: '#c8a6f2', base: '#8858c8', dark: '#5d3896', deep: '#3b2163' },
+  frostback: { light: '#b9bccb', base: '#7c8092', dark: '#565a6b', deep: '#363a48' },
+  burrower: { light: '#d4a477', base: '#9e6b3d', dark: '#6f4523', deep: '#4a2d14' },
+  hawkeye: { light: '#ffffff', base: '#e6e9ef', dark: '#b3b9c6', deep: '#767d8c' },
+}
+const CARBON = { light: '#7d8394', base: '#4c5161', dark: '#33364a', deep: '#22242f' }
 const STEEL = { light: '#d5dce8', base: '#8f99ab', dark: '#626b7e', deep: '#3b4252' }
 const RUBBER = { light: '#646b7c', base: '#434958', dark: '#2b2f3a' }
 const GOLD = { light: '#fff3b0', base: '#ffcf3f', dark: '#d1901a' }
@@ -132,11 +144,92 @@ function tracks(id, x0, x1, top, wheels) {
   )
 }
 
+/** Big off-road buggy tyre: knobbly tread blocks, five-spoke rim, gloss. */
+function offroadWheel(x, y, r) {
+  let knobs = ''
+  for (let i = 0; i < 12; i++) {
+    const a = (i / 12) * Math.PI * 2
+    knobs += `<rect x="${f1(x + Math.cos(a) * r - 1.5)}" y="${f1(y + Math.sin(a) * r - 1.5)}" width="3" height="3" rx="0.7" transform="rotate(${f1((a * 180) / Math.PI)} ${f1(x + Math.cos(a) * r)} ${f1(y + Math.sin(a) * r)})" fill="${RUBBER.dark}" stroke="${INK}" stroke-width="0.7"/>`
+  }
+  let spokes = ''
+  for (let i = 0; i < 5; i++) {
+    const a = (i / 5) * Math.PI * 2 - Math.PI / 2
+    spokes += line(x, y, x + Math.cos(a) * r * 0.5, y + Math.sin(a) * r * 0.5, STEEL.dark, 1.6)
+  }
+  return (
+    knobs +
+    `<circle cx="${x}" cy="${y}" r="${r}" fill="${RUBBER.base}" stroke="${INK}" stroke-width="${SW}"/>` +
+    `<circle cx="${x}" cy="${y}" r="${f1(r * 0.62)}" fill="${STEEL.base}" stroke="${INK}" stroke-width="1"/>` +
+    spokes +
+    `<circle cx="${x}" cy="${y}" r="${f1(r * 0.2)}" fill="${GOLD.base}" stroke="${INK}" stroke-width="0.8"/>` +
+    `<path d="M${f1(x - r * 0.75)},${f1(y - r * 0.25)}A${f1(r * 0.8)},${f1(r * 0.8)} 0 0 1 ${f1(x - r * 0.1)},${f1(y - r * 0.8)}" stroke="${RUBBER.light}" stroke-width="1.4" fill="none" stroke-linecap="round"/>`
+  )
+}
+
 /** Exhaust pipe at the rear. */
 function exhaust(x, y, h = 6) {
   return (
     `<rect x="${x - 2}" y="${y - h}" width="4" height="${h + 2}" rx="1.2" fill="${STEEL.dark}" stroke="${INK}" stroke-width="${SW * 0.75}"/>` +
     `<rect x="${x - 2.8}" y="${y - h - 1.6}" width="5.6" height="2.6" rx="1.1" fill="${STEEL.base}" stroke="${INK}" stroke-width="${SW * 0.75}"/>`
+  )
+}
+
+/** Deterministic tiny LCG so every bake paints the same grain. */
+function rng(seed) {
+  let a = seed >>> 0
+  return () => {
+    a = (a * 1664525 + 1013904223) >>> 0
+    return a / 2 ** 32
+  }
+}
+
+/**
+ * Material pass over a part already painted with toon(): soft occlusion towards the bottom, fine
+ * speckle grain (dark pits + light flecks), a few light scuffs on the upper third, then the ink
+ * outline again so the texture never eats the edge. bbox = [x0, y0, x1, y1]. Returns [defs, body].
+ */
+function finish(id, d, c, [x0, y0, x1, y1], { seed = 1, grain = 40, grainR = [0.35, 0.85], scuffs = 4, ao = 0.3, stroke = SW } = {}) {
+  const r = rng(seed)
+  const defs =
+    `<clipPath id="${id}F"><path d="${d}"/></clipPath>` +
+    vGrad(`${id}A`, y0, y1, [
+      [0, c.deep, 0],
+      [0.5, c.deep, 0],
+      [1, c.deep, ao],
+    ])
+  let g = `<rect x="${x0}" y="${y0}" width="${f1(x1 - x0)}" height="${f1(y1 - y0)}" fill="url(#${id}A)"/>`
+  for (let i = 0; i < grain; i++) {
+    const x = x0 + r() * (x1 - x0)
+    const y = y0 + r() * (y1 - y0)
+    const rr = grainR[0] + r() * (grainR[1] - grainR[0])
+    const dark = r() < 0.6
+    g += `<circle cx="${f1(x)}" cy="${f1(y)}" r="${f1(rr)}" fill="${dark ? c.deep : c.light}" opacity="${dark ? 0.32 : 0.6}"/>`
+  }
+  for (let i = 0; i < scuffs; i++) {
+    const x = x0 + 3 + r() * (x1 - x0 - 6)
+    const y = y0 + 2 + r() * (y1 - y0) * 0.3
+    const l = 1.6 + r() * 2.6
+    g += line(x, y, x + l, y - l * 0.25, '#ffffff', 0.7, 0.55)
+  }
+  return [defs, `<g clip-path="url(#${id}F)">${g}</g><path d="${d}" fill="none" stroke="${INK}" stroke-width="${stroke}" stroke-linejoin="round"/>`]
+}
+
+/** toon() + finish() in one go for the big parts. */
+function skinPart(id, d, c, bbox, toonOpts = {}, finishOpts = {}) {
+  const [d1, b1] = toon(id, d, c, toonOpts)
+  const [d2, b2] = finish(id, d, c, bbox, { stroke: toonOpts.stroke ?? SW, ...finishOpts })
+  return [d1 + d2, b1 + b2]
+}
+
+/** Jointed insect leg seen from the side: hip under the body, knee out, pointed foot on the ground (y = 0). */
+function insectLeg(hx, hy, kx, ky, fx, c) {
+  const path = `M${hx},${hy}L${kx},${ky}L${fx},-0.6`
+  return (
+    `<path d="${path}" stroke="${INK}" stroke-width="5" fill="none" stroke-linejoin="round" stroke-linecap="round"/>` +
+    `<path d="${path}" stroke="${c.base}" stroke-width="2.8" fill="none" stroke-linejoin="round" stroke-linecap="round"/>` +
+    `<path d="M${hx},${hy}L${kx},${ky}" stroke="${c.light}" stroke-width="0.9" fill="none" stroke-linecap="round" opacity="0.8"/>` +
+    `<circle cx="${kx}" cy="${ky}" r="2.3" fill="${c.dark}" stroke="${INK}" stroke-width="0.9"/>` +
+    `<path d="M${f1(fx - 1.6)},-1.8L${fx},0.6L${f1(fx + 1.6)},-1.8Z" fill="${INK}"/>`
   )
 }
 
@@ -156,7 +249,7 @@ const SCARF = { light: '#ff9a9a', base: '#e5484d', dark: '#a8262b' }
  *   tail    three shrinking carapace segments ending in a glowing stinger (Scorpion)
  *   rails   twin rails, energy channel, team coils and a muzzle brake (Hawkeye)
  */
-function barrelSvg(spec, team) {
+function barrelSvg(spec, team, skin = STEEL) {
   const { len, thick, muzzle, band, style = 'plain' } = spec
   const H = Math.max(thick, muzzle?.h ?? 0, spec.bell ?? 0, spec.brake ?? 0) + SW + 1 + (spec.drips ? 6 : 0)
   const box = [0, -H / 2, len, H]
@@ -204,11 +297,16 @@ function barrelSvg(spec, team) {
     segs.forEach(([x0, x1, h], i) => {
       const hh = h / 2
       const d = `M${f1(x0 + hh)},${f1(-hh)}H${f1(x1 - hh)}A${f1(hh)},${f1(hh)} 0 0 1 ${f1(x1 - hh)},${f1(hh)}H${f1(x0 + hh)}A${f1(hh)},${f1(hh)} 0 0 1 ${f1(x0 + hh)},${f1(-hh)}Z`
-      const [dd, bb] = toon(`sg${i}`, d, c, { shade: [1, 1.4], rim: 0.8 })
+      const [dd, bb] = toon(`sg${i}`, d, skin, { shade: [1, 1.4], rim: 0.8 })
       defs += dd
       body += bb
       body += line(x0 + hh * 0.7, -hh * 0.45, x1 - hh * 1.2, -hh * 0.45, '#ffffff', 0.9, 0.6)
     })
+    // team rings over the two joints
+    for (const [x, h] of [[len * 0.37, thick * 0.92], [len * 0.64, thick * 0.78]]) {
+      body += `<rect x="${f1(x)}" y="${f1(-h / 2 - 0.6)}" width="3.4" height="${f1(h + 1.2)}" rx="1.3" fill="${c.base}" stroke="${INK}" stroke-width="${SW * 0.7}"/>`
+      body += `<rect x="${f1(x + 0.8)}" y="${f1(-h / 2 + 0.4)}" width="1.6" height="${f1(h * 0.28)}" rx="0.6" fill="${c.light}"/>`
+    }
     // stinger: glowing toxic barb
     const sx = len * 0.84
     body += `<path d="M${f1(sx)},${f1(-thick * 0.32)}C${f1(sx + 5)},${f1(-thick * 0.34)} ${f1(len - 3)},-1.6 ${f1(len - 0.6)},0C${f1(len - 3)},1.6 ${f1(sx + 5)},${f1(thick * 0.34)} ${f1(sx)},${f1(thick * 0.32)}Z" fill="${TOXIC.base}" stroke="${INK}" stroke-width="${SW * 0.85}" stroke-linejoin="round"/>`
@@ -336,61 +434,72 @@ function mud(x, y, r) {
 
 const TANKS = {
   /**
-   * 鐵壁堡壘：方塊城牆車身 + 雉堞（城垛）、短粗迫擊砲塔、後側沙包堆、陣營色小旗。
+   * 鐵壁堡壘：石灰岩城牆車身（底部外擴、磚紋）、後方瞭望塔、短粗迫擊砲塔、沙包堆、五輪重履帶；隊伍色＝圓頂、城垛、小旗。
    * face (19,-13) pivot (3,-34)
    */
   bastion: {
-    box: [-47, -68, 94, 69],
+    box: [-48, -76, 96, 77],
     barrel: { len: 28, thick: 12, band: 0.34, muzzle: { w: 8, h: 17 } },
     hull(team) {
       const c = TEAMS[team]
+      const s = SKINS.bastion
       const p = painter()
-      // pennant on a pole (behind everything)
-      p.raw(line(-27, -42, -27, -64, INK, 1.5))
-      p.raw(`<path d="M-26.4,-64L-14,-60.2L-26.4,-56.2Z" fill="${c.base}" stroke="${INK}" stroke-width="${SW * 0.7}" stroke-linejoin="round"/>`)
-      p.raw(`<path d="M-25.6,-62.2L-19,-60.2" stroke="${c.light}" stroke-width="1" stroke-linecap="round"/>`)
-      p.raw(`<circle cx="-27" cy="-64.6" r="1.6" fill="${GOLD.base}" stroke="${INK}" stroke-width="0.8"/>`)
-      // battlement merlons along the wall top (drawn first, the wall covers their bases)
-      for (const [x0, x1] of [[-36, -29], [-22, -16], [21, 27], [30, 36]]) {
+      // rear watchtower (castle silhouette): stone shaft, team merlons, pennant on top
+      p.raw(line(-30, -58, -30, -72, INK, 1.5))
+      p.raw(`<path d="M-29.4,-72L-16,-68L-29.4,-63.6Z" fill="${c.base}" stroke="${INK}" stroke-width="${SW * 0.7}" stroke-linejoin="round"/>`)
+      p.raw(`<path d="M-28.6,-70.2L-21,-68" stroke="${c.light}" stroke-width="1" stroke-linecap="round"/>`)
+      p.raw(`<circle cx="-30" cy="-72.6" r="1.6" fill="${GOLD.base}" stroke="${INK}" stroke-width="0.8"/>`)
+      for (const [x0, x1] of [[-39, -34.4], [-32.4, -27.6], [-25.6, -21]]) {
+        p.add(toon(`t${x0}`, `M${x0},-52V-57Q${x0},-58.4 ${x0 + 1.4},-58.4H${x1 - 1.4}Q${x1},-58.4 ${x1},-57V-52Z`, c, { shade: [1, 1.4], rim: 0.7 }))
+      }
+      const towerD = 'M-38,-40V-51Q-38,-53 -36,-53H-24Q-22,-53 -22,-51V-40Z'
+      p.add(skinPart('tw', towerD, s, [-38, -53, -22, -40], { shade: [1.4, 2] }, { seed: 11, grain: 24, scuffs: 2, ao: 0.25 }))
+      p.raw(`<path d="M-33,-49.6H-27V-44.6Q-30,-47 -33,-44.6Z" fill="${INK}" opacity="0.85"/>`)
+      p.raw(`<path d="M-38,-46.6H-22" stroke="${s.deep}" stroke-width="0.9" opacity="0.4"/>`)
+      // wall merlons in team colour (front pair + one behind the turret)
+      for (const [x0, x1] of [[-19, -13], [21, 27], [30, 36]]) {
         p.add(toon(`m${x0}`, `M${x0},-38V-46Q${x0},-47.5 ${x0 + 1.5},-47.5H${x1 - 1.5}Q${x1},-47.5 ${x1},-46V-38Z`, c, { shade: [1.2, 1.6], rim: 0.8 }))
       }
-      // squat mortar turret: dome + steel collar
-      p.add(toon('tu', 'M-11,-41C-11,-52 -4.5,-56.5 3,-56.5C10.5,-56.5 17,-52 17,-41Z', c, { shade: [1.6, 2.4] }))
+      // squat mortar turret: team dome + steel collar
+      p.add(skinPart('tu', 'M-11,-41C-11,-52 -4.5,-56.5 3,-56.5C10.5,-56.5 17,-52 17,-41Z', c, [-11, -57, 17, -41], { shade: [1.6, 2.4] }, { seed: 12, grain: 16, scuffs: 3, ao: 0.2 }))
       p.raw(gloss(-1, -52, 5.4, 1.7))
       p.raw(rivet(9.5, -50.5, 1.1, c))
       p.add(toon('cl', 'M-13.5,-43.5H19.5V-39.6H-13.5Z', STEEL, { shade: [0.8, 1.2], rim: 0.6, stroke: SW * 0.85 }))
       for (const x of [-9, -2, 5, 12]) p.raw(rivet(x + 1.5, -41.5, 0.9))
-      // track: four fat wheels
-      p.raw(
-        tracks('tr', -36, 36, -16, [
-          [-25.5, 7],
-          [-8.5, 7],
-          [8.5, 7],
-          [25.5, 7],
-        ]),
-      )
-      // fortress wall body
-      const bodyD = 'M-38,-14V-37Q-38,-41 -34,-41H34Q38,-41 38,-37V-14Z'
-      p.add(toon('hu', bodyD, c, { shade: [2.6, 3.2] }))
-      // brick courses on the rear half only (front half keeps the face clean)
-      p.def(`<clipPath id="br"><rect x="-38" y="-41" width="40" height="27"/></clipPath>`)
-      let bricks = `<path d="M-38,-32.5H2M-38,-23.5H2" stroke="${c.deep}" stroke-width="1" opacity="0.38"/>`
-      for (const x of [-30, -18, -6]) bricks += `<path d="M${x},-41V-32.5M${x + 6},-32.5V-23.5M${x},-23.5V-14" stroke="${c.deep}" stroke-width="1" opacity="0.38"/>`
+      // heavy track: five fat wheels
+      p.raw(tracks('tr', -39, 39, -16, [[-29, 6.6], [-14.5, 6.6], [0, 6.6], [14.5, 6.6], [29, 6.6]]))
+      // battered fortress wall (flares out at the base)
+      const bodyD = 'M-40,-14L-37.4,-38.6Q-37,-41 -34.6,-41H34.6Q37,-41 37.4,-38.6L40,-14Z'
+      p.add(skinPart('hu', bodyD, s, [-40, -41, 40, -14], { shade: [2.6, 3.2] }, { seed: 13, grain: 70, scuffs: 4, ao: 0.3 }))
+      // ashlar courses on the rear half, each block with a light top edge; a few cracks and moss
+      p.def(`<clipPath id="br"><path d="M-40,-41H3V-14H-40Z"/></clipPath>`)
+      let bricks = ''
+      for (const [y0, y1, off] of [[-41, -32.5, 0], [-32.5, -23.5, 6], [-23.5, -14, 0]]) {
+        bricks += `<path d="M-40,${y1}H3" stroke="${s.deep}" stroke-width="1" opacity="0.55"/>`
+        for (let x = -42 + off; x < 3; x += 12) {
+          bricks += `<path d="M${x},${y0}V${y1}" stroke="${s.deep}" stroke-width="1" opacity="0.55"/>`
+          bricks += line(x + 1.2, y0 + 1.1, x + 9.6, y0 + 1.1, s.light, 0.9, 0.9)
+        }
+      }
+      bricks += `<path d="M-14,-32.5L-12.4,-29L-14.6,-26.4L-13,-23.5" stroke="${s.deep}" stroke-width="0.8" fill="none" opacity="0.8"/>`
+      bricks += `<path d="M-40,-14.4C-36,-17 -31,-16.2 -27,-14.4Z" fill="#7fb85a" stroke="${INK}" stroke-width="0.6"/><circle cx="-33" cy="-16.2" r="0.8" fill="#b8e08a"/>`
       p.raw(`<g clip-path="url(#br)">${bricks}</g>`)
-      p.raw(gloss(6, -37.4, 12, 1.8, -2))
+      p.raw(`<path d="${bodyD}" fill="none" stroke="${INK}" stroke-width="${SW}" stroke-linejoin="round"/>`)
+      p.raw(gloss(6, -37.4, 12, 1.6, -2))
       // gate arch on the front lower edge (keeps the face area above it free)
-      p.raw(`<path d="M28,-14V-19.5A4.5,4.5 0 0 1 37,-19.5V-14Z" fill="${c.deep}" stroke="${INK}" stroke-width="${SW * 0.7}"/>`)
-      p.raw(line(32.5, -23.6, 32.5, -14.6, INK, 0.8, 0.6))
+      p.raw(`<path d="M28.6,-14V-19.5A4.5,4.5 0 0 1 37.6,-19.5V-14Z" fill="#7a4a24" stroke="${INK}" stroke-width="${SW * 0.7}"/>`)
+      p.raw(line(33.1, -23.6, 33.1, -14.6, INK, 0.8, 0.6))
+      p.raw(rivet(31.4, -17.4, 0.6, GOLD))
       // sandbag pile against the rear corner
-      p.add(sandbag('sb1', -40.5, -18.4))
-      p.add(sandbag('sb2', -31, -18.8))
-      p.add(sandbag('sb3', -36, -25))
+      p.add(sandbag('sb1', -42, -18.4))
+      p.add(sandbag('sb2', -32.6, -18.8))
+      p.add(sandbag('sb3', -37.6, -25))
       return p.doc(this.box)
     },
   },
 
   /**
-   * 疾風遊俠：低矮楔形水滴車身、遊俠頭盔砲塔 + 推到額頭的護目鏡、隨風飄揚的圍巾、雙排氣管噴火、喇叭口散彈砲。
+   * 疾風遊俠：象牙白楔形車身、兩顆越野大輪（沙灘車）、遊俠頭盔 + 碳灰護目鏡、後噴推進器、喇叭口散彈砲；隊伍色＝圍巾、側條紋。
    * face (17,-8) pivot (-6,-25)
    */
   zephyr: {
@@ -398,11 +507,12 @@ const TANKS = {
     barrel: { len: 34, thick: 6.6, bell: 15, style: 'bell' },
     hull(team) {
       const c = TEAMS[team]
+      const s = SKINS.zephyr
       const p = painter()
-      // wind-swept red scarf: two wavy tails streaming back from the helmet neck
-      p.add(toon('sf1', 'M-15,-38.6C-21,-41.6 -26,-42 -31,-40.4C-36,-38.8 -40,-41.6 -44,-45.6L-48.4,-44C-44.6,-39 -40,-34.6 -33.6,-35.6C-27,-36.6 -22,-36.4 -16,-34.2Z', SCARF, { shade: [0.9, 1.3], rim: 0.6, stroke: SW * 0.8 }))
-      p.add(toon('sf2', 'M-16,-35.4C-21.6,-34.6 -25.4,-32.6 -29.6,-30.4C-33,-28.8 -36.6,-29.6 -40,-31.4L-42.6,-28.6C-38.6,-25.6 -34,-25.2 -29.4,-27C-25,-28.8 -21,-31 -16.4,-31.6Z', SCARF, { shade: [0.9, 1.3], rim: 0.6, stroke: SW * 0.8 }))
-      for (const [x0, y0, x1, y1] of [[-30, -39.6, -32.6, -36.4], [-38, -40.6, -40.6, -37.4], [-28.4, -30.4, -30.6, -27.6]]) p.raw(line(x0, y0, x1, y1, SCARF.light, 1.1, 0.9))
+      // wind-swept team-colour scarf: two wavy tails streaming back from the helmet neck
+      p.add(toon('sf1', 'M-15,-38.6C-21,-41.6 -26,-42 -31,-40.4C-36,-38.8 -40,-41.6 -44,-45.6L-48.4,-44C-44.6,-39 -40,-34.6 -33.6,-35.6C-27,-36.6 -22,-36.4 -16,-34.2Z', c, { shade: [0.9, 1.3], rim: 0.6, stroke: SW * 0.8 }))
+      p.add(toon('sf2', 'M-16,-35.4C-21.6,-34.6 -25.4,-32.6 -29.6,-30.4C-33,-28.8 -36.6,-29.6 -40,-31.4L-42.6,-28.6C-38.6,-25.6 -34,-25.2 -29.4,-27C-25,-28.8 -21,-31 -16.4,-31.6Z', c, { shade: [0.9, 1.3], rim: 0.6, stroke: SW * 0.8 }))
+      for (const [x0, y0, x1, y1] of [[-30, -39.6, -32.6, -36.4], [-38, -40.6, -40.6, -37.4], [-28.4, -30.4, -30.6, -27.6]]) p.raw(line(x0, y0, x1, y1, c.light, 1.1, 0.9))
       // twin rear boosters: short nozzles pointing backwards with little flames
       for (const [y, l] of [[-17.6, 7], [-23.4, 6]]) {
         p.raw(`<path d="M-41,${y - 2.2}C-${44 + l * 0.4},${y - 3.6} -${44 + l},${y - 1.4} -${45 + l},${y}C-${44 + l},${y + 1.4} -${44 + l * 0.4},${y + 3.6} -41,${y + 2.2}Z" fill="#ffb43a" stroke="${INK}" stroke-width="0.8" stroke-linejoin="round"/>`)
@@ -410,34 +520,32 @@ const TANKS = {
         p.raw(`<rect x="-42" y="${y - 2.6}" width="6" height="5.2" rx="1.4" fill="${STEEL.base}" stroke="${INK}" stroke-width="${SW * 0.75}"/><rect x="-41" y="${y - 1.8}" width="4" height="1.1" rx="0.5" fill="#ffffff" opacity="0.7"/>`)
       }
       // ranger helmet turret + the scarf knot wrapped around its neck
-      p.add(toon('tu', 'M-19,-33C-19,-43.5 -12.5,-48 -5,-48C2.5,-48 8,-43.5 8,-33Z', c, { shade: [1.6, 2.2] }))
-      p.add(toon('kn', 'M-20,-38.4C-18,-35.4 -14,-34.6 -12,-36.4C-13,-38.6 -17,-40.6 -20,-38.4Z', SCARF, { shade: [0.6, 0.9], rim: 0.5, stroke: SW * 0.7 }))
-      p.raw(`<path d="M-20.5,-34.6H10.4Q11.6,-34.6 11.6,-33.4V-32.6H-20.5Z" fill="${c.deep}" stroke="${INK}" stroke-width="1"/>`)
+      p.add(toon('tu', 'M-19,-33C-19,-43.5 -12.5,-48 -5,-48C2.5,-48 8,-43.5 8,-33Z', s, { shade: [1.6, 2.2] }))
+      p.add(toon('kn', 'M-20,-38.4C-18,-35.4 -14,-34.6 -12,-36.4C-13,-38.6 -17,-40.6 -20,-38.4Z', c, { shade: [0.6, 0.9], rim: 0.5, stroke: SW * 0.7 }))
+      p.raw(`<path d="M-20.5,-34.6H10.4Q11.6,-34.6 11.6,-33.4V-32.6H-20.5Z" fill="${s.deep}" stroke="${INK}" stroke-width="1"/>`)
       p.raw(gloss(-10, -44.4, 4.6, 1.5))
       // goggles pushed up on the helmet
-      p.raw(`<path d="M-17,-40.4C-10,-42.4 -1,-42.4 6.4,-40.6" stroke="${INK}" stroke-width="2.6" fill="none" stroke-linecap="round"/>`)
-      p.raw(`<path d="M-17,-40.4C-10,-42.4 -1,-42.4 6.4,-40.6" stroke="${c.deep}" stroke-width="1.2" fill="none" stroke-linecap="round"/>`)
+      p.raw(`<path d="M-17,-40.4C-10,-42.4 -1,-42.4 6.4,-40.6" stroke="${INK}" stroke-width="3" fill="none" stroke-linecap="round"/>`)
+      p.raw(`<path d="M-17,-40.4C-10,-42.4 -1,-42.4 6.4,-40.6" stroke="${CARBON.light}" stroke-width="1.2" fill="none" stroke-linecap="round"/>`)
       for (const gx of [-7.4, -0.4]) {
-        p.raw(`<circle cx="${gx}" cy="-42" r="3.3" fill="${STEEL.base}" stroke="${INK}" stroke-width="1.1"/>`)
+        p.raw(`<circle cx="${gx}" cy="-42" r="3.3" fill="${CARBON.base}" stroke="${INK}" stroke-width="1.1"/>`)
         p.raw(`<circle cx="${gx}" cy="-42" r="2.1" fill="${GLASS.base}"/><circle cx="${gx - 0.8}" cy="-42.8" r="0.8" fill="#ffffff"/>`)
       }
-      // compact track
-      p.raw(
-        tracks('tr', -31, 30, -12.5, [
-          [-21.5, 5.8],
-          [-4, 5.8],
-          [13.5, 5.8],
-          [24.6, 3.6],
-        ]),
-      )
+      // no track: a dune buggy on two big knobbly off-road wheels, chassis rail between them
+      p.raw(`<path d="M-30,-9.6H33" stroke="${INK}" stroke-width="4.4" stroke-linecap="round"/><path d="M-30,-9.6H33" stroke="${CARBON.base}" stroke-width="2.4" stroke-linecap="round"/>`)
+      for (const [x, r] of [[-26, 9.4], [31, 8.4]]) p.raw(offroadWheel(x, -r - 1.2, r))
       // wedge teardrop body: rounded rear, long low nose
       const bodyD = 'M-34,-11C-39.5,-11 -40,-20 -37,-26.5C-34,-32.5 -26,-35.5 -14,-35.5C3,-35.5 17,-30 29,-23.5C37,-19 44,-17 44,-13.6C44,-11.6 42.4,-11 40,-11Z'
-      p.add(toon('hu', bodyD, c, { shade: [2.4, 3] }))
+      p.add(skinPart('hu', bodyD, s, [-40, -36, 44, -10], { shade: [2.4, 3] }, { seed: 21, grain: 46, scuffs: 4, ao: 0.32 }))
+      // panel seam, louvred side vent, fuel cap
+      p.raw(`<path d="M-8,-35C-9,-28 -9,-20 -8,-18.6" stroke="${s.deep}" stroke-width="0.9" fill="none" opacity="0.6"/>`)
+      for (const y of [-31, -28.4, -25.8]) p.raw(`<path d="M-15.6,${y}H-10.4" stroke="${INK}" stroke-width="1.3" stroke-linecap="round" opacity="0.7"/><path d="M-15.6,${y + 0.8}H-10.4" stroke="${s.light}" stroke-width="0.7" stroke-linecap="round"/>`)
+      p.raw(`<circle cx="2" cy="-31.4" r="1.7" fill="${CARBON.base}" stroke="${INK}" stroke-width="0.7"/><circle cx="1.6" cy="-31.8" r="0.6" fill="#ffffff" opacity="0.7"/>`)
       p.raw(gloss(-17, -32.2, 10, 1.9, -3))
       // speed chevrons on the rear flank
       p.def(`<clipPath id="st"><path d="${bodyD}"/></clipPath>`)
-      p.raw(`<g clip-path="url(#st)"><path d="M-42,-16.8H46V-14.2H-42Z" fill="${c.trim}"/></g>`)
-      for (const x of [-30, -24.5, -19]) p.raw(`<path d="M${x},-29.5L${x + 3.6},-25L${x},-20.5" stroke="${GOLD.base}" stroke-width="2.6" fill="none" stroke-linejoin="round" stroke-linecap="round"/><path d="M${x},-29.5L${x + 3.6},-25L${x},-20.5" stroke="${INK}" stroke-width="0.6" fill="none" stroke-linejoin="round"/>`)
+      p.raw(`<g clip-path="url(#st)"><path d="M-42,-18.6H46V-14H-42Z" fill="${c.base}" stroke="${INK}" stroke-width="0.9"/></g>`)
+      for (const x of [-30, -24.5, -19]) p.raw(`<path d="M${x},-29.5L${x + 3.6},-25L${x},-20.5" stroke="${CARBON.base}" stroke-width="2.6" fill="none" stroke-linejoin="round" stroke-linecap="round"/><path d="M${x},-29.5L${x + 3.6},-25L${x},-20.5" stroke="${INK}" stroke-width="0.6" fill="none" stroke-linejoin="round"/>`)
       // nose intake
       p.raw(`<path d="M37,-17.2C40,-16.4 42,-15.4 42.6,-14H36.4Z" fill="${INK}" opacity="0.85"/>`)
       return p.doc(this.box)
@@ -445,14 +553,15 @@ const TANKS = {
   },
 
   /**
-   * 毒蠍：低底盤寬殼、甲殼分節、前保險桿上一對大螯、背上綠色毒液罐（氣泡）、側面毒斑，蠍尾式分節砲管。
+   * 毒蠍：紫色分節甲殼、八足步行、一對大螯、背上毒液罐、毒斑、蠍尾式分節砲管；隊伍色＝大螯、砲塔環、蠍尾關節環。
    * face (21,-10) pivot (-2,-27)
    */
   scorpion: {
-    box: [-48, -64, 102, 65],
+    box: [-50, -64, 106, 65],
     barrel: { len: 34, thick: 8.6, style: 'tail' },
     hull(team) {
       const c = TEAMS[team]
+      const s = SKINS.scorpion
       const p = painter()
       // venom canister on the rear deck: glass tube, green fluid, bubbles, steel caps
       p.def(`<clipPath id="vc"><rect x="-33" y="-49" width="11" height="17" rx="3"/></clipPath>`)
@@ -463,35 +572,31 @@ const TANKS = {
       p.raw(`<rect x="-34.4" y="-51.6" width="13.8" height="3.6" rx="1.4" fill="${STEEL.base}" stroke="${INK}" stroke-width="${SW * 0.7}"/>`)
       p.raw(line(-32, -46.6, -32, -36, '#ffffff', 1, 0.8))
       // small dome turret with a purple venom band
-      p.add(toon('tu', 'M-15,-32C-15,-41.5 -9,-45.5 -2,-45.5C5,-45.5 11,-41.5 11,-32Z', c, { shade: [1.5, 2.1] }))
-      p.raw(`<path d="M-14.6,-36.4H10.6V-33.6H-14.6Z" fill="#9b5de5" stroke="${INK}" stroke-width="0.9"/>`)
+      p.add(skinPart('tu', 'M-15,-32C-15,-41.5 -9,-45.5 -2,-45.5C5,-45.5 11,-41.5 11,-32Z', s, [-15, -46, 11, -32], { shade: [1.5, 2.1] }, { seed: 32, grain: 18, scuffs: 2 }))
+      p.raw(`<path d="M-14.6,-36.4H10.6V-33H-14.6Z" fill="${c.base}" stroke="${INK}" stroke-width="0.9"/>`)
       p.raw(gloss(-6, -42, 4.6, 1.4))
-      // track
-      p.raw(
-        tracks('tr', -34, 34, -14, [
-          [-24, 6.2],
-          [-8, 6.2],
-          [8, 6.2],
-          [24, 6.2],
-        ]),
-      )
+      // no track: eight jointed legs (far pair darker and offset), rear legs splay back, front legs forward
+      const far = { light: s.base, base: s.dark, dark: s.deep }
+      for (const [hx, dir] of [[-20, -1], [-6, -1], [8, 1], [22, 1]]) p.raw(insectLeg(hx + 3, -13, hx + 3 + dir * 8, -8.6, hx + 3 + dir * 12, far))
+      for (const [hx, dir] of [[-26, -1], [-12, -1], [4, 1], [18, 1]]) p.raw(insectLeg(hx, -12, hx + dir * 8.6, -7.6, hx + dir * 13, s))
       // big open pincer on the front bumper (behind the body so the shell overlaps its root)
       p.add(toon('cw0', 'M30,-22H38Q40,-22 40,-20V-15.6Q40,-13.6 38,-13.6H30Z', c, { shade: [0.8, 1.1], rim: 0.6 }))
-      p.add(toon('cw1', 'M37,-21C40,-27 46,-29.6 51,-27.6C52.6,-27 52.4,-25.6 51,-25.4C47,-24.8 44,-23 42.4,-19.4Z', c, { shade: [1, 1.4], rim: 0.7 }))
-      p.add(toon('cw2', 'M37.6,-14.6C41,-12.4 45.6,-12.6 49.4,-15.4C50.6,-16.2 50.4,-17.6 49,-17.6C46,-17.4 43.6,-17.4 41.6,-18.6Z', c, { shade: [1, 1.4], rim: 0.7 }))
-      p.raw(`<circle cx="48" cy="-27.2" r="0.9" fill="#ffffff" opacity="0.85"/>`)
-      p.raw(`<path d="M44.6,-25.2L46,-23.2M46.4,-16.8L47.6,-15" stroke="${c.deep}" stroke-width="0.9" stroke-linecap="round" opacity="0.7"/>`)
+      p.add(skinPart('cw1', 'M36,-21C38,-29 46,-33 53,-29.6C55,-28.6 54.6,-26.4 52.6,-26.2C47.6,-25.6 44,-23.4 42.4,-19.4Z', c, [36, -33, 55, -19], { shade: [1, 1.4], rim: 0.7 }, { seed: 33, grain: 10, scuffs: 1 }))
+      p.add(skinPart('cw2', 'M37.6,-14.6C41.6,-11.6 47,-11.8 51,-15.4C52.4,-16.6 52,-18.2 50.4,-18C47,-17.6 43.6,-17.6 41.6,-18.6Z', c, [37, -19, 52, -11], { shade: [1, 1.4], rim: 0.7 }, { seed: 34, grain: 8, scuffs: 1 }))
+      p.raw(`<circle cx="49" cy="-29.4" r="1" fill="#ffffff" opacity="0.85"/>`)
+      p.raw(`<path d="M45,-27.6L46.4,-25.2M47,-16.6L48.2,-14.4" stroke="${c.deep}" stroke-width="0.9" stroke-linecap="round" opacity="0.7"/>`)
       // low carapace body
       const bodyD = 'M-38,-12C-42.5,-12 -42.5,-20 -39.5,-25C-35.5,-31 -26,-33.5 -14,-33.5H17C29,-33.5 37,-28.5 39.5,-21.5C41,-16.5 40,-12 36,-12Z'
-      p.add(toon('hu', bodyD, c, { shade: [2.4, 3] }))
+      p.add(skinPart('hu', bodyD, s, [-43, -34, 41, -11], { shade: [2.4, 3] }, { seed: 31, grain: 70 }))
       p.def(`<clipPath id="cp"><path d="${bodyD}"/></clipPath>`)
       // carapace segment seams on the rear half
       let seams = ''
-      for (const x of [-27, -17, -7]) seams += `<path d="M${x},-34C${x - 2.6},-27 ${x - 2.6},-19 ${x},-11" stroke="${c.deep}" stroke-width="1.2" fill="none" opacity="0.5"/>`
+      for (const x of [-27, -17, -7]) seams += `<path d="M${x},-34C${x - 2.6},-27 ${x - 2.6},-19 ${x},-11" stroke="${s.deep}" stroke-width="1.2" fill="none" opacity="0.5"/>`
       // toxic spots
       for (const [sx, sy, sr] of [[-33, -20, 2.4], [-22, -26.6, 1.8], [-13, -18, 2.1], [-27.6, -14.6, 1.3]]) {
         seams += `<circle cx="${sx}" cy="${sy}" r="${sr}" fill="${TOXIC.base}" stroke="${INK}" stroke-width="0.6"/><circle cx="${sx - sr * 0.3}" cy="${sy - sr * 0.3}" r="${f1(sr * 0.35)}" fill="${TOXIC.light}"/>`
       }
+      for (const [x0, x1] of [[-38, -28], [-26, -18], [-16, -8]]) seams += `<path d="M${x0},-27C${x0 + 2},-31 ${x1 - 2},-32.4 ${x1},-32" stroke="${s.light}" stroke-width="1.2" fill="none" stroke-linecap="round" opacity="0.7"/>`
       p.raw(`<g clip-path="url(#cp)">${seams}</g>`)
       p.raw(gloss(-16, -30.6, 10, 1.8, -3))
       return p.doc(this.box)
@@ -499,7 +604,7 @@ const TANKS = {
   },
 
   /**
-   * 霜鯨：圓滾滾的鯨魚車身（大圓頭、向上翹的尾鰭）、白色腹部與喉褶、背上冰晶噴口砲塔、掛冰柱的雪砲管。
+   * 霜鯨：石墨灰鯨魚車身（背上積雪、白腹喉褶）、雪橇滑板、冰晶噴口砲塔、掛冰柱的雪砲管；隊伍色＝鞍帶、尾鰭尖。
    * face (22,-14) pivot (2,-32)
    */
   frostback: {
@@ -507,45 +612,68 @@ const TANKS = {
     barrel: { len: 32, thick: 9, rings: [0.38, 0.56], muzzle: { w: 8, h: 13, ice: true }, drips: true },
     hull(team) {
       const c = TEAMS[team]
+      const s = SKINS.frostback
       const p = painter()
-      // tail fluke rising behind the body
-      p.add(toon('fl', 'M-30,-28C-36,-33 -38,-40 -40,-46C-44,-46 -48,-50 -49,-55C-44,-55 -40.5,-52 -38.4,-49.4C-38,-54 -35,-58.6 -30.6,-60C-31.4,-54 -33,-48 -31.4,-43C-30,-38.6 -27,-35 -24,-33Z', c, { shade: [1.2, 1.6] }))
+      // tail fluke rising behind the body, team-coloured tips
+      const flD = 'M-30,-28C-36,-33 -38,-40 -40,-46C-44,-46 -48,-50 -49,-55C-44,-55 -40.5,-52 -38.4,-49.4C-38,-54 -35,-58.6 -30.6,-60C-31.4,-54 -33,-48 -31.4,-43C-30,-38.6 -27,-35 -24,-33Z'
+      p.add(toon('fl', flD, s, { shade: [1.2, 1.6] }))
+      p.def(`<clipPath id="ft"><path d="${flD}"/></clipPath>`)
+      p.raw(`<g clip-path="url(#ft)"><path d="M-52,-50.6C-46,-52 -40,-50 -36.6,-52.6C-35,-54 -33,-55 -29,-55V-62H-52Z" fill="${c.base}"/><path d="M-52,-50.6C-46,-52 -40,-50 -36.6,-52.6C-35,-54 -33,-55 -29,-55" stroke="${INK}" stroke-width="0.9" fill="none"/></g>`)
+      p.raw(`<path d="${flD}" fill="none" stroke="${INK}" stroke-width="${SW}" stroke-linejoin="round"/>`)
       // ice-crystal spout turret: steel ring + three crystals spraying up
       p.add(crystal('cr1', -6, -54, 11, 5.6, -24))
       p.add(crystal('cr2', 9.6, -55, 10, 5, 22))
       p.add(crystal('cr3', 2, -59, 13.6, 6.4, 0))
       p.add(toon('tu', 'M-10,-43C-10,-49.5 -4,-52.6 2,-52.6C8,-52.6 14,-49.5 14,-43Z', STEEL, { shade: [1.2, 1.6] }))
       p.raw(`<ellipse cx="2" cy="-50.6" rx="5" ry="1.4" fill="${STEEL.deep}"/>`)
-      // track
-      p.raw(
-        tracks('tr', -34, 34, -15, [
-          [-23.5, 6.6],
-          [-7.8, 6.6],
-          [7.8, 6.6],
-          [23.5, 6.6],
-        ]),
-      )
+      for (const x of [-6, 2, 10]) p.raw(rivet(x, -45.4, 0.9))
+      // no track: a sled. Far runner (darker, offset), struts, near runner with a curled ice-blade tip
+      const runner = (dx, y, col) => {
+        const d = `M${-38 + dx},${y}H${30 + dx}C${37 + dx},${y} ${41 + dx},${y - 2.6} ${42.6 + dx},${y - 8}`
+        return (
+          `<path d="${d}" stroke="${INK}" stroke-width="5" fill="none" stroke-linecap="round"/>` +
+          `<path d="${d}" stroke="${col.base}" stroke-width="2.9" fill="none" stroke-linecap="round"/>` +
+          `<path d="M${-36 + dx},${y - 0.7}H${28 + dx}" stroke="${col.light}" stroke-width="0.9" stroke-linecap="round" opacity="0.9"/>`
+        )
+      }
+      p.raw(runner(5, -4.2, { base: ICE.dark, light: ICE.base }))
+      for (const x of [-26, -6, 14, 30]) {
+        p.raw(`<rect x="${x - 1.8}" y="-15" width="3.6" height="11.6" rx="1.2" fill="${STEEL.dark}" stroke="${INK}" stroke-width="${SW * 0.7}"/>`)
+        p.raw(`<rect x="${x - 3}" y="-6.6" width="6" height="3" rx="1.2" fill="${STEEL.base}" stroke="${INK}" stroke-width="${SW * 0.6}"/>`)
+      }
+      p.raw(runner(0, -2.5, ICE))
       // whale body: big round head at the front, tapering to the tail
       const bodyD = 'M-30,-13C-36,-13 -38.5,-19 -38.5,-25C-38.5,-31 -34,-37 -25,-40C-10,-45.5 13,-46.5 27,-40.5C37.5,-36 41.5,-27 40.6,-20.5C40,-15.6 36.6,-13 32,-13Z'
-      p.add(toon('hu', bodyD, c, { shade: [2.6, 3.4] }))
-      // white belly with throat pleats
+      p.add(toon('hu', bodyD, s, { shade: [2.6, 3.4] }))
+      p.add(finish('hu', bodyD, s, [-39, -47, 42, -12], { seed: 41, grain: 60, scuffs: 3, ao: 0.22, stroke: SW }))
       p.def(`<clipPath id="bl"><path d="${bodyD}"/></clipPath>`)
-      p.raw(
-        `<g clip-path="url(#bl)"><path d="M-40,-17C-20,-21 10,-24.5 44,-21.5V-10H-40Z" fill="#f4fbff"/>` +
-          `<path d="M-40,-17C-20,-21 10,-24.5 44,-21.5" stroke="${INK}" stroke-width="1.1" fill="none"/>` +
-          `<path d="M-6,-18.6C8,-20.6 22,-21 36,-19.6M-2,-15.6C10,-17.2 22,-17.6 34,-16.6" stroke="${ICE.dark}" stroke-width="1" fill="none" stroke-linecap="round"/></g>`,
-      )
-      p.raw(gloss(-6, -41, 12, 2.2, -6))
+      // snow cap along the back + white belly with throat pleats + team saddle strap
+      const snow = 'M-40,-29C-33,-35 -24,-38.6 -14,-40.4C-6,-41.6 4,-42 12,-41.4C20,-41 28,-39 34,-35.6L38,-38V-50H-40Z'
+      let in_ = `<path d="${snow}" fill="#ffffff"/>`
+      for (const [x, dl] of [[-24, 3.2], [-14, 4.4], [-4, 2.8], [8, 3.8], [20, 2.6]]) {
+        const y = x < 0 ? -37.6 - (x + 24) * 0.15 : -40.6 + x * 0.12
+        in_ += `<path d="M${x - 2.4},${f1(y - 0.6)}Q${x},${f1(y + dl)} ${x + 2.4},${f1(y - 0.6)}Z" fill="#ffffff"/>`
+      }
+      in_ += `<path d="M-40,-29C-33,-35 -24,-38.6 -14,-40.4C-6,-41.6 4,-42 12,-41.4C20,-41 28,-39 34,-35.6" stroke="${ICE.dark}" stroke-width="0.8" fill="none" opacity="0.6"/>`
+      in_ += `<path d="M-40,-17C-20,-21 10,-24.5 44,-21.5V-10H-40Z" fill="#f4fbff"/>`
+      in_ += `<path d="M-40,-17C-20,-21 10,-24.5 44,-21.5" stroke="${INK}" stroke-width="1.1" fill="none"/>`
+      in_ += `<path d="M-6,-18.6C8,-20.6 22,-21 36,-19.6M-2,-15.6C10,-17.2 22,-17.6 34,-16.6" stroke="${ICE.dark}" stroke-width="1" fill="none" stroke-linecap="round"/>`
+      in_ += `<path d="M-15,-50L-7,-50L-9.6,-20L-17.6,-19Z" fill="${c.base}" stroke="${INK}" stroke-width="1.1" stroke-linejoin="round"/>`
+      in_ += `<path d="M-13.6,-44L-9.6,-44L-10.6,-27" stroke="${c.light}" stroke-width="1.2" fill="none" stroke-linecap="round"/>`
+      in_ += `<rect x="-16" y="-34" width="6.4" height="5" rx="1.2" fill="${GOLD.base}" stroke="${INK}" stroke-width="0.8"/><rect x="-14.4" y="-32.6" width="3.2" height="2.2" rx="0.6" fill="${c.deep}"/>`
+      p.raw(`<g clip-path="url(#bl)">${in_}</g>`)
+      p.raw(`<path d="${bodyD}" fill="none" stroke="${INK}" stroke-width="${SW}" stroke-linejoin="round"/>`)
+      p.raw(gloss(-2, -40.4, 10, 1.9, -6))
       // frost freckles on the back (rear half)
-      for (const [x, y, r] of [[-26, -33, 1.5], [-20, -36.6, 1.1], [-14.6, -32, 1.3]]) p.raw(`<circle cx="${x}" cy="${y}" r="${r}" fill="${c.light}" opacity="0.9"/>`)
+      for (const [x, y, r] of [[-30, -31, 1.5], [-26, -35.6, 1.1], [-22.6, -29, 1.3]]) p.raw(`<circle cx="${x}" cy="${y}" r="${r}" fill="${ICE.base}" stroke="${INK}" stroke-width="0.4" opacity="0.95"/>`)
       // flipper
-      p.add(toon('fp', 'M-8,-24C-4,-22 2,-18.6 2.6,-14.6C-2,-15 -7,-17.6 -10,-21.6Z', c, { shade: [0.8, 1.1], rim: 0.6, stroke: SW * 0.8 }))
+      p.add(toon('fp', 'M-2,-24C2,-22 8,-18.6 8.6,-14.6C4,-15 -1,-17.6 -4,-21.6Z', s, { shade: [0.8, 1.1], rim: 0.6, stroke: SW * 0.8 }))
       return p.doc(this.box)
     },
   },
 
   /**
-   * 地鼠工兵：高圓車身、車頭下方的巨型鑽頭、黃色礦工頭盔砲塔 + 頭燈光束、沾滿泥巴的履帶。
+   * 地鼠工兵：泥土棕焊接鋼板車身（鉚釘、鏽痕）、楔形工程履帶、鋼鑽頭、礦工頭盔 + 頭燈；隊伍色＝頭盔、頭燈座。
    * face (17,-18) pivot (-9,-36)
    */
   burrower: {
@@ -553,57 +681,71 @@ const TANKS = {
     barrel: { len: 30, thick: 9, band: 0.3, spiral: true, muzzle: { w: 7, h: 12 } },
     hull(team) {
       const c = TEAMS[team]
+      const s = SKINS.burrower
       const p = painter()
       // headlamp beam (behind everything, faint)
       p.raw(`<path d="M4,-52.6L44,-60L44,-42Z" fill="#fff6b0" opacity="0.32"/>`)
-      // miner helmet turret (yellow hard hat with brim) + lamp
-      p.add(toon('tu', 'M-21,-44C-21,-55 -14,-60 -7,-60C1,-60 6,-55 6,-44Z', GOLD, { shade: [1.6, 2.2] }))
-      p.raw(`<path d="M-7,-60V-45" stroke="${GOLD.dark}" stroke-width="2.2"/><path d="M-7,-60V-45" stroke="${INK}" stroke-width="0.6" opacity="0.6"/>`)
-      p.add(toon('br', 'M-24,-45.6H9.4Q11,-45.6 11,-44V-42.6H-24Z', GOLD, { shade: [0.6, 1], rim: 0.5, stroke: SW * 0.85 }))
+      // miner hard hat turret in team colour: ridge, brim, lamp housing
+      const hatD = 'M-21,-44C-21,-55 -14,-60 -7,-60C1,-60 6,-55 6,-44Z'
+      p.add(skinPart('tu', hatD, c, [-21, -60, 6, -44], { shade: [1.6, 2.2] }, { seed: 51, grain: 16, scuffs: 3, ao: 0.2 }))
+      p.raw(`<path d="M-7,-60V-45" stroke="${c.dark}" stroke-width="2.4"/><path d="M-7,-60V-45" stroke="${INK}" stroke-width="0.6" opacity="0.6"/>`)
+      p.add(toon('br', 'M-24,-45.6H9.4Q11,-45.6 11,-44V-42.6H-24Z', c, { shade: [0.6, 1], rim: 0.5, stroke: SW * 0.85 }))
       p.raw(gloss(-14, -55.6, 4.6, 1.6))
-      p.raw(`<rect x="0" y="-55.6" width="5.6" height="6" rx="1.6" fill="${STEEL.base}" stroke="${INK}" stroke-width="1"/>`)
+      p.raw(`<rect x="-0.4" y="-56.2" width="6.6" height="7.2" rx="1.8" fill="${c.dark}" stroke="${INK}" stroke-width="1"/>`)
       p.raw(`<circle cx="4.6" cy="-52.6" r="2.7" fill="#fff6b0" stroke="${INK}" stroke-width="1"/><circle cx="4" cy="-53.4" r="0.9" fill="#ffffff"/>`)
-      // track (with mud)
-      p.raw(
-        tracks('tr', -34, 31, -16, [
-          [-23.6, 7],
-          [-6.6, 7],
-          [10.4, 7],
-          [24.4, 5],
-        ]),
-      )
-      for (const [x, y, r] of [[-30, -3, 2.6], [-15, -14.4, 2], [2, -2.6, 2.4], [17.6, -14.8, 1.8], [28, -5, 2.2]]) p.raw(mud(x, y, r))
-      // drill on the lower nose: collar + spiral cone
+      // drill on the lower nose: collar + hardened-steel spiral cone
       p.add(toon('dc', 'M28,-27.6H34V-12.4H28Z', STEEL, { shade: [0.8, 1.2], rim: 0.6 }))
+      for (const y of [-25, -20, -15]) p.raw(rivet(31, y, 0.8))
       const drillD = 'M33.6,-26.4L47.6,-19.6Q48.6,-19 47.6,-18.4L33.6,-12.6Z'
-      p.add(toon('dr', drillD, { light: '#fff3c4', base: '#e3b341', dark: '#a8751c' }, { shade: [0.8, 1.4], rim: 0.6 }))
+      p.add(toon('dr', drillD, STEEL, { shade: [0.8, 1.4], rim: 0.6 }))
       p.def(`<clipPath id="dk"><path d="${drillD}"/></clipPath>`)
       let grooves = ''
-      for (const x of [35.5, 39, 42.5]) grooves += `<path d="M${x},-28L${x + 3.4},-10" stroke="#8a5a14" stroke-width="1.2"/>`
+      for (const x of [35.5, 39, 42.5]) grooves += `<path d="M${x},-28L${x + 3.4},-10" stroke="${STEEL.deep}" stroke-width="1.3"/><path d="M${x + 1.2},-28L${x + 4.6},-10" stroke="${STEEL.light}" stroke-width="0.6"/>`
       p.raw(`<g clip-path="url(#dk)">${grooves}</g>`)
       // tall rounded body
       const bodyD = 'M-34,-13C-39,-13 -40,-21 -38.5,-29C-36.6,-38 -28,-43.6 -16,-43.6H8C20,-43.6 29.6,-37 31.6,-28L32.6,-13Z'
-      p.add(toon('hu', bodyD, c, { shade: [2.6, 3.4] }))
-      p.raw(gloss(-17, -39.6, 10, 2, -4))
-      // shovel badge on the rear
-      p.raw(`<path d="M-31,-34L-24,-27" stroke="${STEEL.dark}" stroke-width="2.2" stroke-linecap="round"/><path d="M-31,-34L-24,-27" stroke="${INK}" stroke-width="0.6" opacity="0.5"/>`)
-      p.raw(`<path d="M-25.4,-28.6L-21,-24.2C-20.4,-21.4 -22.6,-19.2 -25.4,-19.8L-29.8,-24.2Z" fill="${STEEL.light}" stroke="${INK}" stroke-width="${SW * 0.65}" stroke-linejoin="round"/>`)
-      // mud splashes on the lower body
+      p.add(skinPart('hu', bodyD, s, [-40, -44, 33, -12], { shade: [2.6, 3.4] }, { seed: 52, grain: 80, grainR: [0.35, 1], scuffs: 5 }))
       p.def(`<clipPath id="mb"><path d="${bodyD}"/></clipPath>`)
-      p.raw(`<g clip-path="url(#mb)">${mud(-30, -14, 3)}${mud(-18, -13, 2.2)}${mud(6, -13.6, 2.6)}</g>`)
+      // welded plate seams + rivets, rust streaks under them
+      let plates = `<path d="M-38,-31H31M-6,-44V-31" stroke="${s.deep}" stroke-width="1.1" opacity="0.7"/>`
+      for (const x of [-34, -26, -18, -10, 26]) plates += rivet(x, -33.4, 0.9, s)
+      for (const [x, l] of [[-22, 6], [-13, 4], [22, 5]]) plates += `<path d="M${x},-30.6V${-30.6 + l}" stroke="#a8502a" stroke-width="1.3" stroke-linecap="round" opacity="0.55"/>`
+      p.raw(`<g clip-path="url(#mb)">${plates}${mud(-18, -13, 2.2)}${mud(6, -13.6, 2.6)}</g>`)
+      p.raw(gloss(-17, -39.6, 10, 2, -4))
+      // shovel badge on the rear (above the tall track)
+      p.raw(`<path d="M-33,-41L-26,-34" stroke="${STEEL.dark}" stroke-width="2.2" stroke-linecap="round"/><path d="M-33,-41L-26,-34" stroke="${INK}" stroke-width="0.6" opacity="0.5"/>`)
+      p.raw(`<path d="M-27.4,-35.6L-23,-31.2C-22.4,-28.4 -24.6,-26.2 -27.4,-26.8L-31.8,-31.2Z" fill="${STEEL.light}" stroke="${INK}" stroke-width="${SW * 0.65}" stroke-linejoin="round"/>`)
+      // no flat track: a wedge dozer track in front of the body, tall drive sprocket at the rear
+      const trD = 'M-30,-25L22,-13A6.5,6.5 0 0 1 22,0H-30A12.5,12.5 0 0 1 -30,-25Z'
+      p.def(`<clipPath id="tk"><path d="${trD}"/></clipPath>`)
+      p.raw(`<path d="${trD}" fill="${RUBBER.base}"/>`)
+      p.raw(`<g clip-path="url(#tk)"><path d="${trD}" fill="none" stroke="${RUBBER.dark}" stroke-width="5.4" stroke-dasharray="2.4 1.8"/>` +
+        `<path d="M-28,-19.6L20,-8.6V-5H-28Z" fill="${RUBBER.dark}"/></g>`)
+      p.raw(`<path d="${trD}" fill="none" stroke="${INK}" stroke-width="${SW}" stroke-linejoin="round"/>`)
+      // rear drive sprocket with teeth
+      let teeth = ''
+      for (let i = 0; i < 8; i++) {
+        const a = (i / 8) * Math.PI * 2
+        teeth += `<circle cx="${f1(-30 + Math.cos(a) * 7.4)}" cy="${f1(-12.5 + Math.sin(a) * 7.4)}" r="1.6" fill="${STEEL.dark}" stroke="${INK}" stroke-width="0.6"/>`
+      }
+      p.raw(teeth + wheel(-30, -12.5, 7))
+      p.raw(wheel(21, -6.5, 4.6))
+      for (const x of [-14, -2, 10]) p.raw(wheel(x, -4.6, 4))
+      for (const [x, y, r] of [[-38, -6, 2.6], [-20, -1, 2.2], [4, -1.4, 2.4], [16, -12.4, 1.6], [-8, -16.6, 1.8]]) p.raw(mud(x, y, r))
       return p.doc(this.box)
     },
   },
 
   /**
-   * 鷹眼：細長低矮車身（鳥喙形車鼻）、側面白色羽翼徽、帶瞄準鏡與旋轉雷達盤的砲塔、約車身兩倍長的磁軌狙擊砲。
+   * 鷹眼：白色鷹羽車身（羽毛披肩、扇形尾羽、鳥喙車鼻）、後方駐鋤、細長多輪履帶、碳灰砲塔、雷達盤、長磁軌砲；隊伍色＝羽翼徽、砲塔條紋。
    * face (25,-6) pivot (-3,-23)
    */
   hawkeye: {
-    box: [-50, -66, 100, 67],
+    box: [-60, -66, 120, 67],
     barrel: { len: 66, thick: 6, style: 'rails', brake: 10 },
     hull(team) {
       const c = TEAMS[team]
+      const s = SKINS.hawkeye
       const p = painter()
       // radar mast + tilted dish
       p.raw(line(-15, -40, -17, -54, INK, 1.6))
@@ -611,30 +753,45 @@ const TANKS = {
       p.add(toon('rd', 'M-26,-55C-24,-61 -14,-63.6 -8.4,-60C-12,-58.4 -18.4,-55.6 -26,-55Z', STEEL, { shade: [0.8, 1.2], rim: 0.6, stroke: SW * 0.85 }))
       p.raw(`<circle cx="-17.2" cy="-56.6" r="1.4" fill="${c.base}" stroke="${INK}" stroke-width="0.7"/>`)
       p.raw(line(-17.2, -56.6, -14, -61, INK, 0.8))
-      // angular turret with a scope on top
-      p.add(toon('tu', 'M-20,-31L-17,-41.4Q-16.4,-43 -14.6,-43H6Q8,-43 8.6,-41.4L11,-31Z', c, { shade: [1.4, 2] }))
-      p.raw(gloss(-8, -40, 5, 1.3))
+      // tail feathers fanning up behind the hull
+      for (const [rot, col] of [[44, s.dark], [28, s.base], [12, s.light]]) {
+        p.raw(`<g transform="rotate(${rot} -38 -22)"><path d="M-36,-22C-43,-25 -54,-26 -59,-22C-54,-18.6 -43,-19 -36,-20.6Z" fill="${col}" stroke="${INK}" stroke-width="${SW * 0.75}" stroke-linejoin="round"/>` +
+          `<path d="M-40,-21.6H-55" stroke="${s.deep}" stroke-width="0.7" opacity="0.7"/></g>`)
+      }
+      // angular slate turret with a scope on top
+      const tuD = 'M-20,-31L-17,-41.4Q-16.4,-43 -14.6,-43H6Q8,-43 8.6,-41.4L11,-31Z'
+      p.add(skinPart('tu', tuD, CARBON, [-20, -43, 11, -31], { shade: [1.4, 2] }, { seed: 61, grain: 14, scuffs: 3, ao: 0.2 }))
+      p.raw(`<path d="M-18.6,-36.4H9.6" stroke="${c.base}" stroke-width="2.2"/><path d="M-18.6,-36.4H9.6" stroke="${INK}" stroke-width="0.5" opacity="0.5"/>`)
+      p.raw(gloss(-8, -40, 5, 1.1))
       p.add(toon('sc', 'M-12,-48.6H6Q8,-48.6 8,-46.6V-45.4Q8,-43.4 6,-43.4H-12Q-14,-43.4 -14,-45.4V-46.6Q-14,-48.6 -12,-48.6Z', STEEL, { shade: [0.6, 1], rim: 0.5, stroke: SW * 0.8 }))
       p.raw(`<circle cx="8" cy="-46" r="2.6" fill="${GLASS.base}" stroke="${INK}" stroke-width="1"/><circle cx="7.4" cy="-46.8" r="0.9" fill="#ffffff"/>`)
-      // track: long and low
-      p.raw(
-        tracks('tr', -38, 37, -12.5, [
-          [-28.6, 5.8],
-          [-11, 5.8],
-          [6.6, 5.8],
-          [24.2, 5.8],
-          [32.6, 3.4],
-        ]),
-      )
-      // long sleek body with a beak-like nose
+      // rear outrigger: a stabiliser arm braced into the ground with a spade (sniper stance)
+      p.raw(`<path d="M-36,-16L-47,-2" stroke="${INK}" stroke-width="5" stroke-linecap="round"/><path d="M-36,-16L-47,-2" stroke="${STEEL.base}" stroke-width="3" stroke-linecap="round"/>`)
+      p.raw(`<path d="M-51.6,-4.4H-42.4L-44,0.4H-50Z" fill="${STEEL.dark}" stroke="${INK}" stroke-width="${SW * 0.75}" stroke-linejoin="round"/>`)
+      p.raw(rivet(-41.6, -8.8, 1))
+      // track: long, thin, many small road wheels
+      p.raw(tracks('tr', -38, 37, -9.4, [[-32, 3.8], [-23, 3.8], [-14, 3.8], [-5, 3.8], [4, 3.8], [13, 3.8], [22, 3.8], [31, 3.8]]))
+      // long sleek white body with a beak-like nose
       const bodyD = 'M-41,-11C-46,-11 -46.4,-18.6 -43.6,-23.4C-40.6,-28.6 -32,-31 -22,-31H14C28,-31 40,-25.6 46.6,-18.4C48.2,-16.6 48,-14.2 46.2,-13.2L42,-11Z'
-      p.add(toon('hu', bodyD, c, { shade: [2.2, 2.8] }))
+      p.add(skinPart('hu', bodyD, s, [-46, -31, 48, -10], { shade: [2.2, 2.8] }, { seed: 62, grain: 36, scuffs: 2, ao: 0.4 }))
       p.def(`<clipPath id="nk"><path d="${bodyD}"/></clipPath>`)
-      p.raw(`<g clip-path="url(#nk)"><path d="M41,-30L50,-30V-10L40,-10C42.6,-14 43,-20 41,-30Z" fill="${GOLD.base}"/><path d="M41,-30C43,-20 42.6,-14 40,-10" stroke="${INK}" stroke-width="1" fill="none"/></g>`)
-      p.raw(gloss(-14, -27.6, 11, 1.7, -2))
-      // white wing emblem on the rear flank
-      p.raw(`<path d="M-38,-20C-32,-27.6 -22,-28.4 -12.6,-26C-17,-24.6 -20,-23.6 -22,-22C-25,-20.4 -30,-19.4 -38,-20Z" fill="${c.trim}" stroke="${INK}" stroke-width="${SW * 0.6}" stroke-linejoin="round"/>`)
-      for (const [x0, x1] of [[-33, -27.4], [-28, -23], [-23, -18.6]]) p.raw(line(x0, -21, x1, -24.8, c.dark, 0.8, 0.8))
+      // layered feather scallops on the rear half, golden beak on the nose
+      let fx = ''
+      // a cape of pointed covert feathers over the rear half (curved tips)
+      for (const [xr, top, tip, col] of [[0, -32, -19, s.base]]) {
+        let d = `M-47,${top}H${xr}L${xr},${tip - 3}`
+        for (let x = xr; x > -47; x -= 6) d += `Q${f1(x - 0.6)},${tip} ${f1(x - 2.6)},${tip + 0.6}Q${f1(x - 4.4)},${tip - 1} ${f1(x - 6)},${tip - 3.6}`
+        fx += `<path d="${d}Z" fill="${col}" stroke="${s.deep}" stroke-width="0.8" stroke-linejoin="round"/>`
+        for (let x = xr - 2.6; x > -45; x -= 6) fx += line(x, tip - 0.4, x + 2, tip - 6, s.dark, 0.6, 0.7)
+      }
+      fx += `<path d="M41,-30L50,-30V-10L40,-10C42.6,-14 43,-20 41,-30Z" fill="${GOLD.base}"/><path d="M44,-27C46,-24 46.6,-20 46,-16" stroke="${GOLD.light}" stroke-width="1" fill="none"/><path d="M41,-30C43,-20 42.6,-14 40,-10" stroke="${INK}" stroke-width="1" fill="none"/>`
+      p.raw(`<g clip-path="url(#nk)">${fx}</g>`)
+      p.raw(`<path d="${bodyD}" fill="none" stroke="${INK}" stroke-width="${SW}" stroke-linejoin="round"/>`)
+      p.raw(gloss(-14, -27.6, 11, 1.5, -2))
+      // team-colour wing emblem on the flank
+      p.raw(`<path d="M-30,-15C-24,-25 -12,-27.6 2,-25.4C-4,-23.6 -8,-22 -11,-19.6C-15,-17 -22,-15 -30,-15Z" fill="${c.base}" stroke="${INK}" stroke-width="${SW * 0.7}" stroke-linejoin="round"/>`)
+      p.raw(`<path d="M-24,-20C-18,-24 -8,-25.4 -1,-25" stroke="${c.light}" stroke-width="1.1" fill="none" stroke-linecap="round"/>`)
+      for (const [x0, x1] of [[-25, -19.4], [-19.6, -14.6], [-14.4, -10]]) p.raw(line(x0, -16.4, x1, -20.6, c.deep, 0.9, 0.85))
       return p.doc(this.box)
     },
   },
@@ -943,7 +1100,7 @@ function emit(group, name, svgText, zoom = 1) {
 for (const [id, tank] of Object.entries(TANKS)) {
   for (const team of Object.keys(TEAMS)) {
     emit('tanks', `${id}_${team}_hull`, tank.hull(team), TANK_ZOOM)
-    emit('tanks', `${id}_${team}_barrel`, barrelSvg(tank.barrel, team), TANK_ZOOM)
+    emit('tanks', `${id}_${team}_barrel`, barrelSvg(tank.barrel, team, SKINS[id]), TANK_ZOOM)
   }
 }
 for (const [key, draw] of Object.entries(SHOTS)) emit('projectiles', key, draw(), SHOT_ZOOM)
