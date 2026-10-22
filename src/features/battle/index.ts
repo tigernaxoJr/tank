@@ -22,6 +22,7 @@ export {
   verifyReveal,
   type LoadoutSecret,
 } from './domain/loadout'
+export { restFaceSvg } from './engine/faceSvg'
 export { buildTankCard, type ShotCard, type TankCard } from './domain/tankStats'
 export {
   MAP_REGISTRY,

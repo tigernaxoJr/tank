@@ -22,8 +22,8 @@ export default defineTank({
   sprite: {
     scale: 0.4,
     pivotX: -18.2,
-    pivotY: -40.8,
+    pivotY: -38.7,
     // 車身即頭：大眼長在殼前方，車頭那隻較小（3/4 視角），待機半垂眼皮 + 壞笑
-    face: { x: 16.5, y: -17.7, eyeGap: 11.2, eyeSize: 6.5, lid: 0x8a5ad0, iris: 0x8fe24f, farScale: 0.76, rest: 0.78, lidTilt: 0.8, mouthDy: 13.8, restMouth: 'smirk', blush: true },
+    face: { x: 16.5, y: -15.6, eyeGap: 11.2, eyeSize: 6.5, lid: 0x8a5ad0, iris: 0x8fe24f, farScale: 0.76, rest: 0.78, lidTilt: 0.8, mouthDy: 13.8, restMouth: 'smirk', blush: true },
   },
 })

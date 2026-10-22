@@ -4,6 +4,7 @@ import { soundController } from '@/features/audio'
 import type { TeamId } from '@/shared/kernel/types'
 import { splitDisplayName } from './displayNames'
 import { RANDOM_TANK, type TankChoice } from './tankChoice'
+import TankPortrait from './TankPortrait.vue'
 
 const props = defineProps<{
   open: boolean
@@ -59,7 +60,7 @@ function close(): void {
             @click="pick(t.spec.id)"
           >
             <span class="flex h-14 items-center justify-center">
-              <img :src="t.spec.getSprites(team).hullUrl" alt="" class="max-h-12 w-auto" :class="team === 'B' ? '-scale-x-100' : ''" />
+              <TankPortrait :tank-id="t.spec.id" :team="team" :facing-left="team === 'B'" class="h-14 w-full" />
             </span>
             <span class="truncate text-lg leading-none">{{ t.label.zh }}</span>
             <span class="truncate text-xs text-ink-soft">{{ t.spec.subtitle }}</span>

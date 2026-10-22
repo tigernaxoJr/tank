@@ -23,6 +23,7 @@ import { existsSync, mkdirSync, readdirSync, writeFileSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { Resvg } from '@resvg/resvg-js'
+import { HULL_BOX as BASTION_BOX, bastionBarrel, bastionHull } from './tanks/bastion.mjs'
 import { HULL_BOX as SCORPION_BOX, scorpionBarrel, scorpionHull } from './tanks/scorpion.mjs'
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..')
@@ -394,68 +395,13 @@ function mud(x, y, r) {
 
 const TANKS = {
   /**
-   * 鐵壁堡壘：石灰岩城牆車身（底部外擴、磚紋）、後方瞭望塔、短粗迫擊砲塔、沙包堆、五輪重履帶；隊伍色＝圓頂、城垛、小旗。
-   * face (19,-13) pivot (3,-34)
+   * 鐵壁堡壘：角色優先的新畫風（石灰岩圓胖車身即頭、臉畫在前方基石上），美術在 tools/assets/tanks/bastion.mjs。
+   * face (24.2,-29.6) pivot (-2.1,-57.2)
    */
   bastion: {
-    box: [-48, -76, 96, 77],
-    barrel: { len: 28, thick: 12, band: 0.34, muzzle: { w: 8, h: 17 } },
-    hull(team) {
-      const c = TEAMS[team]
-      const s = SKINS.bastion
-      const p = painter()
-      // rear watchtower (castle silhouette): stone shaft, team merlons, pennant on top
-      p.raw(line(-30, -58, -30, -72, INK, 1.5))
-      p.raw(`<path d="M-29.4,-72L-16,-68L-29.4,-63.6Z" fill="${c.base}" stroke="${INK}" stroke-width="${SW * 0.7}" stroke-linejoin="round"/>`)
-      p.raw(`<path d="M-28.6,-70.2L-21,-68" stroke="${c.light}" stroke-width="1" stroke-linecap="round"/>`)
-      p.raw(`<circle cx="-30" cy="-72.6" r="1.6" fill="${GOLD.base}" stroke="${INK}" stroke-width="0.8"/>`)
-      for (const [x0, x1] of [[-39, -34.4], [-32.4, -27.6], [-25.6, -21]]) {
-        p.add(toon(`t${x0}`, `M${x0},-52V-57Q${x0},-58.4 ${x0 + 1.4},-58.4H${x1 - 1.4}Q${x1},-58.4 ${x1},-57V-52Z`, c, { shade: [1, 1.4], rim: 0.7 }))
-      }
-      const towerD = 'M-38,-40V-51Q-38,-53 -36,-53H-24Q-22,-53 -22,-51V-40Z'
-      p.add(skinPart('tw', towerD, s, [-38, -53, -22, -40], { shade: [1.4, 2] }, { seed: 11, grain: 24, scuffs: 2, ao: 0.25 }))
-      p.raw(`<path d="M-33,-49.6H-27V-44.6Q-30,-47 -33,-44.6Z" fill="${INK}" opacity="0.85"/>`)
-      p.raw(`<path d="M-38,-46.6H-22" stroke="${s.deep}" stroke-width="0.9" opacity="0.4"/>`)
-      // wall merlons in team colour (front pair + one behind the turret)
-      for (const [x0, x1] of [[-19, -13], [21, 27], [30, 36]]) {
-        p.add(toon(`m${x0}`, `M${x0},-38V-46Q${x0},-47.5 ${x0 + 1.5},-47.5H${x1 - 1.5}Q${x1},-47.5 ${x1},-46V-38Z`, c, { shade: [1.2, 1.6], rim: 0.8 }))
-      }
-      // squat mortar turret: team dome + steel collar
-      p.add(skinPart('tu', 'M-11,-41C-11,-52 -4.5,-56.5 3,-56.5C10.5,-56.5 17,-52 17,-41Z', c, [-11, -57, 17, -41], { shade: [1.6, 2.4] }, { seed: 12, grain: 16, scuffs: 3, ao: 0.2 }))
-      p.raw(gloss(-1, -52, 5.4, 1.7))
-      p.raw(rivet(9.5, -50.5, 1.1, c))
-      p.add(toon('cl', 'M-13.5,-43.5H19.5V-39.6H-13.5Z', STEEL, { shade: [0.8, 1.2], rim: 0.6, stroke: SW * 0.85 }))
-      for (const x of [-9, -2, 5, 12]) p.raw(rivet(x + 1.5, -41.5, 0.9))
-      // heavy track: five fat wheels
-      p.raw(tracks('tr', -39, 39, -16, [[-29, 6.6], [-14.5, 6.6], [0, 6.6], [14.5, 6.6], [29, 6.6]]))
-      // battered fortress wall (flares out at the base)
-      const bodyD = 'M-40,-14L-37.4,-38.6Q-37,-41 -34.6,-41H34.6Q37,-41 37.4,-38.6L40,-14Z'
-      p.add(skinPart('hu', bodyD, s, [-40, -41, 40, -14], { shade: [2.6, 3.2] }, { seed: 13, grain: 70, scuffs: 4, ao: 0.3 }))
-      // ashlar courses on the rear half, each block with a light top edge; a few cracks and moss
-      p.def(`<clipPath id="br"><path d="M-40,-41H3V-14H-40Z"/></clipPath>`)
-      let bricks = ''
-      for (const [y0, y1, off] of [[-41, -32.5, 0], [-32.5, -23.5, 6], [-23.5, -14, 0]]) {
-        bricks += `<path d="M-40,${y1}H3" stroke="${s.deep}" stroke-width="1" opacity="0.55"/>`
-        for (let x = -42 + off; x < 3; x += 12) {
-          bricks += `<path d="M${x},${y0}V${y1}" stroke="${s.deep}" stroke-width="1" opacity="0.55"/>`
-          bricks += line(x + 1.2, y0 + 1.1, x + 9.6, y0 + 1.1, s.light, 0.9, 0.9)
-        }
-      }
-      bricks += `<path d="M-14,-32.5L-12.4,-29L-14.6,-26.4L-13,-23.5" stroke="${s.deep}" stroke-width="0.8" fill="none" opacity="0.8"/>`
-      bricks += `<path d="M-40,-14.4C-36,-17 -31,-16.2 -27,-14.4Z" fill="#7fb85a" stroke="${INK}" stroke-width="0.6"/><circle cx="-33" cy="-16.2" r="0.8" fill="#b8e08a"/>`
-      p.raw(`<g clip-path="url(#br)">${bricks}</g>`)
-      p.raw(`<path d="${bodyD}" fill="none" stroke="${INK}" stroke-width="${SW}" stroke-linejoin="round"/>`)
-      p.raw(gloss(6, -37.4, 12, 1.6, -2))
-      // gate arch on the front lower edge (keeps the face area above it free)
-      p.raw(`<path d="M28.6,-14V-19.5A4.5,4.5 0 0 1 37.6,-19.5V-14Z" fill="#7a4a24" stroke="${INK}" stroke-width="${SW * 0.7}"/>`)
-      p.raw(line(33.1, -23.6, 33.1, -14.6, INK, 0.8, 0.6))
-      p.raw(rivet(31.4, -17.4, 0.6, GOLD))
-      // sandbag pile against the rear corner
-      p.add(sandbag('sb1', -42, -18.4))
-      p.add(sandbag('sb2', -32.6, -18.8))
-      p.add(sandbag('sb3', -37.6, -25))
-      return p.doc(this.box)
-    },
+    box: BASTION_BOX,
+    hull: (team) => bastionHull(TEAMS[team], INK),
+    barrelArt: (team) => bastionBarrel(TEAMS[team], INK),
   },
 
   /**

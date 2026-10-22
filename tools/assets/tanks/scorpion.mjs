@@ -6,11 +6,13 @@
  *
  * Authored in design space (ground at Y = 281, X = 216 is the hull centre) and scaled by K into
  * game pixels. Anchors in svg pixels (rig y = svg y + 13 because the hull bottom sits at rig y 14):
- *   pivot (-18.2, -53.8) · face centre (16.5, -30.7), near eye r 6.5, far eye ×0.76 → scorpion.ts adds 13 to y
+ *   pivot (-18.2, -51.7) · face centre (16.5, -28.6), near eye r 6.5, far eye ×0.76 → scorpion.ts adds 13 to y
  */
 import { cartoonKit, bez, chip, cubicD, ellipseD, f1, mud, bump, bristles, IVORY, DUST, MUD } from '../cartoon_kit.mjs'
 
 const K = 0.26
+/** body, tail and pincer sit this far lower than the original sketch so the belly hugs the ground */
+const DROP = 8
 const OX = 216
 const GY = 281
 const SKIN = { light: '#c9a8f5', base: '#8a5ad0', dark: '#5f3a9a', deep: '#3a2066', rim: '#f0c8ff' }
@@ -48,7 +50,7 @@ function leg(k, ink, hx, hy, fx, seed, far) {
   const c = far ? { ...SKIN, base: SKIN.dark, light: SKIN.base, dark: SKIN.deep } : SKIN
   const kx = (hx + fx) / 2 + (fx > hx ? 6 : -6)
   const thigh = `M${hx - 11},${hy}C${hx - 13},${hy + 22} ${kx - 12},262 ${kx - 9},268L${kx + 9},268C${kx + 11},258 ${hx + 13},${hy + 22} ${hx + 11},${hy}Z`
-  const foot = `M${fx - 17},281C${fx - 18},266 ${fx - 8},259 ${fx + 2},259C${fx + 14},259 ${fx + 21},268 ${fx + 20},281Z`
+  const foot = `M${fx - 22},281C${fx - 22},268 ${fx - 10},262 ${fx + 2},262C${fx + 16},262 ${fx + 25},270 ${fx + 24},281Z`
   const back = fx > hx ? -1 : 1
   let o = far ? '' : bristles(back < 0 ? hx - 11 : hx + 11, hy + 10, 2, back, seed, ink)
   o += k.part(thigh, c, {
@@ -83,7 +85,8 @@ export function scorpionHull(teamColors, ink) {
   const k = cartoonKit('s', ink)
   let s = `<ellipse cx="215" cy="283" rx="165" ry="11" fill="${ink}" opacity="0.2"/>`
 
-  for (const [i, [hx, fx]] of [[150, 128], [205, 214], [258, 300]].entries()) s += leg(k, ink, hx + 14, 222, fx + 14, 60 + i, true)
+  for (const [i, [hx, fx]] of [[150, 128], [205, 214], [258, 300]].entries()) s += leg(k, ink, hx + 14, 222 + DROP, fx + 14, 60 + i, true)
+  s += `<g transform="translate(0 ${DROP})">`
 
   // tail: overlapping chitin rings arching up to the turret ball
   for (const [i, [cx, cy, rx, ry]] of [[96, 205, 34, 30], [76, 160, 30, 27], [86, 118, 27, 24], [112, 88, 25, 22]].entries()) {
@@ -174,7 +177,9 @@ export function scorpionHull(teamColors, ink) {
     `<path d="M120,140C160,118 220,112 262,118" stroke="${W}" stroke-width="2" fill="none" opacity="0.55" stroke-linecap="round"/>`
   s += k.part(bodyD, SKIN, { sx: 14, sy: 17, bbox: BB, ink: 10, tex, top, gloss: [178, 132, 30, 9, -12] })
 
-  for (const [i, [hx, fx]] of [[136, 108], [196, 186], [254, 282]].entries()) s += leg(k, ink, hx, 236, fx, 70 + i, false)
+  s += '</g>'
+  for (const [i, [hx, fx]] of [[136, 108], [196, 186], [254, 282]].entries()) s += leg(k, ink, hx, 236 + DROP, fx, 70 + i, false)
+  s += `<g transform="translate(0 ${DROP})">`
 
   // pincer: thick team-coloured chitin, tubercle rows, ivory teeth, worn pale tips, dark hinge
   s += k.part('M300,236C312,226 334,222 350,224L356,246C338,248 318,252 306,256Z', SKIN, {
@@ -215,6 +220,7 @@ export function scorpionHull(teamColors, ink) {
   })
   for (const [x, y] of [[404, 213], [413, 214], [422, 214]]) s += `<path d="M${x - 3},${y}L${x},${y + 6}L${x + 3},${y}Z" fill="${IVORY}" stroke="${ink}" stroke-width="1.6" stroke-linejoin="round"/>`
   for (const [x, y] of [[408, 238], [417, 238], [426, 236]]) s += `<path d="M${x - 3},${y}L${x},${y - 6}L${x + 3},${y}Z" fill="${IVORY}" stroke="${ink}" stroke-width="1.6" stroke-linejoin="round"/>`
+  s += '</g>'
 
   return svgDoc(HULL_BOX, `<g transform="scale(${K}) translate(${-OX} ${-GY})">${s}</g>`, k.defs())
 }

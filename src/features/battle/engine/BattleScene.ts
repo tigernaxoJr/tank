@@ -708,7 +708,10 @@ export class BattleScene extends Phaser.Scene {
         const barrel = this.add.image(0, 0, `${spec.id}_${tank.team}_barrel`).setOrigin(0.08, 0.5)
         const hull = this.add.image(0, HULL_BASE_Y, `${spec.id}_${tank.team}_hull`).setOrigin(0.5, 1)
         const face = new TankFace(this, spec.sprite.face)
-        rig.add([barrel, hull, face.gfx])
+        // 貼地陰影：畫在地表上、跟著坡度轉，腳少、底盤高的機種（毒蠍）才不會看起來浮空
+        const shadowW = hull.width * spec.sprite.scale * 0.82
+        const shadow = this.add.ellipse(0, HULL_BASE_Y - 1.5, shadowW, 7, 0x241e33, 0.24)
+        rig.add([shadow, barrel, hull, face.gfx])
 
         const hpBarGraphics = this.add.graphics()
         const nameTag = this.add

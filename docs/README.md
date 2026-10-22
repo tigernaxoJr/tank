@@ -11,7 +11,7 @@
 3. **[03-execution-plan.md](./03-execution-plan.md)**  
    執行與派發計畫：將 Phase 1 ~ Phase 4 拆解為鎖定單一檔案/切片的 Work Packages (`WP-1.1` ~ `WP-4.3`)，附帶驗收指令，可直接逐項派發給低階 Subagent 執行。
 4. **[04-art-asset-pipeline.md](./04-art-asset-pipeline.md)**  
-   美術素材管線與授權規範：Kenney CC0 素材來源、`tools/assets/bake_kenney_assets.py` 烘焙流程、原創地圖主題 (`paint:maps`) 與 Q 版坦克/砲彈美術風格 (`paint:units`，§六；含角色優先畫風、`cartoon_kit.mjs` 與臉部參數 `FaceSpec`)、戰場圖層/地形著色/裝飾/坦克渲染規則與 `CREDITS.md` 維護要求。
+   美術素材管線與授權規範：Kenney CC0 素材來源、`tools/assets/bake_kenney_assets.py` 烘焙流程、原創地圖主題 (`paint:maps`) 與 Q 版坦克/砲彈美術風格 (`paint:units`，§六；含角色優先畫風、`cartoon_kit.mjs`、臉部參數 `FaceSpec` 與石塊眉、貼地陰影、大廳立繪 `TankPortrait`)、戰場圖層/地形著色/裝飾/坦克渲染規則與 `CREDITS.md` 維護要求。
 5. **[05-map-layout-design.md](./05-map-layout-design.md)**  
    地圖版型設計守則：浮空島 / 吊橋 / 雙層薄地 / 階梯台地 / 不可破壞基岩的 `layout` 特徵、多層地形貼地與行走規則，以及參考其他遊戲時的版權守則。
 6. **[06-gameplay-reference-and-physics.md](./06-gameplay-reference-and-physics.md)**  

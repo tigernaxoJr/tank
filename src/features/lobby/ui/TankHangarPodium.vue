@@ -9,6 +9,7 @@ import {
 import { soundController } from '@/features/audio'
 import LoadoutPicker from './LoadoutPicker.vue'
 import TankPickerModal from './TankPickerModal.vue'
+import TankPortrait from './TankPortrait.vue'
 import { RANDOM_TANK, type TankChoice } from './tankChoice'
 import { splitDisplayName } from './displayNames'
 import turfUrl from '@/assets/ui/stage_turf.svg'
@@ -34,7 +35,6 @@ const showTankModal = ref(false)
 const spec = computed<TankBlueprint>(() => getTankSpec(props.selectedTankId))
 const card = computed(() => buildTankCard(props.selectedTankId))
 const label = computed(() => (props.random ? { zh: '隨機戰車', en: 'RANDOM' } : splitDisplayName(spec.value.name)))
-const sprites = computed(() => spec.value.getSprites(paint.value))
 
 const shots = computed(() =>
   [0, 1].map((slot) => PROJECTILE_REGISTRY[props.loadoutPicks[slot] ?? spec.value.shots[slot]]),
@@ -46,18 +46,8 @@ const stats = computed(() => [
   { label: '機動', ratio: card.value.mobilityRatio, value: `${card.value.moveFuel}`, unit: '燃料', color: 'var(--color-sky)' },
 ])
 
-/**
- * 展示台照遊戲內的 rig 組合車身與砲管：精靈圖以 2.5 倍繪製（PNG 原尺寸），錨點 × 2.5 就是原尺寸座標，
- * 整組再縮放顯示。砲管轉軸在圖寬 8%、垂直置中（同 BattleScene）。
- */
-const ART_ZOOM = 2.5
-const HULL_BASE_Y = 14
-const RIG_SCALE = 0.6
-const barrelStyle = computed(() => ({
-  left: `${spec.value.sprite.pivotX * ART_ZOOM}px`,
-  top: `${spec.value.sprite.pivotY * ART_ZOOM}px`,
-}))
-const hullStyle = computed(() => ({ top: `${HULL_BASE_Y * ART_ZOOM}px` }))
+/** 展示台立繪：每 rig 單位幾 px */
+const PORTRAIT_UNIT = 1.3
 
 function hexColor(n: number): string {
   return `#${n.toString(16).padStart(6, '0')}`
@@ -105,13 +95,8 @@ function setPaint(team: TeamId): void {
       <!-- 手機橫放時展示台變矮，台座與戰車整組縮小 -->
       <div class="stage-zoom pointer-events-none absolute inset-0">
         <img :src="turfUrl" alt="" class="absolute bottom-2 left-1/2 h-10 w-52 max-w-none -translate-x-1/2" />
-        <div v-if="!random" class="tank-bob absolute bottom-[38px] left-1/2 h-0 w-0">
-          <!-- rig 原點：車身底線上方 HULL_BASE_Y；整組以 RIG_SCALE 縮放 -->
-          <div class="absolute left-0 top-0 h-0 w-0" :style="{ transform: `scale(${RIG_SCALE})`, transformOrigin: '0 0', marginTop: `${-HULL_BASE_Y * ART_ZOOM * RIG_SCALE}px` }">
-            <img :src="sprites.barrelUrl" alt="" class="rig-barrel absolute max-w-none" :style="barrelStyle" />
-            <img :src="sprites.hullUrl" :alt="spec.name" class="rig-hull absolute max-w-none" :style="hullStyle" />
-          </div>
-        </div>
+        <!-- 立繪：車身 + 砲管 + 待機表情，每 rig 單位 1.3 px，最高的鐵壁堡壘（含旗子）也不會頂到台框 -->
+        <TankPortrait v-if="!random" :tank-id="selectedTankId" :team="paint" :unit="PORTRAIT_UNIT" class="tank-bob absolute bottom-[36px] left-1/2" />
         <span v-else class="toon-mystery tank-bob absolute bottom-[30px] left-1/2 h-20 text-5xl" aria-label="隨機戰車">?</span>
       </div>
     </div>
@@ -231,14 +216,6 @@ function setPaint(team: TeamId): void {
 }
 .tank-bob {
   animation: bob 2.8s ease-in-out infinite;
-}
-.rig-barrel {
-  transform-origin: 8% 50%;
-  transform: translate(-8%, -50%) rotate(-14deg);
-}
-.rig-hull {
-  left: 0;
-  transform: translate(-50%, -100%);
 }
 @keyframes bob {
   0%, 100% { transform: translate(-50%, 0); }

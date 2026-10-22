@@ -29,6 +29,8 @@ export interface FaceSpec {
   readonly restMouth?: 'smile' | 'smirk' | 'flat'
   /** 腮紅 */
   readonly blush?: boolean
+  /** 眉毛畫法：line = 墨線（預設），block = 車身色石塊眉骨（鐵壁堡壘） */
+  readonly brow?: 'line' | 'block'
 }
 
 /** 傷害類型：explosion / fall / poison 已啟用；burn / movement 為預留 */

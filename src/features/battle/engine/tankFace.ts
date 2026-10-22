@@ -234,7 +234,10 @@ export class TankFace {
       const rx = ry * 0.9
       this.drawEye(e, ex, cy, rx, ry, side, dir, time)
       // >< / XX / 螺旋眼本身就很搶眼，再加眉毛在小小的臉上會糊成一團
-      if (e.eyes === 'open' || e.eyes === 'happy') this.drawBrow(e, ex, cy - ry * Math.max(1, e.open) - lw * 1.6 - e.browLift, rx, side)
+      if (e.eyes === 'open' || e.eyes === 'happy') {
+        const gap = this.spec.brow === 'block' ? lw * 1.1 : lw * 1.6
+        this.drawBrow(e, ex, cy - ry * Math.max(1, e.open) - gap - e.browLift, rx, side)
+      }
     }
     const w = Math.max(eyeGap * 0.36, eyeSize * 0.75)
     this.drawMouth(e.mouth, cx + dir * 1.5, cy + (this.spec.mouthDy ?? eyeSize + 4.5), w, dir)
@@ -386,7 +389,25 @@ export class TankFace {
   private drawBrow(e: Expression, ex: number, by: number, rx: number, side: number): void {
     const inner = ex - side * rx * 0.95
     const outer = ex + side * rx * 0.95
-    this.ink(this.lineWidth * 1.15, () => this.gfx.lineBetween(inner, by + e.browTilt * 2.6, outer, by - e.browTilt * 1.2))
+    const yi = by + e.browTilt * 2.6
+    const yo = by - e.browTilt * 1.2
+    if (this.spec.brow === 'block') {
+      // 石塊眉：車身色的楔形眉骨（內側厚、外側薄），墨框，像從殼上雕出來的
+      const t = this.lineWidth * 0.9
+      const g = this.gfx
+      const pts = [
+        new Phaser.Math.Vector2(inner, yi - t * 1.2),
+        new Phaser.Math.Vector2(outer + side * rx * 0.15, yo - t * 0.5),
+        new Phaser.Math.Vector2(outer + side * rx * 0.15, yo + t * 0.4),
+        new Phaser.Math.Vector2(inner, yi + t),
+      ]
+      g.fillStyle(this.spec.lid, 1)
+      g.fillPoints(pts, true)
+      g.lineStyle(Math.max(1.2, this.lineWidth * 0.55), INK, 1)
+      g.strokePoints(pts, true)
+      return
+    }
+    this.ink(this.lineWidth * 1.15, () => this.gfx.lineBetween(inner, yi, outer, yo))
   }
 
   private drawMouth(shape: MouthShape, mx: number, my: number, w: number, dir: number): void {
