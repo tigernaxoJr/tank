@@ -214,7 +214,11 @@ function handleHostReceivePeerMessage(peerSlotId: PlayerId, msg: ProtocolMessage
   if (msg.type === 'ACTION_FIRE' || msg.type === 'ACTION_MOVE' || msg.type === 'SYNC_HASH') {
     transport.broadcast(msg, peerSlotId)
     emit('remote-message', msg)
+    return
   }
+
+  // 重新同步請求只給房主處理，不轉發給其他客端
+  if (msg.type === 'RESYNC_REQUEST') emit('remote-message', msg)
 }
 
 function handleClientReceiveMessage(msg: ProtocolMessage): void {

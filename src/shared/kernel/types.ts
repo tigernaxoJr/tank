@@ -61,6 +61,20 @@ export interface SyncHashEvent {
   readonly stateHash: number
 }
 
+/** 客端偵測到狀態雜湊不一致，請房主重送權威狀態 */
+export interface ResyncRequestEvent {
+  readonly type: 'RESYNC_REQUEST'
+  readonly turnId: number
+}
+
+/** 房主的權威狀態快照：回合狀態 JSON + 地形挖坑紀錄（[x, y, r] 攤平），客端重建地形後覆寫本地狀態 */
+export interface ResyncStateEvent {
+  readonly type: 'RESYNC_STATE'
+  readonly turnId: number
+  readonly snapshot: string
+  readonly carves: number[]
+}
+
 export interface PlayerJoinInfoEvent {
   readonly type: 'PLAYER_JOIN_INFO'
   readonly guestName: string
@@ -95,6 +109,8 @@ export type ProtocolMessage =
   | FireActionCommand
   | MoveActionCommand
   | SyncHashEvent
+  | ResyncRequestEvent
+  | ResyncStateEvent
   | PlayerJoinInfoEvent
   | UpdatePlayerSetupEvent
   | LobbyRosterUpdateEvent

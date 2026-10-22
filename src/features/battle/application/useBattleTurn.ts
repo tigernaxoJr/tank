@@ -23,7 +23,6 @@ import {
   launchVelocity,
   MUZZLE_RISE,
   slopeAt,
-  TANK_GROUND_OFFSET,
   syncTankToSurface,
   walkAlongTerrain,
   type BattleState,
@@ -203,7 +202,8 @@ export function commitFireImpact(
         maxDamage,
       )
       const isDirect = hit.hitTank && Math.hypot(hit.hitX - tank.x, hit.hitY - (tank.y - 10)) <= 2
-      const raw = isDirect ? Math.round(base * directHitMultiplier) : base
+      // 直擊（爆心已吸附到車身中心）吃滿傷害，不吃 tank.y 與車身中心的 10px 衰減
+      const raw = isDirect ? Math.round(maxDamage * directHitMultiplier) : base
       damageByPlayer[tank.id] = mitigateDamage(TANK_REGISTRY[tank.tankId] ?? TANK_REGISTRY.aegis, 'explosion', raw)
     }
 
@@ -293,14 +293,23 @@ export function moveActiveTank(
 
   tank.x = dest.x
   tank.moveFuel = Math.max(0, tank.moveFuel - moved)
-  if (dest.fell) {
-    // 踏出邊緣：車身往下掉（深淵時一路掉出地圖底部），摔落直接陣亡
-    tank.y = dest.groundY >= engine.height ? engine.height + 60 : dest.groundY - TANK_GROUND_OFFSET
+  if (dest.fell && dest.groundY >= engine.height) {
+    // 踏出邊緣掉進深淵：車身一路掉出地圖底部，直接陣亡
+    tank.y = engine.height + 60
     tank.slopeDeg = 0
     tank.shield = 0
     applyDamageAndCheckWinner(state, { [tank.id]: tank.hp })
     // 出手的坦克死了，直接換下一位（整場結束則維持 GAME_OVER）
     if (!isGameOver(state)) finalizeTurnAfterHold(state)
+  } else if (dest.fell) {
+    // 從高處（橋緣、台地邊）走下去：落在下層地面，依落差與機種抗性結算摔落傷害（與被炸下墜同一套規則）
+    const spec = TANK_REGISTRY[tank.tankId] ?? TANK_REGISTRY.aegis
+    syncTankToSurface(tank, dest.groundY, slopeAt(engine, dest.x, dest.groundY))
+    const dmg = mitigateDamage(spec, 'fall', fallDamageFor(dest.dropPx ?? 0, spec.fallSafePx))
+    if (dmg > 0) {
+      applyDamageAndCheckWinner(state, { [tank.id]: dmg })
+      if (tank.hp <= 0 && !isGameOver(state)) finalizeTurnAfterHold(state)
+    }
   } else {
     syncTankToSurface(tank, dest.groundY, slopeAt(engine, dest.x, dest.groundY))
   }

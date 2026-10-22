@@ -116,7 +116,7 @@ export const PROJECTILE_REGISTRY: Record<BulletType, ProjectileBlueprint> = {
     description: '初速較快、受重力影響較小的藍紫電漿彈體；爆炸範圍小但單發傷害高，需要精準瞄準。',
     damageRadius: 30,
     terrainRadius: 30,
-    maxDamage: 60,
+    maxDamage: 52,
     magnetRadius: 26,
     directHitMultiplier: 1,
     speedMultiplier: 1,

@@ -8,6 +8,7 @@
     "build": "vue-tsc -b && vite build",
     "preview": "vite preview",
     "signaling": "node server/index.js",
+    "test": "vitest run",
     "test:rust": "cargo test --manifest-path crates/tank-core/Cargo.toml",
     "build:wasm": "wasm-pack build crates/tank-core --target web --out-dir ../../src/shared/wasm/pkg",
     "render:assets": "blender -b -P tools/blender/render_assets.py",
@@ -27,6 +28,7 @@
     "tailwindcss": "^4.0.9",
     "typescript": "~5.7.3",
     "vite": "^6.2.0",
+    "vitest": "^5.0.5",
     "vue-tsc": "^2.2.4"
   }
 }

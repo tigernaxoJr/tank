@@ -201,7 +201,8 @@ export function slopeAt(core: TankCorePort, x: number, groundY: number): number 
 /**
  * 沿地形逐像素行走：可爬上緩坡、走下台階，但會被陡壁、低矮天花板擋住（可爬高度 climbPerPx 依機種而異）。
  * 前方沒有地面（橋面 / 浮空島邊緣、深淵）或落差超過 FALL_SAFE_PX（懸崖）時：預設停在邊緣（供電腦規劃走位，不會自殺）；
- * allowFall = true（玩家真的走出去）則踏空下墜，回傳 fell = true，由呼叫端判定陣亡。
+ * allowFall = true（玩家真的走出去）則踏空下墜，回傳 fell = true 與落差 dropPx：下方是深淵（groundY >= core.height）直接陣亡，
+ * 落在下層地面則由呼叫端依 dropPx 與機種摔落抗性結算摔落傷害。
  */
 export function walkAlongTerrain(
   core: TankCorePort,
@@ -210,7 +211,7 @@ export function walkAlongTerrain(
   deltaX: number,
   allowFall = false,
   climbPerPx = MAX_CLIMB_PER_PX,
-): { x: number; groundY: number; fell?: boolean } {
+): { x: number; groundY: number; fell?: boolean; dropPx?: number } {
   const dir = Math.sign(deltaX)
   const minX = 30
   const maxX = core.width - 30
@@ -222,9 +223,9 @@ export function walkAlongTerrain(
     const probe = groundY - climbPerPx
     if (core.isSolid(nx, probe)) break
     const ng = core.groundBelow(nx, probe)
-    // 前方沒有地面，或落差超過安全高度（懸崖）：踏出去就是墜落
+    // 前方沒有地面，或落差超過安全高度（懸崖）：踏出去就是墜落（落地後的摔落傷害由呼叫端依 dropPx 結算）
     if (ng >= core.height || ng - groundY > FALL_SAFE_PX) {
-      if (allowFall) return { x: nx, groundY: ng, fell: true }
+      if (allowFall) return { x: nx, groundY: ng, fell: true, dropPx: ng - groundY }
       break
     }
     if (core.isSolid(nx, ng - TANK_HEADROOM)) break

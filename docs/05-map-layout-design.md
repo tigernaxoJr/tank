@@ -75,9 +75,7 @@
 
 ## 六、已知待辦
 
-- `crates/tank-core`（Rust 版確定性核心）尚未移植 `layout` / BEDROCK / `groundBelow` / `jitter`。目前執行期只使用 TS 版
-  `DeterministicTankCore`；若日後切換到 Wasm，必須先補齊才能維持 P2P 雙端一致。
-- 行走時從高處走下橋緣目前不計摔落傷害。
+- `crates/tank-core`（Rust 版確定性核心）已移植 `layout` / BEDROCK / `groundBelow` / `jitter`，並以 `src/test/parity.test.ts` 產生的黃金檔（`crates/tank-core/tests/fixtures/golden.json`）逐項對照 TS 版。目前執行期仍只使用 TS 版 `DeterministicTankCore`；改了 TS 核心行為後，執行 `UPDATE_GOLDEN=1 npm test` 重新產生黃金檔，再跑 `npm run test:rust` 確認 Rust 跟上。
 
 ## 參考資料（僅供設計靈感）
 

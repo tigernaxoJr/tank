@@ -8,6 +8,8 @@ import type {
   MoveActionCommand,
   PlayerId,
   ProtocolMessage,
+  ResyncRequestEvent,
+  ResyncStateEvent,
   RosterSlot,
   SyncHashEvent,
 } from '@/shared/kernel/types'
@@ -93,6 +95,16 @@ const isMuted = ref(soundController.isMuted())
 const syncStatus = ref<'ok' | 'mismatch' | null>(null)
 const canvasRef = ref<InstanceType<typeof BattleCanvas> | null>(null)
 
+// --- 連線同步：雜湊比對與房主權威重新同步 ---
+// 地形只會被 carveCircle 改變，記下本局所有挖坑即可在另一端重建完全相同的地形
+let carveLog: number[] = []
+// 對手送來的回合結束雜湊：等本機也播完同一回合再比對，避免動畫還沒結束就誤判不一致
+let pendingHash: SyncHashEvent | null = null
+let lastResyncTurn = -1
+// 房主收到請求時若正在播放砲彈，等回合結束再送；客端收到快照時同理
+let resyncOwed = false
+let pendingSnapshot: ResyncStateEvent | null = null
+
 const isBotTurn = computed(
   () => props.mode === 'hotseat' && state.tanks[state.activePlayer]?.isBot === true,
 )
@@ -116,6 +128,11 @@ function resetMatch(
   core.resetTerrain(newSeed, terrainOptionsFor(mapSpec))
   syncAllTanksToTerrain(state, core)
   syncStatus.value = null
+  carveLog = []
+  pendingHash = null
+  resyncOwed = false
+  pendingSnapshot = null
+  lastResyncTurn = -1
   for (const key of Object.keys(bulletChoice)) delete bulletChoice[key]
   canvasRef.value?.redrawTerrain()
   canvasRef.value?.focusActiveTank(true)
@@ -123,12 +140,24 @@ function resetMatch(
   scheduleBotTurn()
 }
 
+/** 移動當前坦克；走下高處的摔落傷害（或墜入深淵）跳出傷害數字 */
+function moveAndShowFall(deltaX: number): boolean {
+  const tank = state.tanks[state.activePlayer]
+  const hpBefore = tank ? tank.hp + tank.shield : 0
+  const moved = moveActiveTank(state, deltaX, core)
+  if (moved && tank) {
+    const lost = hpBefore - (tank.hp + tank.shield)
+    if (lost > 0) canvasRef.value?.showDamage(tank.x, tank.y - 48, lost, tank.hp <= 0)
+  }
+  return moved
+}
+
 function handleMove(deltaX: number): void {
   if (!canControl.value) return
   const activeId = state.activePlayer
   const activeTank = state.tanks[activeId]
   if (!activeTank) return
-  if (moveActiveTank(state, deltaX, core)) {
+  if (moveAndShowFall(deltaX)) {
     soundController.play('move')
     if (props.mode === 'p2p') {
       const msg: MoveActionCommand = {
@@ -185,6 +214,7 @@ function applyFireCommand(cmd: FireActionCommand, isLocal: boolean): void {
     onArriveImpact: () => {
       const { dirty, damageByPlayer } = commitFireImpact(state, plan, core)
       if (dirty) {
+        carveLog.push(plan.hit.hitX, plan.hit.hitY, plan.terrainRadius)
         canvasRef.value?.redrawTerrain(dirty)
         canvasRef.value?.onTerrainCarved(plan.hit.hitX, plan.hit.hitY, plan.terrainRadius)
         soundController.play('explosion')
@@ -196,6 +226,7 @@ function applyFireCommand(cmd: FireActionCommand, isLocal: boolean): void {
     },
     onSequenceComplete: () => {
       finalizeTurnAfterHold(state)
+      afterTurnSettled()
       if (props.mode === 'p2p' && isLocal) {
         const hashMsg: SyncHashEvent = {
           type: 'SYNC_HASH',
@@ -208,6 +239,66 @@ function applyFireCommand(cmd: FireActionCommand, isLocal: boolean): void {
   })
 }
 
+/** 回合結算完（沒有砲彈在飛）時：套用延後的快照、補送欠的快照、比對對手雜湊 */
+function afterTurnSettled(): void {
+  if (props.mode !== 'p2p' || state.phase === 'FIRING') return
+  if (pendingSnapshot) {
+    const snap = pendingSnapshot
+    pendingSnapshot = null
+    applySnapshot(snap)
+  }
+  if (resyncOwed) sendSnapshot()
+  if (pendingHash && pendingHash.turnId === state.turnId) {
+    const remote = pendingHash
+    pendingHash = null
+    const same = battleStateHash(state, core.getStateHash()) === remote.stateHash
+    syncStatus.value = same ? 'ok' : 'mismatch'
+    if (!same) recoverFromMismatch()
+  }
+}
+
+/** 房主即權威：自己偵測到不一致就直接推送快照；客端則請房主重送（同一回合只請求一次） */
+function recoverFromMismatch(): void {
+  if (props.isHost) {
+    sendSnapshot()
+    return
+  }
+  if (lastResyncTurn === state.turnId) return
+  lastResyncTurn = state.turnId
+  const req: ResyncRequestEvent = { type: 'RESYNC_REQUEST', turnId: state.turnId }
+  emit('outgoing-message', req)
+}
+
+function sendSnapshot(): void {
+  if (state.phase === 'FIRING') {
+    resyncOwed = true
+    return
+  }
+  resyncOwed = false
+  const msg: ResyncStateEvent = {
+    type: 'RESYNC_STATE',
+    turnId: state.turnId,
+    snapshot: JSON.stringify(state),
+    carves: [...carveLog],
+  }
+  emit('outgoing-message', msg)
+}
+
+function applySnapshot(msg: ResyncStateEvent): void {
+  if (msg.turnId < state.turnId) return
+  const snap = JSON.parse(msg.snapshot) as typeof state
+  const mapSpec = MAP_REGISTRY[snap.mapId] ?? MAP_REGISTRY.harvest_plains
+  core.resetTerrain(snap.seed, terrainOptionsFor(mapSpec))
+  for (let i = 0; i + 2 < msg.carves.length; i += 3) {
+    core.carveCircle(msg.carves[i], msg.carves[i + 1], msg.carves[i + 2])
+  }
+  carveLog = [...msg.carves]
+  Object.assign(state, snap)
+  syncStatus.value = 'ok'
+  canvasRef.value?.redrawTerrain()
+  canvasRef.value?.focusActiveTank(true)
+}
+
 function handleRemoteMessage(msg: ProtocolMessage): void {
   if (msg.type === 'START_BATTLE') {
     resetMatch(msg.seed, msg.initialWind, msg.roster, msg.mapId)
@@ -217,7 +308,7 @@ function handleRemoteMessage(msg: ProtocolMessage): void {
     const tank = state.tanks[msg.playerId]
     if (!tank) return
     const delta = msg.targetX - tank.x
-    if (moveActiveTank(state, delta, core)) {
+    if (moveAndShowFall(delta)) {
       soundController.play('move')
     }
     return
@@ -227,8 +318,18 @@ function handleRemoteMessage(msg: ProtocolMessage): void {
     return
   }
   if (msg.type === 'SYNC_HASH') {
-    const localHash = battleStateHash(state, core.getStateHash())
-    syncStatus.value = localHash === msg.stateHash ? 'ok' : 'mismatch'
+    pendingHash = msg
+    afterTurnSettled()
+    return
+  }
+  if (msg.type === 'RESYNC_REQUEST') {
+    if (props.isHost) sendSnapshot()
+    return
+  }
+  if (msg.type === 'RESYNC_STATE') {
+    if (props.isHost) return
+    if (state.phase === 'FIRING') pendingSnapshot = msg
+    else applySnapshot(msg)
   }
 }
 

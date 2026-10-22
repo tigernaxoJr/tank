@@ -44,6 +44,13 @@
   - 大規模重構、刪除既有功能、破壞性的資料／協定格式變更。
 - 一般性新增功能、Bug 修復、小型依賴引入屬日常改動，可直接進行。
 
+## 6. 缺口評估原則 (Gap Assessment)
+- 被問到「還有什麼缺口」或規劃下一步時，Agent 依下列優先順序評估與排列，`todo.md` 也照此分區：
+  1. **缺少的程式碼與 bug**（含文件與實作不一致、測試缺口、兩端行為不一致）——最優先。
+  2. **遊戲性**（平衡、手感、玩家可感知的行為）。
+  3. **未實作的功能**（尚在評估、待討論的構想與新內容）。
+- 先實際檢查（型別檢查、測試、閱讀程式碼）再列缺口；未驗證的推測要標明「疑似、待驗證」。
+
 ## 5. 技術棧 (Tech Stack) — 須隨變動同步維護
 | 領域 | 技術 |
 |---|---|
@@ -51,6 +58,7 @@
 | 建置工具 | Vite 6 |
 | 樣式 | Tailwind CSS 4 (`@tailwindcss/vite`) |
 | 遊戲引擎／渲染 | Phaser 3（2.5D 戰鬥場景、鏡頭、特效） |
+| 測試 | Vitest（`npm test`，測試在 `src/test/`；Rust 核心用 `npm run test:rust`） |
 | 連線 | PeerJS (WebRTC P2P) + 輕量信令伺服器 (`server/`, Node.js) |
 | 核心運算 | Rust → WebAssembly (`crates/tank-core`, `wasm-pack`) |
 | 美術資產管線 | Blender 算繪 (`tools/blender`)、Kenney 烘焙 (`tools/assets/bake_kenney_assets.py`, Pillow)、原創地圖主題與 Q 版坦克/砲彈程式繪製 (`tools/assets/paint_map_themes.mjs`、`tools/assets/paint_units.mjs`, `@resvg/resvg-js` devDependency)、vtracer / magick / svgo / rembg（見 [`docs/04-art-asset-pipeline.md`](./docs/04-art-asset-pipeline.md)） |

@@ -13,13 +13,13 @@
 const SHELLS = {
   MISSILE_STANDARD: { dmg: 34, r: 40, magnet: 30, direct: 1 },
   MISSILE_HEAVY: { dmg: 22, r: 50, magnet: 22, direct: 1 },
-  MISSILE_PLASMA: { dmg: 60, r: 30, magnet: 26, direct: 1 },
+  MISSILE_PLASMA: { dmg: 52, r: 30, magnet: 26, direct: 1 },
   MISSILE_RAILGUN: { dmg: 75, r: 18, magnet: 0, direct: 1 },
 }
 const TANKS = {
   aegis: { hp: 100, mult: 1.0, bonus: 0, armor: 0, shield: 0, resist: 0, shots: ['MISSILE_STANDARD', 'MISSILE_HEAVY'] },
   goliath: { hp: 130, mult: 0.82, bonus: 0, armor: 2, shield: 0, resist: 0, shots: ['MISSILE_HEAVY', 'MISSILE_STANDARD'] },
-  zephyr: { hp: 76, mult: 1.33, bonus: 0, armor: 0, shield: 0, resist: 0, shots: ['MISSILE_PLASMA', 'MISSILE_RAILGUN'] },
+  zephyr: { hp: 80, mult: 1.15, bonus: 0, armor: 0, shield: 0, resist: 0, shots: ['MISSILE_PLASMA', 'MISSILE_RAILGUN'] },
 }
 
 function gauss() {
