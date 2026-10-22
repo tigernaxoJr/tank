@@ -661,14 +661,14 @@ onUnmounted(() => {
   <!-- 進入遊戲前的完整首頁大廳：2.5D 戰車格納庫 + 地圖選擇 + P2P 5v5 配對 -->
   <section v-if="!props.inBattle" class="grid grid-cols-1 gap-6 lg:grid-cols-12">
     <!-- 左欄：戰車選角格納庫與地圖選擇 (col 5) -->
-    <div class="lg:col-span-5 flex flex-col justify-between rounded-3xl border-2 border-white/90 bg-gradient-to-b from-emerald-200 via-teal-200 to-cyan-200 p-5 shadow-2xl space-y-5 backdrop-blur-md">
+    <div class="lg:col-span-5 flex flex-col justify-between rounded-3xl border border-sky-400/20 bg-slate-900/85 p-5 shadow-2xl space-y-5 backdrop-blur-md">
       <!-- 1. 2.5D 戰車選角格納庫 -->
       <div class="space-y-3">
         <div class="flex items-center justify-between">
-          <span class="inline-flex items-center gap-1.5 rounded-full border border-amber-300/60 bg-amber-200 px-3 py-0.5 text-xs font-extrabold text-amber-700">
-            🛡️ 戰車格納庫
+          <span class="inline-flex items-center gap-1.5 rounded-full border border-amber-400/50 bg-amber-500/20 px-3 py-0.5 text-xs font-extrabold text-amber-300">
+            🛡️ 空母戰車機庫
           </span>
-          <span class="text-[11px] text-teal-800">點擊選擇你的出戰坦克</span>
+          <span class="text-[11px] text-sky-200/70">點擊選擇你的空降坦克</span>
         </div>
 
         <div class="grid grid-cols-3 gap-2.5">
@@ -679,20 +679,20 @@ onUnmounted(() => {
             class="group flex flex-col items-center rounded-2xl border-2 p-2.5 text-center transition cursor-pointer"
             :class="
               session.selectedTankId === tank.id
-                ? 'border-amber-500 bg-gradient-to-b from-white to-amber-100 shadow-lg shadow-amber-500/30 scale-[1.02]'
-                : 'border-teal-600/40 bg-white/80 hover:border-teal-600/40'
+                ? 'border-amber-400 bg-gradient-to-b from-slate-800 to-amber-950/40 shadow-lg shadow-amber-500/20 scale-[1.02]'
+                : 'border-slate-700/60 bg-slate-800/60 hover:border-sky-400/50 hover:bg-slate-800/90'
             "
             @click="selectTankArchetype(tank.id)"
           >
-            <div class="relative flex h-16 w-full items-center justify-center rounded-xl bg-gradient-to-b from-white/70 to-transparent">
+            <div class="relative flex h-16 w-full items-center justify-center rounded-xl bg-slate-950/50 border border-slate-700/40">
               <img
                 :src="tank.getSprites('A').hullUrl"
                 :alt="tank.name"
                 class="h-14 w-auto object-contain drop-shadow-md transition group-hover:scale-110"
               />
             </div>
-            <div class="mt-1.5 text-xs font-extrabold text-teal-950">{{ tank.name }}</div>
-            <div class="mt-0.5 text-[10px] font-semibold text-amber-700">
+            <div class="mt-1.5 text-xs font-extrabold text-slate-100">{{ tank.name }}</div>
+            <div class="mt-0.5 text-[10px] font-semibold text-amber-300">
               HP {{ tank.maxHp }} · 輸出 ×{{ tank.damageMultiplier.toFixed(2) }}
             </div>
           </button>
@@ -705,8 +705,8 @@ onUnmounted(() => {
       <!-- 2. 模組化跨螢幕地圖選擇器 -->
       <div class="space-y-2.5">
         <div class="flex items-center justify-between">
-          <span class="text-xs font-extrabold text-amber-700">🗺️ 選擇對戰地圖</span>
-          <span class="text-[11px] text-teal-800">支援滑鼠拖曳與小地圖跳轉</span>
+          <span class="text-xs font-extrabold text-amber-400">🗺️ 選擇交戰空域 / 空島</span>
+          <span class="text-[11px] text-sky-200/70">支援滑鼠拖曳與小地圖跳轉</span>
         </div>
 
         <div class="space-y-2">
@@ -717,32 +717,32 @@ onUnmounted(() => {
             class="flex w-full items-center gap-3 rounded-2xl border-2 p-2.5 text-left transition cursor-pointer"
             :class="
               session.selectedMapId === m.id
-                ? 'border-amber-500 bg-white shadow-md'
-                : 'border-teal-600/40 bg-white/80 hover:border-teal-600/40'
+                ? 'border-amber-400 bg-slate-800 shadow-md'
+                : 'border-slate-700/60 bg-slate-800/60 hover:border-sky-400/50 hover:bg-slate-800/90'
             "
             @click="selectMapPreset(m.id)"
           >
             <img
               :src="renderMapPreview(m)"
               :alt="m.name"
-              class="h-11 w-20 shrink-0 rounded-xl border-2 border-white/70 object-cover shadow"
+              class="h-11 w-20 shrink-0 rounded-xl border border-sky-400/30 object-cover shadow"
             />
             <div class="min-w-0 flex-1">
               <div class="flex items-center justify-between gap-1">
-                <span class="truncate text-xs font-extrabold text-teal-950">{{ m.name }}</span>
-                <span class="shrink-0 rounded bg-amber-200 px-1.5 py-0.5 font-mono text-[10px] font-bold text-amber-700">
+                <span class="truncate text-xs font-extrabold text-slate-100">{{ m.name }}</span>
+                <span class="shrink-0 rounded bg-amber-400/20 px-1.5 py-0.5 font-mono text-[10px] font-bold text-amber-300 border border-amber-400/30">
                   {{ m.width }}×{{ m.height }}
                 </span>
               </div>
-              <p class="mt-0.5 line-clamp-1 text-[11px] text-teal-800">{{ m.description }}</p>
+              <p class="mt-0.5 line-clamp-1 text-[11px] text-slate-300">{{ m.description }}</p>
             </div>
           </button>
         </div>
       </div>
 
       <!-- 房間規則：玩家斷線時的處置（只有房主能改，客端唯讀；對戰模式才有意義） -->
-      <div v-if="gameMode === 'p2p'" class="rounded-2xl border-2 border-teal-600/40 bg-white/80 p-3">
-        <div class="mb-2 text-xs font-extrabold text-amber-700">🔌 玩家斷線時</div>
+      <div v-if="gameMode === 'p2p'" class="rounded-2xl border border-sky-400/20 bg-slate-800/60 p-3">
+        <div class="mb-2 text-xs font-extrabold text-amber-400">🔌 玩家斷線時</div>
         <div class="grid grid-cols-2 gap-2">
           <button
             v-for="opt in ([['forfeit', '認輸', '坦克陣亡，退出對戰'], ['bot', '電腦接手', '由 CPU（中等）代打']] as const)"
@@ -750,21 +750,21 @@ onUnmounted(() => {
             type="button"
             class="rounded-xl border-2 p-2 text-left transition"
             :class="[
-              session.disconnectPolicy === opt[0] ? 'border-amber-500 bg-white shadow-md' : 'border-teal-600/40 bg-white/60',
+              session.disconnectPolicy === opt[0] ? 'border-amber-400 bg-slate-800 shadow-md' : 'border-slate-700/60 bg-slate-800/40',
               session.locked || (!session.isHost && session.phase === 'connected') ? 'cursor-default' : 'cursor-pointer hover:border-amber-400',
             ]"
             @click="selectDisconnectPolicy(opt[0])"
           >
-            <div class="text-xs font-extrabold text-teal-950">{{ opt[1] }}</div>
-            <div class="text-[10px] text-teal-800">{{ opt[2] }}</div>
+            <div class="text-xs font-extrabold text-slate-100">{{ opt[1] }}</div>
+            <div class="text-[10px] text-slate-400">{{ opt[2] }}</div>
           </button>
         </div>
       </div>
 
       <!-- 3. 遊戲快速指南 -->
-      <div class="rounded-2xl border border-teal-600/40 bg-white/80 p-3.5 text-xs space-y-1.5">
-        <div class="font-extrabold text-amber-700">⚡ 30 秒快速上手說明</div>
-        <p class="text-[11px] leading-relaxed text-teal-900">
+      <div class="rounded-2xl border border-sky-400/20 bg-slate-800/60 p-3.5 text-xs space-y-1.5">
+        <div class="font-extrabold text-amber-400">⚡ 30 秒快速上手說明</div>
+        <p class="text-[11px] leading-relaxed text-slate-300">
           1. 右側輸入暱稱，建立或輸入 <strong>6 碼房號</strong> 配對（支援 1v1 ~ 5v5）。<br />
           2. 輪到你的回合時，用 <kbd class="rounded bg-amber-400 px-1 font-bold text-slate-950">←/→</kbd> 移動、<kbd class="rounded bg-amber-400 px-1 font-bold text-slate-950">↑/↓</kbd> 調仰角，按住 <kbd class="rounded bg-amber-400 px-1 font-bold text-slate-950">空白鍵</kbd> 蓄力放開即開火！
         </p>
@@ -772,35 +772,35 @@ onUnmounted(() => {
     </div>
 
     <!-- 右欄：填入玩家資訊與 1v1~5v5 房間配對 (col 7) -->
-    <div class="lg:col-span-7 rounded-3xl border-2 border-white/90 bg-gradient-to-b from-teal-200 via-emerald-200 to-lime-100 p-6 shadow-2xl space-y-6 backdrop-blur-md">
-      <div class="flex flex-wrap items-center justify-between gap-3 border-b border-teal-600/40 pb-4">
+    <div class="lg:col-span-7 rounded-3xl border border-sky-400/20 bg-slate-900/85 p-6 shadow-2xl space-y-6 backdrop-blur-md">
+      <div class="flex flex-wrap items-center justify-between gap-3 border-b border-slate-700/60 pb-4">
         <div>
           <div class="flex flex-wrap items-center gap-2">
-            <h2 class="text-lg font-black text-teal-950">連線配對大廳 (1v1 ~ 5v5)</h2>
+            <h2 class="text-lg font-black text-white">高空連線交鋒大廳 (1v1 ~ 5v5)</h2>
             <span
               class="inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-[10px] font-extrabold"
               :class="
                 signalingInfo.mode === 'custom'
-                  ? 'border-emerald-600/60 bg-emerald-200 text-emerald-700'
+                  ? 'border-emerald-500/40 bg-emerald-500/20 text-emerald-300'
                   : signalingInfo.mode === 'fallback-public'
-                    ? 'border-amber-500/60 bg-amber-200 text-amber-800'
-                    : 'border-teal-600/40 bg-sky-200 text-teal-800'
+                    ? 'border-amber-400/50 bg-amber-500/20 text-amber-300'
+                    : 'border-sky-400/40 bg-sky-500/20 text-sky-300'
               "
             >
               📡 {{ signalingInfo.label }}
             </span>
           </div>
-          <p class="text-xs text-teal-800">填寫玩家名稱，與好友建立點對點連線或單機同樂</p>
+          <p class="text-xs text-slate-300">填寫玩家名稱，與好友建立點對點空域連線或單機同樂</p>
         </div>
 
-        <div class="inline-flex rounded-xl bg-white/80 p-1 border border-teal-600/40 text-xs">
+        <div class="inline-flex rounded-xl bg-slate-950/60 p-1 border border-slate-700/60 text-xs">
           <button
             type="button"
             class="rounded-lg px-3.5 py-1.5 font-extrabold transition cursor-pointer"
             :class="
               gameMode === 'p2p'
                 ? 'bg-amber-400 text-slate-950 shadow'
-                : 'text-teal-800 hover:text-teal-950'
+                : 'text-slate-400 hover:text-slate-200'
             "
             @click="gameMode = 'p2p'"
           >
@@ -812,7 +812,7 @@ onUnmounted(() => {
             :class="
               gameMode === 'hotseat'
                 ? 'bg-amber-400 text-slate-950 shadow'
-                : 'text-teal-800 hover:text-teal-950'
+                : 'text-slate-400 hover:text-slate-200'
             "
             @click="handleDisconnect(); gameMode = 'hotseat'"
           >
@@ -825,7 +825,7 @@ onUnmounted(() => {
       <div v-if="gameMode === 'p2p'" class="space-y-5">
         <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <div class="space-y-1.5">
-            <label class="block text-xs font-extrabold text-amber-700">
+            <label class="block text-xs font-extrabold text-amber-400">
               步驟 1：輸入你的玩家暱稱 (Player Name)
             </label>
             <input
@@ -834,12 +834,12 @@ onUnmounted(() => {
               maxlength="16"
               :disabled="session.phase !== 'idle' && session.phase !== 'error'"
               placeholder="例如：TankMaster"
-              class="w-full rounded-xl border-2 border-teal-600/40 bg-white/80 px-3.5 py-2.5 text-sm font-bold text-teal-950 placeholder-teal-600/70 focus:border-amber-300 focus:outline-none disabled:opacity-60"
+              class="w-full rounded-xl border-2 border-slate-700/60 bg-slate-800/80 px-3.5 py-2.5 text-sm font-bold text-slate-100 placeholder-slate-500 focus:border-amber-300 focus:outline-none disabled:opacity-60"
             />
           </div>
 
           <div class="space-y-1.5">
-            <label class="block text-xs font-extrabold text-amber-700">
+            <label class="block text-xs font-extrabold text-amber-400">
               選擇你的出戰坦克 (進房前後皆可切換)
             </label>
             <div class="grid grid-cols-3 gap-1.5">
@@ -851,7 +851,7 @@ onUnmounted(() => {
                 :class="
                   session.selectedTankId === tank.id
                     ? 'border-amber-300 bg-amber-200 text-amber-800 shadow'
-                    : 'border-teal-600/40 bg-white/80 text-teal-800 hover:border-teal-700'
+                    : 'border-slate-700/60 bg-slate-800/80 text-slate-300 hover:border-teal-700'
                 "
                 @click="selectTankArchetype(tank.id)"
               >
@@ -861,8 +861,8 @@ onUnmounted(() => {
                   class="h-7 w-7 shrink-0 object-contain"
                 />
                 <div class="min-w-0">
-                  <div class="truncate text-[11px] font-black text-teal-950">{{ tank.name }}</div>
-                  <div class="text-[9px] text-amber-700">HP {{ tank.maxHp }}</div>
+                  <div class="truncate text-[11px] font-black text-slate-100">{{ tank.name }}</div>
+                  <div class="text-[9px] text-amber-400">HP {{ tank.maxHp }}</div>
                 </div>
               </button>
             </div>
@@ -870,15 +870,15 @@ onUnmounted(() => {
         </div>
 
         <div v-if="session.phase === 'idle' || session.phase === 'error'" class="space-y-4">
-          <label class="block text-xs font-extrabold text-amber-700">
+          <label class="block text-xs font-extrabold text-amber-400">
             步驟 2：建立新房間 (最多 10 人)，或輸入朋友的 6 碼房號加入
           </label>
 
           <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <div class="flex flex-col justify-between rounded-2xl border-2 border-amber-500/60 bg-white/80 p-4 space-y-3">
+            <div class="flex flex-col justify-between rounded-2xl border-2 border-amber-500/60 bg-slate-800/80 p-4 space-y-3">
               <div>
-                <div class="text-sm font-extrabold text-amber-700">👑 我是房主 (建立房間)</div>
-                <p class="mt-1 text-xs text-teal-800">
+                <div class="text-sm font-extrabold text-amber-400">👑 我是房主 (建立房間)</div>
+                <p class="mt-1 text-xs text-slate-300">
                   自動避開重複房號，產生專屬 6 碼與邀請連結，最多可容納 10 人分隊。
                 </p>
                 <input
@@ -886,7 +886,7 @@ onUnmounted(() => {
                   type="text"
                   maxlength="24"
                   placeholder="房間名稱（選填，顯示在房間列表）"
-                  class="mt-2 w-full rounded-xl border-2 border-amber-500/60 bg-white px-3 py-2 text-xs font-bold text-teal-950 placeholder-teal-600/70 focus:border-amber-300 focus:outline-none"
+                  class="mt-2 w-full rounded-xl border-2 border-amber-500/60 bg-white px-3 py-2 text-xs font-bold text-slate-100 placeholder-slate-500 focus:border-amber-300 focus:outline-none"
                 />
               </div>
               <button
@@ -898,7 +898,7 @@ onUnmounted(() => {
               </button>
             </div>
 
-            <div class="flex flex-col justify-between rounded-2xl border-2 border-teal-600/40 bg-white/80 p-4 space-y-3">
+            <div class="flex flex-col justify-between rounded-2xl border-2 border-slate-700/60 bg-slate-800/80 p-4 space-y-3">
               <div class="space-y-2">
                 <div class="text-sm font-extrabold text-sky-700">🚀 我是隊友/對手 (加入房間)</div>
                 <input
@@ -906,7 +906,7 @@ onUnmounted(() => {
                   type="text"
                   maxlength="6"
                   placeholder="輸入 6 碼房號 (如 AB3K9P)"
-                  class="w-full rounded-xl border-2 border-teal-600/40 bg-white px-3 py-2 font-mono text-sm font-black uppercase tracking-widest text-amber-700 placeholder-teal-600/70 focus:border-amber-300 focus:outline-none"
+                  class="w-full rounded-xl border-2 border-slate-700/60 bg-white px-3 py-2 font-mono text-sm font-black uppercase tracking-widest text-amber-400 placeholder-slate-500 focus:border-amber-300 focus:outline-none"
                   @keyup.enter="handleJoin"
                 />
               </div>
@@ -922,28 +922,28 @@ onUnmounted(() => {
           </div>
 
           <!-- 房間列表：只有連線到自建信令伺服器時才有；否則降級為輸入房號 -->
-          <div class="rounded-2xl border-2 border-teal-600/40 bg-white/80 p-4 space-y-2.5">
+          <div class="rounded-2xl border-2 border-slate-700/60 bg-slate-800/80 p-4 space-y-2.5">
             <div class="flex items-center justify-between gap-2">
               <div class="text-sm font-extrabold text-sky-700">📋 房間列表</div>
               <button
                 v-if="directory.available"
                 type="button"
                 :disabled="roomListLoading"
-                class="rounded-lg bg-teal-100 px-2.5 py-1 text-xs font-bold text-teal-950 hover:bg-teal-200 disabled:opacity-50 cursor-pointer"
+                class="rounded-lg bg-teal-100 px-2.5 py-1 text-xs font-bold text-slate-100 hover:bg-teal-200 disabled:opacity-50 cursor-pointer"
                 @click="refreshRoomList"
               >
                 {{ roomListLoading ? '更新中…' : '🔄 重新整理' }}
               </button>
             </div>
 
-            <p v-if="!directory.available" class="text-xs text-teal-700">
+            <p v-if="!directory.available" class="text-xs text-slate-400">
               目前使用公共信令伺服器，沒有房間列表功能。請向房主索取 6 碼房號後輸入加入；
               若要啟用列表，請部署自建信令伺服器並設定 <code class="rounded bg-teal-100 px-1">VITE_PEER_HOST</code>。
             </p>
-            <p v-else-if="roomListError" class="text-xs text-amber-700">
+            <p v-else-if="roomListError" class="text-xs text-amber-400">
               ⚠️ 無法連線到房間目錄（自建信令伺服器可能離線）。仍可輸入房號加入。
             </p>
-            <p v-else-if="roomListLoaded && roomList.length === 0" class="text-xs text-teal-700">
+            <p v-else-if="roomListLoaded && roomList.length === 0" class="text-xs text-slate-400">
               目前沒有房間，建立一間吧！
             </p>
 
@@ -951,21 +951,21 @@ onUnmounted(() => {
               <li
                 v-for="room in roomList"
                 :key="room.code"
-                class="flex items-center gap-2.5 rounded-xl border border-teal-600/40 bg-white/80 px-3 py-2"
+                class="flex items-center gap-2.5 rounded-xl border border-slate-700/60 bg-slate-800/80 px-3 py-2"
               >
                 <span
                   class="shrink-0 rounded-full px-2 py-0.5 text-[10px] font-extrabold"
-                  :class="room.status === 'waiting' ? 'bg-emerald-200 text-emerald-700' : 'bg-teal-200 text-teal-800'"
+                  :class="room.status === 'waiting' ? 'bg-emerald-200 text-emerald-700' : 'bg-teal-200 text-slate-300'"
                 >
                   {{ room.status === 'waiting' ? '等待中' : '遊戲中' }}
                 </span>
                 <div class="min-w-0 flex-1">
-                  <div class="truncate text-xs font-black text-teal-950">{{ room.name }}</div>
-                  <div class="truncate text-[10px] text-teal-800">
+                  <div class="truncate text-xs font-black text-slate-100">{{ room.name }}</div>
+                  <div class="truncate text-[10px] text-slate-300">
                     房主 {{ room.hostName }} · {{ formatMapName(room.mapId) }}<template v-if="room.disconnectPolicy === 'bot'"> · 斷線由電腦接手</template>
                   </div>
                 </div>
-                <span class="shrink-0 font-mono text-xs font-bold text-amber-700">
+                <span class="shrink-0 font-mono text-xs font-bold text-amber-400">
                   {{ room.players }}/{{ room.maxPlayers }}
                 </span>
                 <button
@@ -983,14 +983,14 @@ onUnmounted(() => {
 
         <div
           v-else-if="session.phase === 'joining' || session.phase === 'hosting'"
-          class="rounded-2xl border-2 border-teal-600/40 bg-white/70 p-5 text-center space-y-3"
+          class="rounded-2xl border-2 border-slate-700/60 bg-slate-800/70 p-5 text-center space-y-3"
         >
-          <div class="text-sm font-bold text-teal-800 animate-pulse">
+          <div class="text-sm font-bold text-slate-300 animate-pulse">
             🔄 正在建立/連線至房間 {{ session.roomCode }}...
           </div>
           <button
             type="button"
-            class="rounded-lg border border-teal-600/40 px-4 py-1.5 text-xs text-teal-800 hover:text-teal-950 cursor-pointer"
+            class="rounded-lg border border-slate-700/60 px-4 py-1.5 text-xs text-slate-300 hover:text-slate-100 cursor-pointer"
             @click="handleDisconnect"
           >
             取消
@@ -1000,21 +1000,21 @@ onUnmounted(() => {
         <!-- 已進入房間大廳：顯示房號邀請連結 + 5v5 兩隊編制列表 (含每位玩家的 2.5D 坦克縮圖) -->
         <div
           v-else-if="session.phase === 'connected'"
-          class="rounded-2xl border-2 border-emerald-600/60 bg-white/80 p-4 space-y-4"
+          class="rounded-2xl border-2 border-emerald-600/60 bg-slate-800/80 p-4 space-y-4"
         >
-          <div class="flex flex-wrap items-center justify-between gap-2 border-b border-teal-600/40 pb-3">
+          <div class="flex flex-wrap items-center justify-between gap-2 border-b border-slate-700/60 pb-3">
             <div class="flex items-center gap-2">
               <span class="text-xs font-extrabold text-emerald-700">
                 ● 房間大廳 ({{ session.roster.length }} / {{ MAX_TOTAL_PLAYERS }} 人)
               </span>
-              <span class="rounded-lg bg-white px-2.5 py-0.5 font-mono text-base font-black tracking-widest text-amber-700 border border-amber-500/60">
+              <span class="rounded-lg bg-white px-2.5 py-0.5 font-mono text-base font-black tracking-widest text-amber-400 border border-amber-500/60">
                 {{ session.roomCode }}
               </span>
             </div>
             <div class="flex items-center gap-1.5">
               <button
                 type="button"
-                class="rounded-lg bg-teal-100 px-2.5 py-1 text-xs font-bold text-teal-950 hover:bg-teal-200 cursor-pointer"
+                class="rounded-lg bg-teal-100 px-2.5 py-1 text-xs font-bold text-slate-100 hover:bg-teal-200 cursor-pointer"
                 @click="copyRoomCode"
               >
                 {{ copied ? '✓ 已複製房號' : '複製房號' }}
@@ -1031,9 +1031,9 @@ onUnmounted(() => {
 
           <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <!-- Team A (琥珀隊) -->
-            <div class="rounded-xl border-2 border-amber-500/60 bg-white/80 p-3 space-y-2.5">
+            <div class="rounded-xl border-2 border-amber-500/60 bg-slate-800/80 p-3 space-y-2.5">
               <div class="flex items-center justify-between">
-                <span class="text-xs font-extrabold text-amber-700">
+                <span class="text-xs font-extrabold text-amber-400">
                   琥珀隊 Team A ({{ teamARoster.length }}/{{ MAX_PLAYERS_PER_TEAM }})
                 </span>
                 <button
@@ -1049,7 +1049,7 @@ onUnmounted(() => {
                 <li
                   v-for="member in teamARoster"
                   :key="member.id"
-                  class="flex items-center justify-between rounded-lg bg-white/80 px-2.5 py-1.5 border border-amber-500/40"
+                  class="flex items-center justify-between rounded-lg bg-slate-800/80 px-2.5 py-1.5 border border-amber-500/40"
                 >
                   <div class="flex items-center gap-2">
                     <img
@@ -1058,18 +1058,18 @@ onUnmounted(() => {
                       alt=""
                     />
                     <div>
-                      <div class="font-bold text-teal-950">
+                      <div class="font-bold text-slate-100">
                         {{ member.name }}
-                        <span v-if="member.id === session.localPlayerId" class="text-[10px] text-amber-700">(你)</span>
+                        <span v-if="member.id === session.localPlayerId" class="text-[10px] text-amber-400">(你)</span>
                       </div>
-                      <div class="text-[10px] text-amber-700">
+                      <div class="text-[10px] text-amber-400">
                         {{ TANK_REGISTRY[member.tankId]?.name }}
                       </div>
                     </div>
                   </div>
                   <span
                     class="font-mono text-[10px] font-bold"
-                    :class="member.isHost || member.ready ? 'text-emerald-700' : 'text-teal-700'"
+                    :class="member.isHost || member.ready ? 'text-emerald-700' : 'text-slate-400'"
                   >
                     {{ member.isHost ? '👑 房主' : member.ready ? '✅ 準備完畢' : '⏳ 未準備' }}
                   </span>
@@ -1077,7 +1077,7 @@ onUnmounted(() => {
                 <li
                   v-for="n in MAX_PLAYERS_PER_TEAM - teamARoster.length"
                   :key="`a-empty-${n}`"
-                  class="rounded-lg border border-dashed border-teal-600/40 px-2.5 py-2 text-center text-[11px] text-teal-600"
+                  class="rounded-lg border border-dashed border-slate-700/60 px-2.5 py-2 text-center text-[11px] text-slate-500"
                 >
                   空位
                 </li>
@@ -1085,7 +1085,7 @@ onUnmounted(() => {
             </div>
 
             <!-- Team B (皇家藍隊) -->
-            <div class="rounded-xl border-2 border-teal-600/40 bg-white/80 p-3 space-y-2.5">
+            <div class="rounded-xl border-2 border-slate-700/60 bg-slate-800/80 p-3 space-y-2.5">
               <div class="flex items-center justify-between">
                 <span class="text-xs font-extrabold text-sky-700">
                   皇家藍隊 Team B ({{ teamBRoster.length }}/{{ MAX_PLAYERS_PER_TEAM }})
@@ -1093,7 +1093,7 @@ onUnmounted(() => {
                 <button
                   type="button"
                   :disabled="teamBRoster.length >= MAX_PLAYERS_PER_TEAM"
-                  class="rounded-lg bg-sky-400/25 px-2 py-0.5 text-[11px] font-bold text-teal-800 hover:bg-sky-400/40 disabled:opacity-40 cursor-pointer"
+                  class="rounded-lg bg-sky-400/25 px-2 py-0.5 text-[11px] font-bold text-slate-300 hover:bg-sky-400/40 disabled:opacity-40 cursor-pointer"
                   @click="handleSwitchTeam('B')"
                 >
                   加入皇家藍隊
@@ -1103,7 +1103,7 @@ onUnmounted(() => {
                 <li
                   v-for="member in teamBRoster"
                   :key="member.id"
-                  class="flex items-center justify-between rounded-lg bg-white/80 px-2.5 py-1.5 border border-teal-600/40"
+                  class="flex items-center justify-between rounded-lg bg-slate-800/80 px-2.5 py-1.5 border border-slate-700/60"
                 >
                   <div class="flex items-center gap-2">
                     <img
@@ -1112,7 +1112,7 @@ onUnmounted(() => {
                       alt=""
                     />
                     <div>
-                      <div class="font-bold text-teal-950">
+                      <div class="font-bold text-slate-100">
                         {{ member.name }}
                         <span v-if="member.id === session.localPlayerId" class="text-[10px] text-sky-700">(你)</span>
                       </div>
@@ -1123,7 +1123,7 @@ onUnmounted(() => {
                   </div>
                   <span
                     class="font-mono text-[10px] font-bold"
-                    :class="member.isHost || member.ready ? 'text-emerald-700' : 'text-teal-700'"
+                    :class="member.isHost || member.ready ? 'text-emerald-700' : 'text-slate-400'"
                   >
                     {{ member.isHost ? '👑 房主' : member.ready ? '✅ 準備完畢' : '⏳ 未準備' }}
                   </span>
@@ -1131,7 +1131,7 @@ onUnmounted(() => {
                 <li
                   v-for="n in MAX_PLAYERS_PER_TEAM - teamBRoster.length"
                   :key="`b-empty-${n}`"
-                  class="rounded-lg border border-dashed border-teal-600/40 px-2.5 py-2 text-center text-[11px] text-teal-600"
+                  class="rounded-lg border border-dashed border-slate-700/60 px-2.5 py-2 text-center text-[11px] text-slate-500"
                 >
                   空位
                 </li>
@@ -1142,7 +1142,7 @@ onUnmounted(() => {
           <div class="flex items-center justify-between gap-3 pt-1">
             <button
               type="button"
-              class="rounded-xl border border-teal-600/40 px-4 py-2.5 text-xs font-bold text-teal-800 hover:text-teal-950 cursor-pointer"
+              class="rounded-xl border border-slate-700/60 px-4 py-2.5 text-xs font-bold text-slate-300 hover:text-slate-100 cursor-pointer"
               @click="handleDisconnect"
             >
               離開房間
@@ -1186,7 +1186,7 @@ onUnmounted(() => {
           <span>⚠️ {{ session.errorMessage }}</span>
           <button
             type="button"
-            class="underline hover:text-teal-950 cursor-pointer"
+            class="underline hover:text-slate-100 cursor-pointer"
             @click="session.errorMessage = undefined"
           >
             關閉
@@ -1197,7 +1197,7 @@ onUnmounted(() => {
       <!-- 單機雙隊熱座表單 (支援選擇 1v1 ~ 5v5 與每台出戰坦克型號) -->
       <div v-else class="space-y-4">
         <div class="space-y-2">
-          <label class="block text-xs font-extrabold text-amber-700">
+          <label class="block text-xs font-extrabold text-amber-400">
             步驟 1：選擇每隊出戰坦克數量 (1v1 至 5v5)
           </label>
           <div class="grid grid-cols-5 gap-2">
@@ -1209,7 +1209,7 @@ onUnmounted(() => {
               :class="
                 hotseatCountPerTeam === n
                   ? 'border-amber-300 bg-amber-400 text-slate-950 shadow-md'
-                  : 'border-teal-600/40 bg-white/80 text-teal-900 hover:border-teal-700'
+                  : 'border-slate-700/60 bg-slate-800/80 text-slate-200 hover:border-teal-700'
               "
               @click="hotseatCountPerTeam = n"
             >
@@ -1220,22 +1220,22 @@ onUnmounted(() => {
 
         <!-- 步驟 2：直接為兩隊每一位玩家挑選 2.5D 坦克 -->
         <div class="space-y-2">
-          <label class="block text-xs font-extrabold text-amber-700">
+          <label class="block text-xs font-extrabold text-amber-400">
             步驟 2：設定兩隊由玩家或電腦操控，並挑選出戰坦克
           </label>
 
           <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <!-- 琥珀隊 Team A 陣容選車 -->
-            <div class="rounded-2xl border-2 border-amber-500/60 bg-white/80 p-3 space-y-2">
+            <div class="rounded-2xl border-2 border-amber-500/60 bg-slate-800/80 p-3 space-y-2">
               <div class="flex items-center justify-between gap-2">
-                <div class="text-xs font-black text-amber-700">
+                <div class="text-xs font-black text-amber-400">
                   🟠 琥珀隊 Team A ({{ hotseatCountPerTeam }} 台)
                 </div>
                 <div class="inline-flex overflow-hidden rounded-lg border border-amber-500/60 text-[10px] font-extrabold">
                   <button
                     type="button"
                     class="px-2 py-1 transition cursor-pointer"
-                    :class="!hotseatBotTeams.A ? 'bg-amber-400 text-slate-950' : 'bg-white text-teal-800 hover:text-teal-950'"
+                    :class="!hotseatBotTeams.A ? 'bg-amber-400 text-slate-950' : 'bg-white text-slate-300 hover:text-slate-100'"
                     @click="hotseatBotTeams.A = false"
                   >
                     👤 玩家
@@ -1243,7 +1243,7 @@ onUnmounted(() => {
                   <button
                     type="button"
                     class="px-2 py-1 transition cursor-pointer"
-                    :class="hotseatBotTeams.A ? 'bg-amber-400 text-slate-950' : 'bg-white text-teal-800 hover:text-teal-950'"
+                    :class="hotseatBotTeams.A ? 'bg-amber-400 text-slate-950' : 'bg-white text-slate-300 hover:text-slate-100'"
                     @click="hotseatBotTeams.A = true"
                   >
                     🤖 電腦
@@ -1251,7 +1251,7 @@ onUnmounted(() => {
                 </div>
               </div>
               <div v-if="hotseatBotTeams.A" class="flex items-center gap-1">
-                <span class="shrink-0 text-[10px] font-extrabold text-teal-800">電腦強度</span>
+                <span class="shrink-0 text-[10px] font-extrabold text-slate-300">電腦強度</span>
                 <button
                   v-for="[level, spec] in BOT_LEVELS"
                   :key="level"
@@ -1260,7 +1260,7 @@ onUnmounted(() => {
                   :class="
                     hotseatBotLevels.A === level
                       ? 'border-amber-500 bg-amber-400 text-slate-950 shadow'
-                      : 'border-teal-600/40 bg-white text-teal-800 hover:border-teal-700'
+                      : 'border-slate-700/60 bg-white text-slate-300 hover:border-teal-700'
                   "
                   @click="hotseatBotLevels.A = level"
                 >
@@ -1273,7 +1273,7 @@ onUnmounted(() => {
                 class="space-y-1"
               >
               <div
-                class="flex items-center justify-between gap-2 rounded-xl border border-amber-500/60 bg-white/80 px-2.5 py-1.5"
+                class="flex items-center justify-between gap-2 rounded-xl border border-amber-500/60 bg-slate-800/80 px-2.5 py-1.5"
               >
                 <div class="flex items-center gap-2 min-w-0">
                   <img
@@ -1282,8 +1282,8 @@ onUnmounted(() => {
                     alt=""
                   />
                   <div class="min-w-0">
-                    <div class="text-xs font-extrabold text-teal-950">{{ hotseatBotTeams.A ? '🤖 CPU' : '琥珀' }} A{{ idx }}</div>
-                    <div class="truncate text-[10px] text-amber-700">
+                    <div class="text-xs font-extrabold text-slate-100">{{ hotseatBotTeams.A ? '🤖 CPU' : '琥珀' }} A{{ idx }}</div>
+                    <div class="truncate text-[10px] text-amber-400">
                       {{ getTankSpec(hotseatTeamATanks[idx - 1]).name }}
                     </div>
                   </div>
@@ -1298,7 +1298,7 @@ onUnmounted(() => {
                     :class="
                       (hotseatTeamATanks[idx - 1] ?? tankAt(idx - 1)) === tank.id
                         ? 'border-amber-300 bg-amber-400 text-slate-950 shadow'
-                        : 'border-teal-600/40 bg-white text-teal-800 hover:border-amber-300/60'
+                        : 'border-slate-700/60 bg-white text-slate-300 hover:border-amber-300/60'
                     "
                     @click="setHotseatSlotTank('A', idx - 1, tank.id)"
                   >
@@ -1316,16 +1316,16 @@ onUnmounted(() => {
             </div>
 
             <!-- 皇家藍隊 Team B 陣容選車 -->
-            <div class="rounded-2xl border-2 border-teal-600/40 bg-white/80 p-3 space-y-2">
+            <div class="rounded-2xl border-2 border-slate-700/60 bg-slate-800/80 p-3 space-y-2">
               <div class="flex items-center justify-between gap-2">
                 <div class="text-xs font-black text-sky-700">
                   🔵 皇家藍隊 Team B ({{ hotseatCountPerTeam }} 台)
                 </div>
-                <div class="inline-flex overflow-hidden rounded-lg border border-teal-600/40 text-[10px] font-extrabold">
+                <div class="inline-flex overflow-hidden rounded-lg border border-slate-700/60 text-[10px] font-extrabold">
                   <button
                     type="button"
                     class="px-2 py-1 transition cursor-pointer"
-                    :class="!hotseatBotTeams.B ? 'bg-sky-400 text-slate-950' : 'bg-white text-teal-800 hover:text-teal-950'"
+                    :class="!hotseatBotTeams.B ? 'bg-sky-400 text-slate-950' : 'bg-white text-slate-300 hover:text-slate-100'"
                     @click="hotseatBotTeams.B = false"
                   >
                     👤 玩家
@@ -1333,7 +1333,7 @@ onUnmounted(() => {
                   <button
                     type="button"
                     class="px-2 py-1 transition cursor-pointer"
-                    :class="hotseatBotTeams.B ? 'bg-sky-400 text-slate-950' : 'bg-white text-teal-800 hover:text-teal-950'"
+                    :class="hotseatBotTeams.B ? 'bg-sky-400 text-slate-950' : 'bg-white text-slate-300 hover:text-slate-100'"
                     @click="hotseatBotTeams.B = true"
                   >
                     🤖 電腦
@@ -1341,7 +1341,7 @@ onUnmounted(() => {
                 </div>
               </div>
               <div v-if="hotseatBotTeams.B" class="flex items-center gap-1">
-                <span class="shrink-0 text-[10px] font-extrabold text-teal-800">電腦強度</span>
+                <span class="shrink-0 text-[10px] font-extrabold text-slate-300">電腦強度</span>
                 <button
                   v-for="[level, spec] in BOT_LEVELS"
                   :key="level"
@@ -1350,7 +1350,7 @@ onUnmounted(() => {
                   :class="
                     hotseatBotLevels.B === level
                       ? 'border-sky-500 bg-sky-400 text-slate-950 shadow'
-                      : 'border-teal-600/40 bg-white text-teal-800 hover:border-teal-700'
+                      : 'border-slate-700/60 bg-white text-slate-300 hover:border-teal-700'
                   "
                   @click="hotseatBotLevels.B = level"
                 >
@@ -1363,7 +1363,7 @@ onUnmounted(() => {
                 class="space-y-1"
               >
               <div
-                class="flex items-center justify-between gap-2 rounded-xl border border-teal-600/40 bg-white/80 px-2.5 py-1.5"
+                class="flex items-center justify-between gap-2 rounded-xl border border-slate-700/60 bg-slate-800/80 px-2.5 py-1.5"
               >
                 <div class="flex items-center gap-2 min-w-0">
                   <img
@@ -1372,7 +1372,7 @@ onUnmounted(() => {
                     alt=""
                   />
                   <div class="min-w-0">
-                    <div class="text-xs font-extrabold text-teal-950">{{ hotseatBotTeams.B ? '🤖 CPU' : '皇家藍' }} B{{ idx }}</div>
+                    <div class="text-xs font-extrabold text-slate-100">{{ hotseatBotTeams.B ? '🤖 CPU' : '皇家藍' }} B{{ idx }}</div>
                     <div class="truncate text-[10px] text-sky-700">
                       {{ getTankSpec(hotseatTeamBTanks[idx - 1]).name }}
                     </div>
@@ -1388,7 +1388,7 @@ onUnmounted(() => {
                     :class="
                       (hotseatTeamBTanks[idx - 1] ?? tankAt(idx)) === tank.id
                         ? 'border-sky-300 bg-sky-400 text-slate-950 shadow'
-                        : 'border-teal-600/40 bg-white text-teal-800 hover:border-teal-600/40'
+                        : 'border-slate-700/60 bg-white text-slate-300 hover:border-slate-700/60'
                     "
                     @click="setHotseatSlotTank('B', idx - 1, tank.id)"
                   >

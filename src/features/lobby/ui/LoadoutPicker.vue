@@ -28,10 +28,10 @@ function choose(slot: number, bullet: BulletType): void {
 </script>
 
 <template>
-  <div class="space-y-1.5 rounded-xl border border-teal-600/40 bg-white/80 p-2.5">
-    <div class="text-[11px] font-black text-teal-950">彈藥配置 <span class="font-semibold text-teal-700">（開戰後不可更換，對手開火前看不到）</span></div>
+  <div class="space-y-1.5 rounded-xl border border-sky-400/20 bg-slate-800/60 p-2.5">
+    <div class="text-[11px] font-black text-slate-100">彈藥配置 <span class="font-semibold text-slate-400">（開戰後不可更換，對手開火前看不到）</span></div>
     <div v-for="(label, slot) in slots" :key="label" class="flex items-center gap-1.5">
-      <span class="w-9 shrink-0 text-[10px] font-extrabold text-teal-800">{{ label }}</span>
+      <span class="w-9 shrink-0 text-[10px] font-extrabold text-slate-300">{{ label }}</span>
       <div class="flex flex-wrap gap-1">
         <button
           v-for="proj in pool"
@@ -39,8 +39,8 @@ function choose(slot: number, bullet: BulletType): void {
           type="button"
           :disabled="disabled"
           :title="`${proj.name}: ${proj.description}`"
-          class="cursor-pointer rounded-lg border-2 px-2 py-0.5 text-[10px] font-extrabold transition disabled:cursor-not-allowed disabled:opacity-60"
-          :class="picks[slot] === proj.id ? 'border-amber-500 bg-amber-300 text-slate-950' : 'border-teal-600/30 bg-white text-teal-800 hover:border-teal-700'"
+          class="cursor-pointer rounded-lg border px-2 py-0.5 text-[10px] font-extrabold transition disabled:cursor-not-allowed disabled:opacity-60"
+          :class="picks[slot] === proj.id ? 'border-amber-400 bg-amber-400 text-slate-950 font-black shadow' : 'border-slate-700 bg-slate-900/60 text-slate-300 hover:border-sky-400/50 hover:text-white'"
           @click="choose(slot, proj.id)"
         >
           {{ proj.name.split(' ')[0] }}
