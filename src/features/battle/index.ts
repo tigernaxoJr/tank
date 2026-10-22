@@ -55,3 +55,9 @@ export {
   type PreparedShotPlan,
 } from './application/useBattleTurn'
 export { BOT_LEVEL_SPECS, planBotMove, planBotShot, type BotShotPlan } from './domain/botBrain'
+export {
+  emitBattleSound,
+  onBattleSound,
+  setupBattleSoundBridge,
+  type BattleSoundEvent,
+} from './domain/battleEvents'

@@ -8,8 +8,8 @@
  * - 頂部中央：雙陣營總血條、風向羅盤與回合橫幅。
  * - 底部中央：街機裝甲儀表板（當前 2.5D 戰車頭像、半圓角度扇形錶、MOVE 燃料錶、刻度式 POWER 蓄力槽、彈種圖示與 FIRE 巨型發射鈕）。
  */
-import { computed, reactive, ref, onMounted, onUnmounted } from 'vue'
-import { quantizePower, type BattleState } from '../domain/battleState'
+import { computed } from 'vue'
+import type { BattleState } from '../domain/battleState'
 import { PROJECTILE_REGISTRY } from '../domain/projectileRegistry'
 import { TANK_LIST, getTankSpec } from '../domain/tankRegistry'
 import type { BulletType } from '@/shared/kernel/types'
@@ -113,179 +113,31 @@ const dialNeedle = computed(() => dialPoint(activeTank.value?.angle ?? 45, DIAL_
 const dialTicks = [15, 45, 75, 105, 135, 165].map((deg) => ({ deg, a: dialPoint(deg, DIAL_R - 2), b: dialPoint(deg, DIAL_R + 3) }))
 const POWER_SEGMENTS = 20
 
-// --- 街機刻度式 POWER 蓄力槽點擊設定與空白鍵長按震盪蓄力 ---
-const powerBarRef = ref<HTMLDivElement | null>(null)
+import { useBattleInput } from './composables/useBattleInput'
+
+// --- 街機刻度式 POWER 蓄力槽點擊設定、鍵盤操作與空白鍵長按震盪蓄力 ---
+const {
+  powerBarRef,
+  lastFiredPowerByPlayer,
+  isCharging,
+  facingLeft,
+  elevation,
+  adjustAngle,
+  handleMove: onMove,
+  onClickPowerGauge,
+  onPointerDownCharge,
+} = useBattleInput({
+  activeTank,
+  controlsDisabled,
+  activeShots,
+  onMove: (deltaX) => emit('move', deltaX),
+  onUpdateAim: (angle, power) => emit('update-aim', angle, power),
+  onChangeBullet: (bullet) => emit('change-bullet', bullet),
+  onFire: () => emit('fire'),
+})
+
 // 每位玩家各自的「上一發力道」游標（熱座輪流時互不干擾）
-const lastFiredPowerByPlayer = reactive<Record<string, number>>({})
 const lastFiredPower = computed(() => lastFiredPowerByPlayer[props.state.activePlayer] ?? null)
-
-function onClickPowerGauge(e: MouseEvent): void {
-  if (controlsDisabled.value || !powerBarRef.value || !activeTank.value) return
-  const rect = powerBarRef.value.getBoundingClientRect()
-  const ratio = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width))
-  const newPower = Math.max(10, Math.min(100, quantizePower(ratio * 100)))
-  emit('update-aim', activeTank.value.angle, newPower)
-}
-
-/** 砲口朝左（angle > 90）；仰角 = 與水平的夾角，不分左右 */
-const facingLeft = computed(() => (activeTank.value?.angle ?? 45) > 90)
-const elevation = computed(() => {
-  const a = activeTank.value?.angle ?? 45
-  return a > 90 ? 180 - a : a
-})
-
-/** delta 為仰角變化（+ 抬高、- 壓低），朝左時換算成相反方向的角度變化 */
-function adjustAngle(delta: number): void {
-  if (controlsDisabled.value || !activeTank.value) return
-  const signed = facingLeft.value ? -delta : delta
-  const nextAngle = Math.max(15, Math.min(165, activeTank.value.angle + signed))
-  emit('update-aim', nextAngle, activeTank.value.power)
-}
-
-/** 轉向：保持仰角、左右鏡射（不耗燃料），之後可朝另一側開火 */
-function turnToward(dir: 1 | -1): void {
-  if (controlsDisabled.value || !activeTank.value) return
-  const wantLeft = dir < 0
-  if (wantLeft !== facingLeft.value) emit('update-aim', 180 - activeTank.value.angle, activeTank.value.power)
-}
-
-function onMove(deltaX: number): void {
-  if (controlsDisabled.value || !activeTank.value) return
-  // 按下方向鍵 / 移動鈕時，車頭先轉向該側（沒燃料也能轉向）
-  turnToward(deltaX < 0 ? -1 : 1)
-  if (activeTank.value.moveFuel <= 0) return
-  emit('move', deltaX)
-}
-
-const isCharging = ref(false)
-/** 蓄力速度（力道 % / 秒），以時間計算，不受螢幕更新率影響 */
-const CHARGE_RATE_PER_SEC = 80
-/** 每次蓄力都從最小力道重新開始，到頂後反向回落（來回震盪） */
-const CHARGE_START_POWER = 10
-let chargeDirection = 1
-let animFrameId: number | null = null
-let currentChargingPower = 0
-let lastChargeTs: number | null = null
-
-function startCharging(): void {
-  if (controlsDisabled.value || isCharging.value || !activeTank.value) return
-  isCharging.value = true
-  chargeDirection = 1
-  currentChargingPower = CHARGE_START_POWER
-  lastChargeTs = null
-  emit('update-aim', activeTank.value.angle, CHARGE_START_POWER)
-
-  const loop = (ts: number) => {
-    if (!isCharging.value || !activeTank.value) return
-    const dt = lastChargeTs === null ? 0 : Math.min(0.05, (ts - lastChargeTs) / 1000)
-    lastChargeTs = ts
-    currentChargingPower += chargeDirection * CHARGE_RATE_PER_SEC * dt
-    if (currentChargingPower >= 100) {
-      currentChargingPower = 100
-      chargeDirection = -1
-    } else if (currentChargingPower <= 10) {
-      currentChargingPower = 10
-      chargeDirection = 1
-    }
-    emit('update-aim', activeTank.value.angle, quantizePower(currentChargingPower))
-    animFrameId = requestAnimationFrame(loop)
-  }
-  animFrameId = requestAnimationFrame(loop)
-}
-
-function stopChargingAndFire(): void {
-  if (!isCharging.value) return
-  isCharging.value = false
-  if (animFrameId !== null) {
-    cancelAnimationFrame(animFrameId)
-    animFrameId = null
-  }
-  if (!controlsDisabled.value && activeTank.value) {
-    // 以放開瞬間的精確力道開火：先同步寫回，再射擊，避免與畫面上最後一格不一致
-    emit('update-aim', activeTank.value.angle, quantizePower(currentChargingPower))
-    lastFiredPowerByPlayer[activeTank.value.id] = quantizePower(currentChargingPower)
-    emit('fire')
-  }
-}
-
-function cancelCharging(): void {
-  if (isCharging.value) {
-    isCharging.value = false
-    if (animFrameId !== null) {
-      cancelAnimationFrame(animFrameId)
-      animFrameId = null
-    }
-  }
-}
-
-function onPointerDownCharge(e: PointerEvent): void {
-  if (controlsDisabled.value) return
-  e.preventDefault()
-  startCharging()
-
-  const onPointerUp = () => {
-    window.removeEventListener('pointerup', onPointerUp)
-    window.removeEventListener('pointercancel', onPointerUp)
-    stopChargingAndFire()
-  }
-
-  window.addEventListener('pointerup', onPointerUp)
-  window.addEventListener('pointercancel', onPointerUp)
-}
-
-function isInputFocused(): boolean {
-  const activeEl = document.activeElement
-  if (!activeEl) return false
-  const tag = activeEl.tagName.toLowerCase()
-  return tag === 'input' || tag === 'textarea' || tag === 'select' || (activeEl as HTMLElement).isContentEditable
-}
-
-function handleKeyDown(e: KeyboardEvent): void {
-  if (isInputFocused()) return
-  if (!props.canControl || props.state.phase !== 'AIMING') return
-
-  if (e.key === 'ArrowLeft') {
-    e.preventDefault()
-    onMove(-6)
-  } else if (e.key === 'ArrowRight') {
-    e.preventDefault()
-    onMove(6)
-  } else if (e.key === 'ArrowUp') {
-    e.preventDefault()
-    adjustAngle(1)
-  } else if (e.key === 'ArrowDown') {
-    e.preventDefault()
-    adjustAngle(-1)
-  } else if (/^[1-9]$/.test(e.key)) {
-    const shot = activeShots.value?.[Number(e.key) - 1]
-    if (shot) emit('change-bullet', shot.id)
-  } else if (e.code === 'Space' || e.key === ' ') {
-    e.preventDefault()
-    if (e.repeat) return
-    startCharging()
-  }
-}
-
-function handleKeyUp(e: KeyboardEvent): void {
-  if (isInputFocused()) return
-  if (e.code === 'Space' || e.key === ' ') {
-    e.preventDefault()
-    stopChargingAndFire()
-  }
-}
-
-onMounted(() => {
-  window.addEventListener('keydown', handleKeyDown)
-  window.addEventListener('keyup', handleKeyUp)
-  window.addEventListener('blur', cancelCharging)
-})
-
-onUnmounted(() => {
-  window.removeEventListener('keydown', handleKeyDown)
-  window.removeEventListener('keyup', handleKeyUp)
-  window.removeEventListener('blur', cancelCharging)
-  cancelCharging()
-})
 </script>
 
 <template>

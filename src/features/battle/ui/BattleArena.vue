@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
 import { soundController } from '@/features/audio'
+import { emitBattleSound, setupBattleSoundBridge } from '../domain/battleEvents'
 import type {
   BulletType,
   FireActionCommand,
@@ -13,7 +14,7 @@ import type {
   RosterSlot,
   SyncHashEvent,
 } from '@/shared/kernel/types'
-import { DEFAULT_WORLD_HEIGHT, DEFAULT_WORLD_WIDTH, DeterministicTankCore } from '@/shared/wasm'
+import { createTankCore, DEFAULT_WORLD_HEIGHT, DEFAULT_WORLD_WIDTH } from '@/shared/wasm'
 import {
   commitFireImpact,
   finalizeTurnAfterHold,
@@ -60,7 +61,7 @@ const emit = defineEmits<{
   (e: 'leave-game'): void
 }>()
 
-const core = new DeterministicTankCore(
+const core = createTankCore(
   DEFAULT_WORLD_WIDTH,
   DEFAULT_WORLD_HEIGHT,
   props.initialSeed,
@@ -174,7 +175,7 @@ function handleMove(deltaX: number): void {
   const activeTank = state.tanks[activeId]
   if (!activeTank) return
   if (moveAndShowFall(deltaX)) {
-    soundController.play('move')
+    emitBattleSound('move')
     if (props.mode === 'p2p') {
       const msg: MoveActionCommand = {
         type: 'ACTION_MOVE',
@@ -217,7 +218,7 @@ function applyFireCommand(cmd: FireActionCommand, isLocal: boolean): void {
   const plan = prepareFireTrajectory(state, cmd, core)
   if (!plan) return
 
-  soundController.play('fire')
+  emitBattleSound('fire')
   if (props.mode === 'p2p' && isLocal) {
     emit('outgoing-message', cmd)
   }
@@ -238,7 +239,7 @@ function applyFireCommand(cmd: FireActionCommand, isLocal: boolean): void {
         canvasRef.value?.redrawTerrain(c.dirty)
         canvasRef.value?.onTerrainCarved(c.x, c.y, c.radius)
       }
-      if (carves.length > 0) soundController.play('explosion')
+      if (carves.length > 0) emitBattleSound('explosion')
       for (const [pid, dmg] of Object.entries(damageByPlayer)) {
         const tank = state.tanks[pid]
         if (tank && dmg > 0) canvasRef.value?.showDamage(tank.x, tank.y - 48, dmg, tank.hp <= 0)
@@ -335,7 +336,7 @@ function handleRemoteMessage(msg: ProtocolMessage): void {
     if (!tank) return
     const delta = msg.targetX - tank.x
     if (moveAndShowFall(delta)) {
-      soundController.play('move')
+      emitBattleSound('move')
     }
     return
   }
@@ -484,21 +485,25 @@ function scheduleBotTurn(): void {
 
 watch(() => [state.turnId, state.phase, runsBot.value], scheduleBotTurn, { immediate: true })
 
+let teardownSoundBridge: (() => void) | null = null
+
+onMounted(() => {
+  teardownSoundBridge = setupBattleSoundBridge()
+  const mapSpec = MAP_REGISTRY[props.mapId] ?? MAP_REGISTRY.harvest_plains
+  core.resetTerrain(props.initialSeed, terrainOptionsFor(mapSpec))
+  syncAllTanksToTerrain(state, core)
+  canvasRef.value?.redrawTerrain()
+})
+
 onUnmounted(() => {
   cancelBotTurn()
   clearInterval(turnClock)
+  teardownSoundBridge?.()
 })
 
 defineExpose({
   handleRemoteMessage,
   resetMatch,
-})
-
-onMounted(() => {
-  const mapSpec = MAP_REGISTRY[props.mapId] ?? MAP_REGISTRY.harvest_plains
-  core.resetTerrain(props.initialSeed, terrainOptionsFor(mapSpec))
-  syncAllTanksToTerrain(state, core)
-  canvasRef.value?.redrawTerrain()
 })
 </script>
 

@@ -10,15 +10,18 @@ export type PlayerId = string
 /** 機種 id：由 battle/domain/tanks/<id>.ts 的檔案決定（自動收集），型別不另列字面值；一致性由 registry.test.ts 守住 */
 export type TankArchetypeId = string
 
-export type MapPresetId =
-  | 'harvest_plains'
-  | 'volcano_gorge'
-  | 'polar_glacier'
-  | 'sphinx_steps'
-  | 'twin_valley'
-  | 'heaven_bridge'
-  | 'floating_isles'
-  | 'templar_ruins'
+export const MAP_PRESET_IDS = [
+  'harvest_plains',
+  'volcano_gorge',
+  'polar_glacier',
+  'sphinx_steps',
+  'twin_valley',
+  'heaven_bridge',
+  'floating_isles',
+  'templar_ruins',
+] as const
+
+export type MapPresetId = (typeof MAP_PRESET_IDS)[number]
 
 /** 砲彈 id：由 battle/domain/projectiles/<name>.ts 的檔案決定（自動收集），型別不另列字面值 */
 export type BulletType = string
