@@ -10,6 +10,11 @@
 
 ## 一、缺少的程式碼與 bug
 
+- [ ] **程式碼架構收斂與模組化重構（詳細方案見 [`refactor.md`](./refactor.md)）**
+  - [ ] **P1: 拆解 `LobbyPanel.vue` (1,420 行)**：抽出 `useLobbyPeer` / `useRoomSession` / `useLocalSkirmish` 與 3 個子元件（房間列表、名冊、地圖選擇）。
+  - [ ] **P2: 模組化 `BattleScene.ts` (1,266 行)**：抽出 `BattleCameraManager`、`TerrainRenderer`、`ProjectileFxSystem`、`EnvironmentBackdrop`。
+  - [ ] **P3: 收斂 `BattleArena.vue` 與 `BattleHud.vue`**：抽出 `useBattleInput`，解耦音效事件發佈。
+  - [ ] **P4: 型別衍生與 Registry 嚴格收斂**：Registry 衍生型別清理、消除重疊定義。
 - [ ] **實機驗證（需兩個瀏覽器連線；目前只做了程式、型別檢查與單元測試）**
   - [ ] P2P 房間「準備完畢」流程。
   - [ ] 房間列表跨網域（部署自建信令伺服器 `VITE_PEER_HOST` 後）。
