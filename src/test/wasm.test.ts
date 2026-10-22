@@ -63,6 +63,7 @@ describe('WasmTankCore parity with DeterministicTankCore', () => {
     expect(wasmHit.impactedTerrain).toBe(tsHit.impactedTerrain)
     expect(wasmHit.hitTank).toBe(tsHit.hitTank)
     expect(wasmHit.stepsTaken).toBe(tsHit.stepsTaken)
+    expect(wasmHit.path).toEqual(tsHit.path)
   })
 
   it('爆炸傷害計算 (computeExplosionDamage) 一致', () => {

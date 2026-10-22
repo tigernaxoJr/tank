@@ -170,13 +170,32 @@ export class WasmTankCore implements TankCorePort {
         this.grid,
       )
     }
+    const path: TrajectoryPoint[] = [{ x: params.startX | 0, y: params.startY | 0 }]
+    let xMilli = (params.startX | 0) * 1000
+    let yMilli = (params.startY | 0) * 1000
+    let vx = params.vxMilli | 0
+    let vy = params.vyMilli | 0
+    const wind = params.windMilli | 0
+    const gravity = gravityMilli | 0
+    const totalSteps = hit.steps_taken
+
+    for (let step = 1; step <= totalSteps; step++) {
+      xMilli += vx
+      yMilli += vy
+      vx += wind
+      vy += gravity
+      if (step % 2 === 0 || step === totalSteps) {
+        path.push({ x: Math.trunc(xMilli / 1000), y: Math.trunc(yMilli / 1000) })
+      }
+    }
+
     return {
       hitX: hit.hit_x,
       hitY: hit.hit_y,
       impactedTerrain: hit.impacted_terrain,
       hitTank: hit.hit_tank,
       stepsTaken: hit.steps_taken,
-      path: [],
+      path,
     }
   }
 
