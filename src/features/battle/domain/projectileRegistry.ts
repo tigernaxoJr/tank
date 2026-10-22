@@ -114,10 +114,10 @@ export const PROJECTILE_REGISTRY: Record<BulletType, ProjectileBlueprint> = {
     name: '疾速電漿彈 (Plasma Bolt)',
     badge: '高速流線 · 電磁星芒',
     description: '初速較快、受重力影響較小的藍紫電漿彈體；爆炸範圍小但單發傷害高，需要精準瞄準。',
-    damageRadius: 30,
+    damageRadius: 40,
     terrainRadius: 30,
     maxDamage: 52,
-    magnetRadius: 26,
+    magnetRadius: 22,
     directHitMultiplier: 1,
     speedMultiplier: 1,
     // 特殊彈：能量彈受重力較小，彈道刻意比一般彈平直

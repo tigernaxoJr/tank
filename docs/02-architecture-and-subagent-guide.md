@@ -155,6 +155,18 @@ tank/
 - **Rust 核心 ↔ TS 核心一致性**：`src/test/parity.test.ts` 用 TS 核心對所有地圖 × 數個 seed 產生黃金檔 `crates/tank-core/tests/fixtures/golden.json`（地形雜湊、地表 / 坡度 / 材質取樣、挖坑後狀態、彈道），
   Rust 的 `crates/tank-core/tests/parity.rs`（`pnpm run test:rust`）讀同一份檔案逐項比對。改了 TS 核心行為後：`UPDATE_GOLDEN=1 pnpm test` 重新產生黃金檔，再跑 `pnpm run test:rust` 確認 Rust 跟上。
   Rust 地形參數用 JSON 傳入（`TerrainGrid::reset_terrain(seed, json)`，與 TS `TerrainWaveOptions` 同形）；砲彈 `speedMultiplier`、吸附、風敏感度屬 TS 應用層，不在核心內。
-- **房間目錄伺服器**：`server/roomDirectory.test.mjs`（需先在 `server/` 執行 `npm install`，再 `node --test`）。
+- **房間目錄伺服器**：`server/roomDirectory.test.mjs`（需先在 `server/` 執行 `npm install`，再 `node --test`；已接進 `pnpm test`，`test` 腳本會先跑 Vitest 再跑 `npm test --prefix server`）。
 - **平衡**：`node tools/balance/duel_sim.mjs`（見 `06` §三）。
 - 目前執行期仍使用 TS 版核心；Rust/Wasm 版尚未接上轉接層。
+
+### 測試結果紀錄（每次跑測試後追加一列）
+
+> 規則：每次執行測試（`pnpm test`、`pnpm run test:rust`、`node tools/balance/duel_sim.mjs`、CI）後，把日期、範圍、結果與對應的 commit 或改動摘要追加到下表。失敗也要記錄，並註明原因與處理狀態。
+
+| 日期 | 範圍 | 指令 | 結果 | 備註 |
+|---|---|---|---|---|
+| 2026-10-22 | 型別檢查 | `npx vue-tsc -b` | ✅ 通過 | 疾風電漿彈調整後（見下列平衡列） |
+| 2026-10-22 | 前端 + server 單元測試 | `pnpm test` | ✅ Vitest 42 / 42、server node:test 4 / 4 | 疾風電漿彈調整後，未 commit |
+| 2026-10-22 | Rust 核心 | `cargo test --manifest-path crates/tank-core/Cargo.toml` | ✅ 9 + 1 通過 | 最近一次執行（調整前）；Rust 未變動 |
+| 2026-10-22 | 平衡模擬（σ = 25 / 45 / 70 px） | `node tools/balance/duel_sim.mjs` | ✅ 各配對在 40%~59%；疾風 σ=70 時改選電漿彈，對 goliath 為 42% | 疾風電漿彈傷害半徑 30→40、吸附 26→22（`projectileRegistry.ts` 與 `duel_sim.mjs` 同步）；未 commit |
+| 2026-10-22 | CI（main，commit `9c5da5b`） | GitHub Actions `Deploy to GitHub Pages` | ✅ 成功（含 `pnpm test`、型別檢查、建置、部署） | run [39736386678](https://github.com/tigernaxoJr/tank/actions/runs/39736386678) |

@@ -13,7 +13,7 @@
 const SHELLS = {
   MISSILE_STANDARD: { dmg: 34, r: 40, magnet: 30, direct: 1 },
   MISSILE_HEAVY: { dmg: 22, r: 50, magnet: 22, direct: 1 },
-  MISSILE_PLASMA: { dmg: 52, r: 30, magnet: 26, direct: 1 },
+  MISSILE_PLASMA: { dmg: 52, r: 40, magnet: 22, direct: 1 },
   MISSILE_RAILGUN: { dmg: 75, r: 18, magnet: 0, direct: 1 },
 }
 const TANKS = {
