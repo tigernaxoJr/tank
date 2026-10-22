@@ -23,7 +23,7 @@ import {
   syncAllTanksToTerrain,
   takeOverWithBot,
 } from '../application/useBattleTurn'
-import { battleStateHash, createInitialBattleState } from '../domain/battleState'
+import { battleStateHash, createInitialBattleState, quantizePower } from '../domain/battleState'
 import { planBotMove, planBotShot } from '../domain/botBrain'
 import { MAP_REGISTRY, terrainOptionsFor } from '../domain/mapRegistry'
 import { TANK_REGISTRY } from '../domain/tankRegistry'
@@ -431,7 +431,7 @@ function aimAndFireBot(botId: PlayerId, turnId: number): void {
     const t = Math.min(1, (ts - startTs) / aimMs)
     const ease = 1 - (1 - t) * (1 - t)
     tank.angle = Math.round(startAngle + (plan.angle - startAngle) * ease)
-    tank.power = Math.round(startPower + (plan.power - startPower) * ease)
+    tank.power = quantizePower(startPower + (plan.power - startPower) * ease)
     if (t < 1) {
       botFrame = requestAnimationFrame(step)
       return

@@ -9,7 +9,7 @@
  * - 底部中央：街機裝甲儀表板（當前 2.5D 戰車頭像、半圓角度扇形錶、MOVE 燃料錶、刻度式 POWER 蓄力槽、彈種圖示與 FIRE 巨型發射鈕）。
  */
 import { computed, reactive, ref, onMounted, onUnmounted } from 'vue'
-import type { BattleState } from '../domain/battleState'
+import { quantizePower, type BattleState } from '../domain/battleState'
 import { PROJECTILE_REGISTRY } from '../domain/projectileRegistry'
 import { TANK_REGISTRY } from '../domain/tankRegistry'
 import type { BulletType } from '@/shared/kernel/types'
@@ -121,7 +121,7 @@ function onClickPowerGauge(e: MouseEvent): void {
   if (controlsDisabled.value || !powerBarRef.value || !activeTank.value) return
   const rect = powerBarRef.value.getBoundingClientRect()
   const ratio = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width))
-  const newPower = Math.max(10, Math.min(100, Math.round(ratio * 100)))
+  const newPower = Math.max(10, Math.min(100, quantizePower(ratio * 100)))
   emit('update-aim', activeTank.value.angle, newPower)
 }
 
@@ -185,7 +185,7 @@ function startCharging(): void {
       currentChargingPower = 10
       chargeDirection = 1
     }
-    emit('update-aim', activeTank.value.angle, Math.round(currentChargingPower))
+    emit('update-aim', activeTank.value.angle, quantizePower(currentChargingPower))
     animFrameId = requestAnimationFrame(loop)
   }
   animFrameId = requestAnimationFrame(loop)
@@ -200,8 +200,8 @@ function stopChargingAndFire(): void {
   }
   if (!controlsDisabled.value && activeTank.value) {
     // 以放開瞬間的精確力道開火：先同步寫回，再射擊，避免與畫面上最後一格不一致
-    emit('update-aim', activeTank.value.angle, Math.round(currentChargingPower))
-    lastFiredPowerByPlayer[activeTank.value.id] = Math.round(currentChargingPower)
+    emit('update-aim', activeTank.value.angle, quantizePower(currentChargingPower))
+    lastFiredPowerByPlayer[activeTank.value.id] = quantizePower(currentChargingPower)
     emit('fire')
   }
 }
@@ -472,7 +472,7 @@ onUnmounted(() => {
                 {{ shotIdx + 1 }}. {{ proj.name.split(' ')[0] }}
               </button>
             </div>
-            <span class="font-mono text-sm font-black text-orange-600">{{ activeTank?.power ?? 65 }}<span class="text-[10px]">%</span></span>
+            <span class="font-mono text-sm font-black text-orange-600">{{ (activeTank?.power ?? 65).toFixed(2) }}<span class="text-[10px]">%</span></span>
           </div>
 
           <div
@@ -508,7 +508,7 @@ onUnmounted(() => {
             ]"
             @pointerdown="onPointerDownCharge"
           >
-            <div class="text-base leading-tight">{{ isCharging ? `⚡ ${activeTank?.power}%` : '🔥 FIRE' }}</div>
+            <div class="text-base leading-tight">{{ isCharging ? `⚡ ${(activeTank?.power ?? 0).toFixed(2)}%` : '🔥 FIRE' }}</div>
             <div class="text-[10px] font-bold opacity-75">{{ isCharging ? '放開開火' : '按住蓄力 · Space' }}</div>
           </button>
         </div>

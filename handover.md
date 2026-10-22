@@ -62,6 +62,6 @@
 
 ## 已知待辦 / 注意
 
-- `crates/tank-core`（Rust）尚未移植 `layout` / BEDROCK / `groundBelow` / `jitter`（目前執行期只用 TS 核心）。
+- `crates/tank-core`（Rust）已移植地形的 `features`（對應 `layout.features`）、BEDROCK、`groundBelow`、`jitter`，並由黃金檔（`crates/tank-core/tests/fixtures/golden.json`）與 TS 逐項比對（見 `docs/02` §五）。目前執行期仍只用 TS 核心，Rust/Wasm 尚未接上轉接層。
 - 開局時 `focusActiveTank` 偶爾有 isActive console error（既有問題）。
 - 舊 Kenney 坦克與彈體圖（`public/assets/kenney/tanks/`、`props/bullet*.png`）已不被引用，保留未刪。

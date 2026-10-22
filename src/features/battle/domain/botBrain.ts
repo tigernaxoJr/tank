@@ -9,6 +9,7 @@ import {
   groundUnderTank,
   launchVelocity,
   MUZZLE_RISE,
+  quantizePower,
   TANK_GROUND_OFFSET,
   walkAlongTerrain,
   type BattleState,
@@ -111,11 +112,11 @@ export function planBotShot(
   }
   const level = BOT_LEVEL_SPECS[bot.botLevel ?? 'hard']
   if (found.best && level.refine) {
-    // 粗搜格點解析度有限；變態等級在最佳解附近以 1° / 1 力道再搜一次
+    // 粗搜格點解析度有限；變態等級在最佳解附近細化：角度 1°（人類最小單位），力道 ±1 以 0.01 為步長
     const { angle: a0, power: p0 } = found.best
     for (let da = -4; da <= 4; da++) {
-      for (let dp = -3; dp <= 3; dp++) {
-        const power = p0 + dp
+      for (let dp = -100; dp <= 100; dp++) {
+        const power = quantizePower(p0 + dp * 0.01)
         if (power >= 10 && power <= 100) consider(a0 + da, power)
       }
     }
@@ -127,7 +128,7 @@ export function planBotShot(
   return {
     targetId: target.id,
     angle: Math.max(15, Math.min(165, aim.angle + jitter(level.angle))),
-    power: Math.max(10, Math.min(100, aim.power + jitter(level.power))),
+    power: quantizePower(Math.max(10, Math.min(100, aim.power + jitter(level.power)))),
     bulletType,
     score: aim.score,
   }

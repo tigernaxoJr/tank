@@ -151,6 +151,11 @@ export function createInitialBattleState(
   }
 }
 
+/** 力道精度：兩位小數（0.01）。HUD、瞄準動畫與電腦 AI 都經此函式，確保送出的力道值一致 */
+export function quantizePower(power: number): number {
+  return Math.round(power * 100) / 100
+}
+
 /** 砲口初速（千分位整數），開火結算、瞄準預覽與電腦 AI 共用同一公式以確保一致 */
 export function launchVelocity(
   angleDeg: number,
