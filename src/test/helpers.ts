@@ -5,8 +5,8 @@ import { createInitialBattleState } from '@/features/battle/domain/battleState'
 import { MAP_REGISTRY, terrainOptionsFor } from '@/features/battle/domain/mapRegistry'
 
 export const ROSTER_1V1: RosterSlot[] = [
-  { id: 'p1', name: 'A', team: 'A', tankId: 'aegis', isHost: true },
-  { id: 'p2', name: 'B', team: 'B', tankId: 'goliath', isHost: false },
+  { id: 'p1', name: 'A', team: 'A', tankId: 'scorpion', isHost: true },
+  { id: 'p2', name: 'B', team: 'B', tankId: 'bastion', isHost: false },
 ]
 
 /** 建立一局已貼地的對戰（與 BattleArena.resetMatch 相同流程） */

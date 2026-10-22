@@ -32,6 +32,8 @@ import {
   type GlowKey,
   type ProjectileFx,
 } from '../domain/projectileRegistry'
+import { traceShell } from '../domain/shellFlight'
+import { hasStatusFlag, visibleStatuses } from '../domain/statusEffects'
 import { TANK_LIST, effectiveWindMilli, getTankSpec } from '../domain/tankRegistry'
 import { TankFace } from './tankFace'
 import { BattleCameraManager } from './systems/BattleCameraManager'
@@ -41,10 +43,10 @@ const TILE = 128
 const KENNEY = './assets/kenney'
 /** 原創坦克 / 砲彈 / 粒子美術（tools/assets/paint_units.mjs） */
 const UNITS = './assets/units'
-const UNIT_FX = ['glow_fire', 'glow_plasma', 'spark', 'shockwave'] as const
+const UNIT_FX = ['glow_fire', 'glow_plasma', 'glow_toxic', 'glow_ice', 'spark', 'shockwave'] as const
 const BACKDROP_FILES = ['clouds_far', 'mountains', 'hills_far', 'hills_near'] as const
 const COMMON_PROPS = ['crateWood', 'crateAmmo', 'barrelRed', 'barrelGrey'] as const
-/** 瞄準預覽只畫出彈道前段，保留判斷落點的技術含量 */
+/** 瞄準預覽只畫出彈道前段，保留判斷落點的技術含量（偵察狀態下畫完整彈道） */
 const AIM_PREVIEW_STEPS = 60
 /** 坦克車身底部相對容器原點的位移（容器原點 = 地表上方 TANK_GROUND_OFFSET） */
 const HULL_BASE_Y = 14
@@ -66,6 +68,9 @@ interface TankVisualActor {
   barrel: Phaser.GameObjects.Image
   hull: Phaser.GameObjects.Image
   nameTag: Phaser.GameObjects.Text
+  /** 名牌上方的狀態圖示列（中毒、冰凍…），文字 = 圖示 + 剩餘回合 */
+  statusTag: Phaser.GameObjects.Text
+  statusKey: string
   hpBarGraphics: Phaser.GameObjects.Graphics
   turnArrow: Phaser.GameObjects.Triangle
   face: TankFace
@@ -661,6 +666,27 @@ export class BattleScene extends Phaser.Scene {
     this.props = survivors
   }
 
+  /**
+   * 築壘彈堆出的土丘：重新計算新土的「距原始地表深度」，讓土丘頂端長出主題地表（草皮 / 雪層）而不是一片土色，再重繪。
+   */
+  onTerrainFilled(cx: number, cy: number, radius: number, dirty: DirtyRect): void {
+    if (!this.isCreated || !this.core) return
+    const w = this.core.width
+    const rSq = radius * radius
+    for (let x = Math.max(0, cx - radius); x <= Math.min(w - 1, cx + radius); x++) {
+      for (let y = Math.max(0, cy - radius); y <= Math.min(this.core.height - 1, cy + radius); y++) {
+        const dx = x - cx
+        const dy = y - cy
+        if (dx * dx + dy * dy > rSq || !this.core.isSolid(x, y)) continue
+        let top = y
+        while (top > 0 && this.core.isSolid(x, top - 1)) top--
+        this.originalDepth[y * w + x] = Math.min(65535, y - top)
+      }
+    }
+    this.redrawTerrain(dirty)
+    this.spawnPuff(cx, cy - radius * 0.5, 0.6, 'fx_puff')
+  }
+
   private syncTanksVisuals(time: number, snap = false): void {
     const currentIds = new Set(Object.keys(this.battleState.tanks))
 
@@ -699,9 +725,32 @@ export class BattleScene extends Phaser.Scene {
         const turnArrow = this.add
           .triangle(0, -84, 0, 10, -7, 0, 7, 0, 0xfacc15)
           .setStrokeStyle(2, 0x0f172a)
+        const statusTag = this.add
+          .text(0, -76, '', {
+            fontFamily: 'system-ui, sans-serif',
+            fontSize: '11px',
+            fontStyle: 'bold',
+            color: '#ffffff',
+            stroke: '#241e33',
+            strokeThickness: 3,
+          })
+          .setOrigin(0.5, 0.5)
 
-        container.add([rig, hpBarGraphics, nameTag, turnArrow])
-        actor = { container, rig, barrel, hull, nameTag, hpBarGraphics, turnArrow, face, lastHp: tank.hp, lastSmokeAt: 0 }
+        container.add([rig, hpBarGraphics, nameTag, statusTag, turnArrow])
+        actor = {
+          container,
+          rig,
+          barrel,
+          hull,
+          nameTag,
+          statusTag,
+          statusKey: '',
+          hpBarGraphics,
+          turnArrow,
+          face,
+          lastHp: tank.hp,
+          lastSmokeAt: 0,
+        }
         this.tankActors.set(tank.id, actor)
         snap = true
       }
@@ -779,6 +828,7 @@ export class BattleScene extends Phaser.Scene {
       hull.setAlpha(0.55)
       barrel.setAlpha(0.55).setRotation((facingLeft ? Math.PI - 0.35 : 0.35) - slopeRad)
       actor.turnArrow.setVisible(false)
+      actor.statusTag.setVisible(false)
       actor.nameTag.setText(`💀 ${tank.name}`).setAlpha(0.7)
       actor.hpBarGraphics.clear()
       if (time - actor.lastSmokeAt > 450) {
@@ -816,10 +866,20 @@ export class BattleScene extends Phaser.Scene {
       actor.hpBarGraphics.fillRect(barX + 1, barY - 4, Math.round((barW - 2) * (tank.shield / tank.maxShield)), 3)
     }
 
-    // 行動回合跳動箭頭
+    // 狀態圖示：只在內容變了才重設文字
+    const statuses = visibleStatuses(tank)
+    const statusKey = statuses.map((s) => `${s.spec.icon}${Math.max(1, s.turnsLeft)}`).join(' ')
+    if (statusKey !== actor.statusKey) {
+      actor.statusKey = statusKey
+      actor.statusTag.setText(statusKey)
+      if (statuses.length > 0) actor.statusTag.setColor(statuses[0].spec.color)
+    }
+    actor.statusTag.setVisible(statuses.length > 0)
+
+    // 行動回合跳動箭頭（有狀態圖示時往上讓位）
     actor.turnArrow.setVisible(isActive)
     if (isActive) {
-      actor.turnArrow.y = -84 + Math.sin(time / 150) * 4
+      actor.turnArrow.y = (statuses.length > 0 ? -96 : -84) + Math.sin(time / 150) * 4
     }
   }
 
@@ -866,32 +926,42 @@ export class BattleScene extends Phaser.Scene {
     const activeTank = this.battleState.tanks[this.battleState.activePlayer]
     if (!activeTank || activeTank.hp <= 0) return
 
-    const projSpec =
-      getProjectileSpec(this.selectedBulletType)
+    const projSpec = getProjectileSpec(this.selectedBulletType)
     const { vxMilli, vyMilli } = launchVelocity(activeTank.angle, activeTank.power, projSpec.speedMultiplier)
-
-    const preview = this.core.simulateShot({
+    // 偵察狀態：畫出完整彈道（含跳彈、高拋穿地）與落點；平常只畫前段
+    const full = hasStatusFlag(activeTank, 'fullAimPreview')
+    const launch = {
       startX: activeTank.x,
       startY: activeTank.y - MUZZLE_RISE,
       vxMilli,
       vyMilli,
-      windMilli: effectiveWindMilli(
-        this.battleState.wind,
-        projSpec.windMultiplier,
-        getTankSpec(activeTank.tankId),
-      ),
+      windMilli: effectiveWindMilli(this.battleState.wind, projSpec.windMultiplier, getTankSpec(activeTank.tankId)),
       gravityMilli: projSpec.gravityMilli,
-      maxSteps: AIM_PREVIEW_STEPS,
-    })
+      maxSteps: full ? 1200 : AIM_PREVIEW_STEPS,
+    }
+    const traced = full ? traceShell(this.core, launch, projSpec.flight) : traceShell(this.core, launch, projSpec.flight?.kind === 'lob' ? projSpec.flight : undefined)
+    const path = traced[0].hit.path
 
     const dotColor = projSpec.visual.coreColor
-    for (let i = 3; i < preview.path.length; i += 2) {
-      const pt = preview.path[i]
-      const alpha = Math.max(0.15, 1 - i / preview.path.length)
+    for (let i = 3; i < path.length; i += 2) {
+      const pt = path[i]
+      const alpha = full ? 0.85 : Math.max(0.15, 1 - i / path.length)
       this.aimGraphics.fillStyle(dotColor, alpha)
       this.aimGraphics.lineStyle(1.5, 0x0f172a, alpha)
-      this.aimGraphics.fillCircle(pt.x, pt.y, 3.2)
-      this.aimGraphics.strokeCircle(pt.x, pt.y, 3.2)
+      this.aimGraphics.fillCircle(pt.x, pt.y, full ? 2.6 : 3.2)
+      this.aimGraphics.strokeCircle(pt.x, pt.y, full ? 2.6 : 3.2)
+    }
+    if (full) {
+      // 落點準星（碎裂彈每片各一個）
+      for (const { hit } of traced) {
+        if (!hit.impactedTerrain && !hit.hitTank) continue
+        this.aimGraphics.lineStyle(2.5, 0x241e33, 1)
+        this.aimGraphics.strokeCircle(hit.hitX, hit.hitY, 11)
+        this.aimGraphics.lineStyle(2, 0xfacc15, 1)
+        this.aimGraphics.strokeCircle(hit.hitX, hit.hitY, 9)
+        this.aimGraphics.lineBetween(hit.hitX - 15, hit.hitY, hit.hitX + 15, hit.hitY)
+        this.aimGraphics.lineBetween(hit.hitX, hit.hitY - 15, hit.hitX, hit.hitY + 15)
+      }
     }
   }
 
@@ -1051,15 +1121,15 @@ export class BattleScene extends Phaser.Scene {
   }
 
   /** 傷害數字飄字；擊毀時額外顯示 K.O. */
-  showDamage(x: number, y: number, amount: number, killed: boolean): void {
+  showDamage(x: number, y: number, amount: number, killed: boolean, color?: string): void {
     if (!this.scene.isActive()) return
     const text = this.add
       .text(x, y, `-${amount}`, {
         fontFamily: 'system-ui, sans-serif',
         fontSize: amount >= 30 ? '26px' : '20px',
         fontStyle: '900',
-        color: amount >= 30 ? '#fde047' : '#ffffff',
-        stroke: '#b91c1c',
+        color: color ?? (amount >= 30 ? '#fde047' : '#ffffff'),
+        stroke: color ? '#241e33' : '#b91c1c',
         strokeThickness: 5,
       })
       .setOrigin(0.5)

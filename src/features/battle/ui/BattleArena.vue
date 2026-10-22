@@ -30,6 +30,8 @@ import { availableShots, revealFor, type LoadoutSecret } from '../domain/loadout
 import { battleStateHash, createInitialBattleState, quantizePower } from '../domain/battleState'
 import { planBotMove, planBotShot } from '../domain/botBrain'
 import { MAP_REGISTRY, terrainOptionsFor } from '../domain/mapRegistry'
+import { getProjectileSpec } from '../domain/projectileRegistry'
+import { STATUS_REGISTRY } from '../domain/statusEffects'
 import { getTankSpec, tankAt } from '../domain/tankRegistry'
 import BattleCanvas from './BattleCanvas.vue'
 import BattleHud from './BattleHud.vue'
@@ -144,12 +146,22 @@ watch(
   },
   { immediate: true },
 )
+// 換回合時狀態（中毒）造成的持續傷害：跳出狀態顏色的傷害數字
+watch(
+  () => state.turnId,
+  () => {
+    for (const [pid, dmg] of Object.entries(state.lastStatusDamage ?? {})) {
+      const tank = state.tanks[pid]
+      if (tank && dmg > 0) canvasRef.value?.showDamage(tank.x, tank.y - 48, dmg, tank.hp <= 0, STATUS_REGISTRY.poison?.color)
+    }
+  },
+)
 const isMuted = ref(soundController.isMuted())
 const syncStatus = ref<'ok' | 'mismatch' | null>(null)
 const canvasRef = ref<InstanceType<typeof BattleCanvas> | null>(null)
 
 // --- 連線同步：雜湊比對與房主權威重新同步 ---
-// 地形只會被 carveCircle 改變，記下本局所有挖坑即可在另一端重建完全相同的地形
+// 地形只會被 carveCircle / fillCircle 改變，記下本局所有挖坑與堆土（半徑為負 = 堆土）即可在另一端重建完全相同的地形
 let carveLog: number[] = []
 // 對手送來的回合結束雜湊：等本機也播完同一回合再比對，避免動畫還沒結束就誤判不一致
 let pendingHash: SyncHashEvent | null = null
@@ -263,21 +275,27 @@ function applyFireCommand(cmd: FireActionCommand, isLocal: boolean): void {
     emit('outgoing-message', cmd)
   }
 
+  // 鑽地彈打在地面上會往下鑽才爆，爆炸畫面跟著畫在鑽到的位置
+  const depth = getProjectileSpec(plan.bulletType).terrainDepth ?? 0
   canvasRef.value?.playProjectileFlight({
     shooterId: cmd.playerId,
     flights: plan.shots.map(({ hit }) => ({
       path: hit.path,
       explosionX: hit.hitX,
-      explosionY: hit.hitY,
+      explosionY: hit.hitTank ? hit.hitY : hit.hitY + depth,
       explosionRadius: Math.max(plan.damageRadius, plan.terrainRadius),
     })),
     bulletType: plan.bulletType,
     onArriveImpact: () => {
       const { carves, damageByPlayer } = commitFireImpact(state, plan, core)
       for (const c of carves) {
-        carveLog.push(c.x, c.y, c.radius)
-        canvasRef.value?.redrawTerrain(c.dirty)
-        canvasRef.value?.onTerrainCarved(c.x, c.y, c.radius)
+        carveLog.push(c.x, c.y, c.op === 'fill' ? -c.radius : c.radius)
+        if (c.op === 'fill') {
+          canvasRef.value?.onTerrainFilled(c.x, c.y, c.radius, c.dirty)
+        } else {
+          canvasRef.value?.redrawTerrain(c.dirty)
+          canvasRef.value?.onTerrainCarved(c.x, c.y, c.radius)
+        }
       }
       if (carves.length > 0) emitBattleSound('explosion')
       for (const [pid, dmg] of Object.entries(damageByPlayer)) {
@@ -381,7 +399,9 @@ function applySnapshot(msg: ResyncStateEvent): void {
   const mapSpec = MAP_REGISTRY[snap.mapId] ?? MAP_REGISTRY.harvest_plains
   core.resetTerrain(snap.seed, terrainOptionsFor(mapSpec))
   for (let i = 0; i + 2 < msg.carves.length; i += 3) {
-    core.carveCircle(msg.carves[i], msg.carves[i + 1], msg.carves[i + 2])
+    const r = msg.carves[i + 2]
+    if (r < 0) core.fillCircle(msg.carves[i], msg.carves[i + 1], -r)
+    else core.carveCircle(msg.carves[i], msg.carves[i + 1], r)
   }
   carveLog = [...msg.carves]
   Object.assign(state, snap)

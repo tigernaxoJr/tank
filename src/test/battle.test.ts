@@ -23,16 +23,16 @@ import { TANK_REGISTRY } from '@/features/battle/domain/tankRegistry'
 import { ROSTER_1V1, setupBattle } from './helpers'
 
 const fire = (over: Partial<FireActionCommand> = {}): FireActionCommand => ({
-  type: 'ACTION_FIRE', turnId: 1, playerId: 'p1', angle: 45, power: 70, wind: 0, bulletType: 'MISSILE_STANDARD', ...over,
+  type: 'ACTION_FIRE', turnId: 1, playerId: 'p1', angle: 45, power: 70, wind: 0, bulletType: 'SCORPION_ACID', ...over,
 })
 
 describe('回合與傷害結算', () => {
   it('交錯出手順序：A1 B1 A2 B2', () => {
     const roster: RosterSlot[] = [
-      { id: 'a1', name: '', team: 'A', tankId: 'aegis', isHost: true },
-      { id: 'a2', name: '', team: 'A', tankId: 'aegis', isHost: false },
-      { id: 'b1', name: '', team: 'B', tankId: 'aegis', isHost: false },
-      { id: 'b2', name: '', team: 'B', tankId: 'aegis', isHost: false },
+      { id: 'a1', name: '', team: 'A', tankId: 'scorpion', isHost: true },
+      { id: 'a2', name: '', team: 'A', tankId: 'scorpion', isHost: false },
+      { id: 'b1', name: '', team: 'B', tankId: 'scorpion', isHost: false },
+      { id: 'b2', name: '', team: 'B', tankId: 'scorpion', isHost: false },
     ]
     expect(buildInterleavedTurnOrder(roster)).toEqual(['a1', 'b1', 'a2', 'b2'])
   })
@@ -54,9 +54,9 @@ describe('回合與傷害結算', () => {
   })
   it('advanceTurn 跳過陣亡坦克並補滿燃料', () => {
     const roster: RosterSlot[] = [
-      { id: 'a1', name: '', team: 'A', tankId: 'aegis', isHost: true },
-      { id: 'b1', name: '', team: 'B', tankId: 'aegis', isHost: false },
-      { id: 'a2', name: '', team: 'A', tankId: 'aegis', isHost: false },
+      { id: 'a1', name: '', team: 'A', tankId: 'scorpion', isHost: true },
+      { id: 'b1', name: '', team: 'B', tankId: 'scorpion', isHost: false },
+      { id: 'a2', name: '', team: 'A', tankId: 'scorpion', isHost: false },
     ]
     const { state } = setupBattle(1024, 'harvest_plains', roster)
     state.tanks.b1.hp = 0
@@ -102,8 +102,8 @@ describe('開火流程', () => {
   })
   it('非專屬砲彈退回預設彈', () => {
     const { state, core } = setupBattle()
-    const plan = prepareFireTrajectory(state, fire({ bulletType: 'MISSILE_RAILGUN' }), core)!
-    expect(plan.bulletType).toBe(TANK_REGISTRY.aegis.shots[0])
+    const plan = prepareFireTrajectory(state, fire({ bulletType: 'HAWK_RAIL' }), core)!
+    expect(plan.bulletType).toBe(TANK_REGISTRY.scorpion.shots[0])
     expect(state.phase).toBe('FIRING')
   })
   it('兩端以相同指令模擬得到相同彈道、地形與狀態雜湊', () => {
@@ -124,9 +124,9 @@ describe('開火流程', () => {
   })
   it('直擊吃滿傷害（回歸：不被車身中心偏移衰減）', () => {
     const { state, core } = setupBattle()
-    const spec = TANK_REGISTRY.goliath
-    const proj = PROJECTILE_REGISTRY.MISSILE_STANDARD
-    const expected = Math.max(1, Math.round(proj.maxDamage * TANK_REGISTRY.aegis.damageMultiplier) - spec.armor)
+    const spec = TANK_REGISTRY.bastion
+    const proj = PROJECTILE_REGISTRY.SCORPION_ACID
+    const expected = Math.max(1, Math.round(proj.maxDamage * TANK_REGISTRY.scorpion.damageMultiplier) - spec.armor)
     let found = false
     outer: for (let power = 30; power <= 100; power++) {
       for (let angle = 20; angle <= 80; angle++) {
@@ -145,14 +145,14 @@ describe('開火流程', () => {
     const { state, core } = setupBattle()
     const plan = prepareFireTrajectory(state, fire(), core)!
     expect(plan.shots).toHaveLength(1)
-    expect(plan.shots[0].maxDamage).toBe(Math.round(PROJECTILE_REGISTRY.MISSILE_STANDARD.maxDamage * TANK_REGISTRY.aegis.damageMultiplier))
+    expect(plan.shots[0].maxDamage).toBe(Math.round(PROJECTILE_REGISTRY.SCORPION_ACID.maxDamage * TANK_REGISTRY.scorpion.damageMultiplier))
   })
   it('多顆彈丸依序結算：各自挖坑、各自經過裝甲後加總傷害', () => {
     const { state, core } = setupBattle()
     const t = state.tanks.p2
     const shot = { hit: { hitX: t.x, hitY: t.y - 10, impactedTerrain: false, hitTank: true, stepsTaken: 1, path: [] }, maxDamage: 20 }
-    const plan = { cmd: fire(), shots: [shot, shot], damageRadius: 40, terrainRadius: 10, directHitMultiplier: 1, bulletType: 'MISSILE_STANDARD' as const }
-    const perShot = Math.max(1, 20 - TANK_REGISTRY.goliath.armor)
+    const plan = { cmd: fire(), shots: [shot, shot], damageRadius: 40, terrainRadius: 10, directHitMultiplier: 1, bulletType: 'SCORPION_ACID' as const }
+    const perShot = Math.max(1, 20 - TANK_REGISTRY.bastion.armor)
     const { carves, damageByPlayer } = commitFireImpact(state, plan, core)
     expect(carves).toHaveLength(2)
     expect(damageByPlayer.p2).toBe(perShot * 2)
@@ -162,7 +162,7 @@ describe('開火流程', () => {
     const t = state.tanks.p2
     core.carveCircle(t.x, t.y + 30, 140)
     const miss = { hit: { hitX: 0, hitY: 0, impactedTerrain: false, hitTank: false, stepsTaken: 1, path: [] }, maxDamage: 0 }
-    const plan = { cmd: fire(), shots: [miss], damageRadius: 0, terrainRadius: 0, directHitMultiplier: 1, bulletType: 'MISSILE_STANDARD' as const }
+    const plan = { cmd: fire(), shots: [miss], damageRadius: 0, terrainRadius: 0, directHitMultiplier: 1, bulletType: 'SCORPION_ACID' as const }
     const before = t.y
     commitFireImpact(state, plan, core)
     expect(t.y).toBeGreaterThan(before)
@@ -211,9 +211,9 @@ describe('移動', () => {
     t.y = core.surfaceY(t.x) - 12
     return { state, core, tank: t, bx, bumpW }
   }
-  it('小凸起（彈坑邊、碎石）可以直接壓過去，爬坡最差的巨像也行', () => {
+  it('小凸起（彈坑邊、碎石）可以直接壓過去，爬坡最差的鐵壁堡壘也行', () => {
     const { state, core, tank, bx, bumpW } = bumpBattle(8, 20)
-    tank.tankId = 'goliath' // 爬坡最差（climbPerPx 2）
+    tank.tankId = 'bastion' // 爬坡最差（climbPerPx 2）
     moveActiveTank(state, 60, core)
     expect(tank.x).toBeGreaterThan(bx + bumpW)
   })
@@ -232,7 +232,7 @@ describe('移動', () => {
       ] as never,
     })
     const t = state.tanks.p1
-    t.tankId = 'goliath'
+    t.tankId = 'bastion'
     t.x = cx - rx - 10
     t.y = core.surfaceY(t.x) - 12
     return { state, core, tank: t, cx }
@@ -297,10 +297,10 @@ describe('走下高處', () => {
     moveActiveTank(state, 20, core)
     expect(tank.hp).toBe(hp)
   })
-  it('Goliath 摔落抗性 40% 比 Aegis 少受傷', () => {
+  it('鐵壁堡壘摔落抗性 30% 比毒蠍少受傷', () => {
     const a = cliffBattle(0.2)
     const g = cliffBattle(0.2)
-    g.state.tanks.p1.tankId = 'goliath'
+    g.state.tanks.p1.tankId = 'bastion'
     moveActiveTank(a.state, 20, a.core)
     moveActiveTank(g.state, 20, g.core)
     const lossA = a.tank.maxHp - a.tank.hp
@@ -326,18 +326,18 @@ describe('註冊表一致性', () => {
       for (const s of tank.shots) expect(PROJECTILE_REGISTRY[s]).toBeDefined()
     }
   })
-  it('疾風的血量×輸出不超過其他機種太多（平衡預算粗檢）', () => {
-    const budget = (id: keyof typeof TANK_REGISTRY) => TANK_REGISTRY[id].maxHp * TANK_REGISTRY[id].damageMultiplier
-    const vals = (['aegis', 'goliath', 'zephyr'] as const).map(budget)
-    expect(Math.max(...vals) / Math.min(...vals)).toBeLessThan(1.3)
+  it('每台坦克至少有一種會造成傷害的砲彈（電腦只用傷害彈）', () => {
+    for (const tank of Object.values(TANK_REGISTRY)) {
+      expect(tank.shots.some((s) => PROJECTILE_REGISTRY[s].maxDamage > 0)).toBe(true)
+    }
   })
 })
 
 describe('玩家斷線 (forfeitPlayer)', () => {
   const trio: RosterSlot[] = [
-    { id: 'a1', name: '', team: 'A', tankId: 'aegis', isHost: true },
-    { id: 'b1', name: '', team: 'B', tankId: 'aegis', isHost: false },
-    { id: 'b2', name: '', team: 'B', tankId: 'aegis', isHost: false },
+    { id: 'a1', name: '', team: 'A', tankId: 'scorpion', isHost: true },
+    { id: 'b1', name: '', team: 'B', tankId: 'scorpion', isHost: false },
+    { id: 'b2', name: '', team: 'B', tankId: 'scorpion', isHost: false },
   ]
   it('輪到離線者時直接換下一位，坦克陣亡', () => {
     const { state } = setupBattle(1024, 'harvest_plains', trio)
@@ -402,7 +402,7 @@ describe('玩家斷線 · 電腦接手 (takeOverWithBot)', () => {
 })
 
 describe('遠端動作來源驗證', () => {
-  const fireMsg = (playerId: string) => ({ type: 'ACTION_FIRE', turnId: 1, playerId, angle: 45, power: 60, wind: 0, bulletType: 'MISSILE_STANDARD' }) as const
+  const fireMsg = (playerId: string) => ({ type: 'ACTION_FIRE', turnId: 1, playerId, angle: 45, power: 60, wind: 0, bulletType: 'SCORPION_ACID' }) as const
   it('自稱別人的開火 / 移動 / 跳過視為偽造', () => {
     expect(isForgedAction(fireMsg('p1'), 'p2')).toBe(true)
     expect(isForgedAction({ type: 'ACTION_MOVE', turnId: 1, playerId: 'p1', targetX: 10 }, 'p2')).toBe(true)

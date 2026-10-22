@@ -123,7 +123,7 @@ tank/
    * **參考其他遊戲的版權守則**：只能借用通用地形版型概念；禁止複製他作的地圖圖片、地形資料、音樂與文字，遊戲內地圖名稱與描述不得使用他作名稱或商標。
    * **新增/修改砲彈與飛行特效**：在 [`domain/projectiles/`](../src/features/battle/domain/projectiles/) 新增 `<name>.ts`（default export `defineProjectile({...})`，由 [`projectileRegistry.ts`](../src/features/battle/domain/projectileRegistry.ts) 以 `import.meta.glob` 自動收集，需設定唯一的 `sortOrder`；內容為 `ProjectileBlueprint`，設定 `damageRadius`、`terrainRadius`、`maxDamage`、`speedMultiplier`、`gravityMilli`、`windMultiplier`、`postImpactHoldMs` 與 `visual.fx`；一般彈重力用 `STANDARD_GRAVITY_MILLI`，播放時鐘為全域 `PLAYBACK_MS_PER_STEP`，見 [`06-gameplay-reference-and-physics.md`](./06-gameplay-reference-and-physics.md)）。
    * **特效一律資料化**：砲口光暈、飛行尾焰（光點 / 擴散環 / 煙霧 / 火星機率）與爆炸序列都由 `visual.fx`（`ProjectileFx`）的參數描述，`BattleScene` 只讀參數，**不得**出現依彈種 id 或樣式名稱分支的程式（如 `if (isPlasma)`）。需要新外觀就擴充 `ProjectileFx` 欄位，而不是在渲染器加分支。
-   * **禁止寫死機種 / 彈種 id**：查表用 `getTankSpec(id)` / `getProjectileSpec(id)`（找不到時退回清單第一筆），預設陣容用 `tankAt(i)` 輪流取，CPU 選彈依砲彈屬性（如 `maxDamage`）判斷，不得寫 `'aegis'`、`'MISSILE_PLASMA'` 等字面值（測試固定資料除外），這樣新增項目才不必到處補。
+   * **禁止寫死機種 / 彈種 id**：查表用 `getTankSpec(id)` / `getProjectileSpec(id)`（找不到時退回清單第一筆），預設陣容用 `tankAt(i)` 輪流取，CPU 選彈依砲彈屬性（如 `maxDamage`）判斷，不得寫 `'bastion'`、`'HAWK_RAIL'` 等字面值（測試固定資料除外），這樣新增項目才不必到處補。
    * **id 型別與一致性**：`TankArchetypeId`、`BulletType` 為 `string`（自動收集推不出字面值聯集，且 shared kernel 不得反向依賴 feature），打錯 id 不會被編譯器擋下，改由 [`registry.test.ts`](../src/test/registry.test.ts) 守住：id / `sortOrder` 不重複、`shots` 都已註冊、坦克與彈體美術檔都存在。新增機種或砲彈後務必跑 `pnpm test`。
 2. **開火與鏡頭跟隨的「投籃拋物線節奏 (Basketball Arc Pacing)」**：
    * **嚴禁瞬移結算**：按下開火後，必須先呼叫 `prepareFireTrajectory` 進入 `FIRING` 階段，由 Phaser 鏡頭平滑跟隨砲彈升空、過頂、下墜（依彈種不同保證 `1.55s ~ 3.35s` 的流暢滯空時間，並沿途噴發專屬尾焰粒子）。
@@ -151,7 +151,7 @@ tank/
    * **Phaser 畫布使用 `Scale.RESIZE`**：畫布等於視窗大小、不裁切；寬度不足 `lg` 時頂部對戰列改為靠左並下移，避免與左上鏡頭列、右上雷達重疊。
    * **內嵌式街機儀表板 Overlay**：所有戰鬥資訊與操控（隊伍總血量、風向羅盤、小地圖、2.5D 戰車頭像、仰角微調、彈藥切換、30 格街機蓄力槽與開火鈕）必須作為 `absolute inset-0 pointer-events-none` 圖層直接疊加於 Phaser 遊戲畫布上方（[`BattleHud.vue`](../src/features/battle/ui/BattleHud.vue)），禁止使用傳統 `<input type="range">` 滑桿表單。
 6. **對戰前直覺選車守則 (Direct Match Tank Selection)**：
-   * 無論在 **P2P 連線配對區**（進房前與房間候戰室）或 **單機多人熱座 (Hotseat 1v1~5v5)** 的隊伍編制面板中，都必須直接提供 2.5D 戰車型號切換按鈕（`aegis` / `goliath` / `zephyr`），讓每位玩家都能在開戰設定區直覺挑選或更換出戰坦克。
+   * 無論在 **P2P 連線配對區**（進房前與房間候戰室）或 **單機多人熱座 (Hotseat 1v1~5v5)** 的隊伍編制面板中，都必須直接提供 2.5D 戰車型號切換按鈕（`TANK_LIST` 的全部機種，目前 6 台，見 `docs/06` §三之八），讓每位玩家都能在開戰設定區直覺挑選或更換出戰坦克。
 7. **遊戲大廳美學與介面守則 (Lobby Visual Style: Sky, War, Joy & Zero Form Scroll)**：
    * **天空、戰爭、歡樂風格**：大廳採「晴空高照 (Sky) × 裝甲軍武 (War) × 街機歡樂 (Joy)」主題，營造明亮、通透、富戰術活力的街機氛圍，絕不使用死黑、陰沉昏暗的沉重配色。
    * **色彩明度與純淨度**：主色調為晴空湛藍 (Sky / Royal Blue)、陽光金 (Golden Amber)、鮮明暖橘與清亮白。**嚴格禁止使用果青色 (Murky Teal / Cyan-green) 等濁色調**，維持純淨飽滿的視覺能量。
@@ -197,3 +197,7 @@ tank/
 | 2026-10-22 | CI（main，commit `9c5da5b`） | GitHub Actions `Deploy to GitHub Pages` | ✅ 成功（含 `pnpm test`、型別檢查、建置、部署） | run [39736386678](https://github.com/tigernaxoJr/tank/actions/runs/39736386678) |
 | 2026-10-22 | 前端型別檢查 + 建置 | `pnpm run build` | ✅ 通過（`vue-tsc -b && vite build`，零錯誤） | 遊戲大廳美化重構（天空、戰爭、歡樂風格，零表單捲動）；未 commit |
 | 2026-10-22 | 前端 + server 單元測試 | `pnpm test` | ✅ Vitest 59 / 59、server node:test 4 / 4 通過 | 大廳重構與 UI 音效擴充後；未 commit |
+| 2026-10-22 | Rust 核心 | `cargo test --manifest-path crates/tank-core/Cargo.toml` | ✅ 10 + 1 通過 | 新增 `fill_circle`（築壘彈堆土）與測試；本機以 `wasm-pack` 重建 `src/shared/wasm/pkg`；未 commit |
+| 2026-10-22 | 前端 + server 單元測試 | `pnpm test` | ✅ Vitest 88 / 88、server node:test 4 / 4 通過 | 坦克與砲彈陣容重新設計（6 台、12 種砲彈、狀態效果、散彈 / 跳彈 / 碎裂 / 高拋、堆土 / 鑽地 / 擊退），新增 `mechanics.test.ts`；未 commit |
+| 2026-10-22 | 前端型別檢查 + 建置 | `pnpm run build` | ✅ 通過 | 同上；未 commit |
+| 2026-10-22 | 平衡模擬（σ = 5 / 25 / 45 / 70 px，種子 20261022，每組 20000 場） | `node tools/balance/duel_sim.mjs` | ⚠️ 各機種平均勝率 41%~61%，多數配對 35%~65%；4 組配對在單一精度超過 65%（原因與取捨見 `docs/06` §三之八.4） | 新陣容；模擬器新增散彈 / 碎裂 / 中毒 / 破甲 / 護盾 / 紮根模型；未 commit |

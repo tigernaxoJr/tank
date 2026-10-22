@@ -361,6 +361,33 @@ impl TerrainGrid {
         }
     }
 
+    /// 堆出圓形土丘（只把空氣填成土壤，基岩不變）並回傳髒矩形；築壘彈等「新增地形」用
+    pub fn fill_circle(&mut self, cx: i32, cy: i32, radius: i32) -> DirtyRect {
+        let min_x = (cx - radius).max(0) as u32;
+        let max_x = (cx + radius).min(self.width as i32 - 1).max(0) as u32;
+        let min_y = (cy - radius).max(0) as u32;
+        let max_y = (cy + radius).min(self.height as i32 - 1).max(0) as u32;
+        let r_sq = radius * radius;
+
+        for y in min_y..=max_y {
+            for x in min_x..=max_x {
+                let dx = x as i32 - cx;
+                let dy = y as i32 - cy;
+                let i = (y * self.width + x) as usize;
+                if dx * dx + dy * dy <= r_sq && self.mask[i] == AIR {
+                    self.mask[i] = DIRT;
+                }
+            }
+        }
+
+        DirtyRect {
+            x: min_x,
+            y: min_y,
+            width: max_x.saturating_sub(min_x) + 1,
+            height: max_y.saturating_sub(min_y) + 1,
+        }
+    }
+
     /// 供狀態同步比對的輕量確定性雜湊 (FNV-1a 32-bit)
     pub fn state_hash(&self) -> u32 {
         let mut hash: u32 = 0x811c9dc5;
@@ -417,6 +444,16 @@ mod tests {
         assert!(rect.width > 0 && rect.height > 0);
         assert!(!grid.is_solid(50, 80));
         assert_ne!(initial_hash, grid.state_hash());
+    }
+
+    #[test]
+    fn fill_circle_adds_dirt_in_air() {
+        let mut grid = TerrainGrid::new(100, 100, 12345);
+        let sy = grid.surface_y(50);
+        assert!(!grid.is_solid(50, sy - 5));
+        grid.fill_circle(50, sy, 10);
+        assert!(grid.is_solid(50, sy - 5));
+        assert_eq!(grid.material_at(50, sy - 5), DIRT);
     }
 
     #[test]

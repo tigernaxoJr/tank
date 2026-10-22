@@ -6,7 +6,7 @@
 
 | 項目 | 狀態 |
 |---|---|
-| Q 版原創坦克（aegis / goliath / zephyr × 琥珀 / 皇家藍）、三種砲彈、光暈 / 火花 / 衝擊波粒子 | ✅ 完成，`tools/assets/paint_units.mjs`，風格規範在 docs/04 §六 |
+| Q 版原創坦克（6 台：bastion / zephyr / scorpion / frostback / burrower / hawkeye × 琥珀 / 皇家藍）、12 種砲彈、光暈（火 / 電漿 / 毒 / 冰）/ 火花 / 衝擊波粒子 | ✅ 完成，`tools/assets/paint_units.mjs`，風格規範在 docs/04 §六 |
 | 地圖 1：`harvest_plains`（主題 `harvest_farm`，晨光風車農場，平原 + 每側兩座低土丘） | ✅ 完成，已和使用者確認 |
 | 地圖 2：`volcano_gorge`（主題 `volcano_rift`，火山熔岩，兩側高台 + 中央深谷 + 石拱） | ✅ 完成，已和使用者確認 |
 | 地圖 3：`gale_coast`（主題 `tropic_coast`，強風熱帶海岸，沙丘 + 中央對稱雙浮島，maxWind 14；取代舊 `polar_glacier`） | ✅ 完成，已在瀏覽器驗證（使用者選定風格）；新輔助函式 `windPalm`（被風吹彎的椰子樹）、`stiltHut` |

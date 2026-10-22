@@ -1,0 +1,40 @@
+import { STANDARD_GRAVITY_MILLI, defineProjectile } from '../projectileBlueprint'
+
+export default defineProjectile({
+  id: 'SCORPION_TOXIN',
+  sortOrder: 4,
+  name: '毒霧彈 (Venom Cloud)',
+  badge: '中毒 3 回合 · 每回合 8',
+  description: '爆開一團毒霧，直接傷害低，但被波及的坦克中毒 3 回合，每個自己的回合開始時扣血。重複命中只會刷新回合數。',
+  damageRadius: 36,
+  terrainRadius: 24,
+  maxDamage: 14,
+  magnetRadius: 24,
+  directHitMultiplier: 1,
+  speedMultiplier: 1,
+  gravityMilli: STANDARD_GRAVITY_MILLI,
+  windMultiplier: 4,
+  onHit: { status: 'poison', turns: 3, power: 8 },
+  postImpactHoldMs: 1000,
+  visual: {
+    sprite: { key: 'shell_toxin', scale: 0.45 },
+    coreRadius: 7,
+    coreColor: 0xd9f99d,
+    glowColor: 0xa855f7,
+    strokeColor: 0x4c1d95,
+    fx: {
+      glow: 'fx_glow_toxic',
+      haloAlpha: 0.6,
+      trail: {
+        glowSize: 0.36,
+        glowMs: 360,
+        glowDepth: 19,
+        puff: { texture: 'fx_puff', scale: 0.14, scaleJitter: 0.06, chance: 0.45 },
+        sparkChance: 0,
+      },
+      explosion: { sheet: 'fx_smoke', sparks: false },
+    },
+    explosionColors: [0xf7fee7, 0xbef264, 0xa855f7, 0x581c87],
+    cameraShakeIntensity: 0.008,
+  },
+})

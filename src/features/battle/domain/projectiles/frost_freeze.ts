@@ -1,0 +1,40 @@
+import { STANDARD_GRAVITY_MILLI, defineProjectile } from '../projectileBlueprint'
+
+export default defineProjectile({
+  id: 'FROST_FREEZE',
+  sortOrder: 6,
+  name: '凍結彈 (Frost Bomb)',
+  badge: '冰凍 2 回合 · 受風大',
+  description: '傷害不高，但被波及的坦克接下來 2 回合移動燃料上限 −60%（仍可正常開砲），結束後 1 回合免疫。彈體輕，很容易被風吹偏。',
+  damageRadius: 46,
+  terrainRadius: 26,
+  maxDamage: 20,
+  magnetRadius: 22,
+  directHitMultiplier: 1,
+  speedMultiplier: 1,
+  gravityMilli: STANDARD_GRAVITY_MILLI,
+  windMultiplier: 5,
+  onHit: { status: 'freeze', turns: 2, power: 60 },
+  postImpactHoldMs: 1000,
+  visual: {
+    sprite: { key: 'shell_freeze', scale: 0.45, spin: 5 },
+    coreRadius: 7,
+    coreColor: 0xf0f9ff,
+    glowColor: 0x7dd3fc,
+    strokeColor: 0x0c4a6e,
+    fx: {
+      glow: 'fx_glow_ice',
+      haloAlpha: 0.75,
+      trail: {
+        glowSize: 0.36,
+        glowMs: 360,
+        glowDepth: 19,
+        ring: { fill: 0xe0f2fe, stroke: 0x7dd3fc },
+        sparkChance: 0.2,
+      },
+      explosion: { sheet: 'fx_flash', sparks: true },
+    },
+    explosionColors: [0xffffff, 0xe0f2fe, 0x7dd3fc, 0x0369a1],
+    cameraShakeIntensity: 0.009,
+  },
+})

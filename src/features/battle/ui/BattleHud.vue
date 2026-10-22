@@ -13,6 +13,7 @@
 import { computed, onUnmounted, ref, watch } from 'vue'
 import type { BattleState } from '../domain/battleState'
 import { PROJECTILE_REGISTRY } from '../domain/projectileRegistry'
+import { visibleStatuses } from '../domain/statusEffects'
 import { TANK_LIST, getTankSpec } from '../domain/tankRegistry'
 import type { BulletType, PlayerId, TeamId } from '@/shared/kernel/types'
 import { useBattleInput } from './composables/useBattleInput'
@@ -74,6 +75,8 @@ const panelTankSpec = computed(() => (panelTank.value ? getTankSpec(panelTank.va
 const panelSpriteUrl = computed(() => panelTankSpec.value.getSprites(panelTeam.value).hullUrl)
 const panelTankType = computed(() => panelTankSpec.value.name.split(' ')[0])
 const panelName = computed(() => stripBotMark(panelTank.value?.name))
+/** 駕駛艙坦克身上的狀態（中毒、冰凍、破甲、紮根、偵察）與剩餘回合 */
+const panelStatuses = computed(() => (panelTank.value ? visibleStatuses(panelTank.value) : []))
 /** 沒有自己的坦克（全電腦觀戰）時只能跟著回合坦克 */
 const shownMode = computed(() => (props.hasOwnTank ? props.panelMode : 'active'))
 /** 駕駛艙顯示的不是出手者（切到「自己」、但現在輪到別人） */
@@ -366,6 +369,17 @@ onUnmounted(() => {
               <div class="flex items-baseline gap-2 leading-tight">
                 <span class="truncate text-base">{{ panelName }}</span>
                 <span class="hidden shrink-0 text-sm text-ink-soft xl:inline">{{ panelTankType }}</span>
+              </div>
+              <div v-if="panelStatuses.length > 0" class="flex flex-wrap gap-1">
+                <span
+                  v-for="s in panelStatuses"
+                  :key="s.spec.id"
+                  class="toon-pill px-1.5 text-[12px] leading-tight text-white"
+                  :style="{ background: s.spec.color }"
+                  :title="s.spec.description"
+                >
+                  {{ s.spec.icon }} {{ s.spec.name }}<b class="font-num">{{ Math.max(1, s.turnsLeft) }}</b>
+                </span>
               </div>
               <div class="flex items-center gap-1.5 text-sm">
                 <span class="w-8 shrink-0">血量</span>

@@ -1,0 +1,40 @@
+import { STANDARD_GRAVITY_MILLI, defineProjectile } from '../projectileBlueprint'
+
+export default defineProjectile({
+  id: 'ZEPHYR_SKIP',
+  sortOrder: 3,
+  name: '跳彈 (Skip Shot)',
+  badge: '觸地反彈一次 · 打掩體後方',
+  description: '第一次碰到地形不爆炸，以約一半的速度反彈一次再引爆；算好反彈角度，就能打到躲在土丘或坑邊後面的對手。',
+  damageRadius: 34,
+  terrainRadius: 26,
+  maxDamage: 38,
+  magnetRadius: 18,
+  directHitMultiplier: 1,
+  speedMultiplier: 1,
+  gravityMilli: STANDARD_GRAVITY_MILLI,
+  windMultiplier: 4,
+  flight: { kind: 'bounce', keepPermille: 550 },
+  postImpactHoldMs: 950,
+  visual: {
+    sprite: { key: 'shell_skip', scale: 0.45, spin: 14 },
+    coreRadius: 6,
+    coreColor: 0xfef9c3,
+    glowColor: 0x22d3ee,
+    strokeColor: 0x155e75,
+    fx: {
+      glow: 'fx_glow_plasma',
+      haloAlpha: 0.5,
+      trail: {
+        glowSize: 0.3,
+        glowMs: 260,
+        glowDepth: 20,
+        ring: { fill: 0x67e8f9, stroke: 0xfef08a },
+        sparkChance: 0,
+      },
+      explosion: { sheet: 'fx_explosion', sparks: true },
+    },
+    explosionColors: [0xffffff, 0xfef9c3, 0x67e8f9, 0x0891b2],
+    cameraShakeIntensity: 0.011,
+  },
+})

@@ -4,7 +4,7 @@
  * 因此與玩家共用同一套確定性彈道與投籃節奏演出。
  */
 import type { BotLevel, BulletType, PlayerId } from '@/shared/kernel/types'
-import type { TankCorePort } from '@/shared/wasm'
+import type { TankCorePort, TrajectoryHit } from '@/shared/wasm'
 import {
   groundUnderTank,
   launchVelocity,
@@ -17,6 +17,7 @@ import {
 } from './battleState'
 import { PROJECTILE_REGISTRY } from './projectileRegistry'
 import { availableShots } from './loadout'
+import { traceShell } from './shellFlight'
 import { effectiveWindMilli, getTankSpec } from './tankRegistry'
 
 export interface BotShotPlan {
@@ -60,7 +61,10 @@ function pickTarget(state: BattleState, bot: TankEntity): TankEntity | null {
 const FINISHER_HP = 40
 
 function pickBullet(bot: TankEntity, target: TankEntity, random: () => number): BulletType {
-  const shots = availableShots(bot)
+  // 電腦只用會造成傷害的砲彈（築壘、偵察這類輔助彈留給玩家）
+  const all = availableShots(bot)
+  const damaging = all.filter((id) => (PROJECTILE_REGISTRY[id]?.maxDamage ?? 0) > 0)
+  const shots = damaging.length > 0 ? damaging : all
   // 目標殘血時優先用單發傷害最高的砲彈（不指定特定彈種）；否則在可用砲彈中隨機
   if (target.hp <= FINISHER_HP) {
     return shots.reduce((best, id) => (PROJECTILE_REGISTRY[id].maxDamage > PROJECTILE_REGISTRY[best].maxDamage ? id : best))
@@ -90,24 +94,41 @@ export function planBotShot(
 
   type Aim = { angle: number; power: number; score: number }
   const found: { best: Aim | null } = { best: null }
+  // 彈道經過目標就算打中（截斷路徑），與開火結算一樣走 traceShell，跳彈 / 高拋 / 碎裂都算得準
+  const targetY = target.y - 10
+  const throughTarget = (hit: TrajectoryHit): TrajectoryHit => {
+    const i = hit.path.findIndex((p) => (p.x - target.x) ** 2 + (p.y - targetY) ** 2 <= TANK_HIT_RADIUS * TANK_HIT_RADIUS)
+    return i < 0 ? hit : { ...hit, hitX: hit.path[i].x, hitY: hit.path[i].y, hitTank: true, impactedTerrain: false, path: hit.path.slice(0, i + 1) }
+  }
   const consider = (angle: number, power: number): void => {
     const { vxMilli, vyMilli } = launchVelocity(angle, power, proj.speedMultiplier)
-    const hit = core.simulateShot({
-      startX: bot.x,
-      startY: bot.y - MUZZLE_RISE,
-      vxMilli,
-      vyMilli,
-      windMilli: effectiveWindMilli(state.wind, proj.windMultiplier, getTankSpec(bot.tankId)),
-      gravityMilli: proj.gravityMilli,
-      maxSteps: 1200,
-      targetX: target.x,
-      targetY: target.y - 10,
-      targetRadius: TANK_HIT_RADIUS,
-    })
-    if (!hit.hitTank && !hit.impactedTerrain) return
-    const dx = hit.hitX - target.x
-    const dy = hit.hitY - target.y
-    let score = Math.sqrt(dx * dx + dy * dy)
+    const traced = traceShell(
+      core,
+      {
+        startX: bot.x,
+        startY: bot.y - MUZZLE_RISE,
+        vxMilli,
+        vyMilli,
+        windMilli: effectiveWindMilli(state.wind, proj.windMultiplier, getTankSpec(bot.tankId)),
+        gravityMilli: proj.gravityMilli,
+        maxSteps: 1200,
+      },
+      proj.flight,
+      throughTarget,
+    )
+    // 碎裂彈取最接近目標的那一片
+    let hit: TrajectoryHit | null = null
+    let best = Infinity
+    for (const t of traced) {
+      if (!t.hit.hitTank && !t.hit.impactedTerrain) continue
+      const d = (t.hit.hitX - target.x) ** 2 + (t.hit.hitY - target.y) ** 2
+      if (d < best) {
+        best = d
+        hit = t.hit
+      }
+    }
+    if (!hit) return
+    let score = Math.sqrt(best)
     // 避免炸到自己
     const sx = hit.hitX - bot.x
     const sy = hit.hitY - bot.y

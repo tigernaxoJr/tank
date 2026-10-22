@@ -6,6 +6,14 @@ import type { BotLevel, BulletType, MapPresetId, PlayerId, RosterSlot, TankArche
 import type { TankCorePort } from '@/shared/wasm'
 import { sanitizeLoadout } from './loadout'
 import { MAP_REGISTRY } from './mapRegistry'
+import {
+  applyStatus,
+  expireStatusesAtTurnEnd,
+  hasStatusFlag,
+  mitigateForTank,
+  tickStatusesAtTurnStart,
+  type StatusInstance,
+} from './statusEffects'
 import { getTankSpec, tankAt } from './tankRegistry'
 
 export type TurnPhase = 'AIMING' | 'FIRING' | 'GAME_OVER'
@@ -32,6 +40,10 @@ export interface TankEntity {
   loadout?: BulletType[]
   /** 連線對戰的彈藥承諾（Merkle 根），開火時以 `reveal` 驗證，見 loadout.ts */
   loadoutRoot?: string
+  /** 身上的回合制狀態（中毒、冰凍、破甲、紮根、偵察），規則見 statusEffects.ts */
+  statuses: StatusInstance[]
+  /** 本回合是否移動過（紮根被動用），回合開始時重設 */
+  movedThisTurn: boolean
 }
 
 export interface BattleState {
@@ -46,6 +58,8 @@ export interface BattleState {
   winner: TeamId | 'draw' | null
   lastShotPath: { x: number; y: number }[]
   lastExplosion: { x: number; y: number; radius: number; timestamp: number } | null
+  /** 最近一次換回合時，狀態造成的持續傷害（供畫面跳傷害數字）；換回合時重設 */
+  lastStatusDamage: Record<PlayerId, number>
 }
 
 const DEFAULT_ROSTER: RosterSlot[] = [
@@ -111,6 +125,8 @@ export function createInitialBattleState(
       maxMoveFuel: spec.moveFuel,
       isBot: slot.isBot === true,
       botLevel: slot.botLevel ?? 'hard',
+      statuses: [],
+      movedThisTurn: false,
       ...loadoutFields(slot),
     }
   })
@@ -144,6 +160,8 @@ export function createInitialBattleState(
       maxMoveFuel: spec.moveFuel,
       isBot: slot.isBot === true,
       botLevel: slot.botLevel ?? 'hard',
+      statuses: [],
+      movedThisTurn: false,
       ...loadoutFields(slot),
     }
   })
@@ -162,6 +180,7 @@ export function createInitialBattleState(
     winner: null,
     lastShotPath: [],
     lastExplosion: null,
+    lastStatusDamage: {},
   }
 }
 
@@ -289,7 +308,8 @@ export function applyDamageAndCheckWinner(
   for (const [pid, dmg] of Object.entries(damageByPlayer)) {
     const tank = state.tanks[pid]
     if (tank && dmg > 0) {
-      const absorbed = Math.min(tank.shield, dmg)
+      // 破甲時護盾不吸收傷害（護盾值保留，狀態結束後恢復作用）
+      const absorbed = hasStatusFlag(tank, 'ignoresArmor') ? 0 : Math.min(tank.shield, dmg)
       tank.shield -= absorbed
       tank.hp = Math.max(0, Math.min(tank.maxHp, tank.hp - (dmg - absorbed)))
     }
@@ -311,12 +331,25 @@ export function applyDamageAndCheckWinner(
   }
 }
 
+/**
+ * 換下一位：先結束目前出手者的回合（狀態到期、整回合沒動的機種掛上 idleStatus），
+ * 再讓下一位存活的坦克開始回合（結算中毒等持續傷害、套用冰凍的燃料上限）。
+ * 被持續傷害打倒的坦克直接跳過，換再下一位；因此陣亡而分出勝負時維持 GAME_OVER。
+ */
 export function advanceTurn(state: BattleState, nextWind: number): void {
   state.turnId += 1
   state.wind = nextWind
+  state.lastStatusDamage = {}
 
   if (state.phase === 'GAME_OVER') {
     return
+  }
+
+  const outgoing = state.tanks[state.activePlayer]
+  if (outgoing) {
+    expireStatusesAtTurnEnd(outgoing)
+    const idle = getTankSpec(outgoing.tankId).idleStatus
+    if (idle && outgoing.hp > 0 && !outgoing.movedThisTurn) applyStatus(outgoing, idle)
   }
 
   const order = state.turnOrder
@@ -324,11 +357,20 @@ export function advanceTurn(state: BattleState, nextWind: number): void {
   for (let offset = 1; offset <= order.length; offset++) {
     const candidateId = order[(currentIdx + offset) % order.length]
     const candidateTank = state.tanks[candidateId]
-    if (candidateTank && candidateTank.hp > 0) {
-      state.activePlayer = candidateId
-      candidateTank.moveFuel = candidateTank.maxMoveFuel
-      break
+    if (!candidateTank || candidateTank.hp <= 0) continue
+    state.activePlayer = candidateId
+    const spec = getTankSpec(candidateTank.tankId)
+    const { damage, fuelPermille } = tickStatusesAtTurnStart(candidateTank)
+    candidateTank.moveFuel = Math.floor((candidateTank.maxMoveFuel * fuelPermille) / 1000)
+    candidateTank.movedThisTurn = false
+    let dot = 0
+    for (const [type, raw] of damage) dot += mitigateForTank(candidateTank, spec, type, raw)
+    if (dot > 0) {
+      state.lastStatusDamage[candidateId] = dot
+      applyDamageAndCheckWinner(state, { [candidateId]: dot })
+      if ((state.phase as TurnPhase) === 'GAME_OVER') return
     }
+    if (candidateTank.hp > 0) break
   }
 
   state.phase = 'AIMING'
@@ -349,6 +391,11 @@ export function battleStateHash(state: BattleState, terrainHash: number): number
     mix(t.y)
     mix(t.hp)
     mix(t.shield)
+    for (const s of t.statuses) {
+      for (let i = 0; i < s.id.length; i++) mix(s.id.charCodeAt(i))
+      mix(s.turnsLeft)
+      mix(s.power)
+    }
   }
   return h
 }

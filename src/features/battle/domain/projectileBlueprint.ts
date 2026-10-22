@@ -13,7 +13,7 @@ export const PLAYBACK_MS_PER_STEP = 18
 export const MIN_FLIGHT_MS = 500
 
 /** 疊加混色光暈貼圖（tools/assets/paint_units.mjs 的 fx 粒子） */
-export type GlowKey = 'fx_glow_fire' | 'fx_glow_plasma'
+export type GlowKey = 'fx_glow_fire' | 'fx_glow_plasma' | 'fx_glow_toxic' | 'fx_glow_ice'
 
 /**
  * 砲彈專屬特效參數。渲染器只讀這些參數，不認識任何彈種或樣式名稱，
@@ -43,7 +43,7 @@ export interface ProjectileFx {
   }
   readonly explosion: {
     /** 爆炸序列影格貼圖 */
-    readonly sheet: 'fx_explosion' | 'fx_flash'
+    readonly sheet: 'fx_explosion' | 'fx_flash' | 'fx_puff' | 'fx_smoke'
     /** 是否四散火花 */
     readonly sparks: boolean
   }

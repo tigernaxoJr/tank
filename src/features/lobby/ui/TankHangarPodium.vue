@@ -37,9 +37,22 @@ const shots = computed(() =>
 
 const stats = computed(() => [
   { label: '耐久', ratio: card.value.hpRatio, value: `${card.value.maxHp}`, unit: 'HP', color: 'var(--color-grass)' },
-  { label: '火力', ratio: card.value.outputRatio, value: `×${card.value.damageMultiplier.toFixed(2)}`, unit: '', color: 'var(--color-coral)' },
+  { label: '火力', ratio: card.value.firepowerRatio, value: `${card.value.firepower}`, unit: '傷害', color: 'var(--color-coral)' },
   { label: '機動', ratio: card.value.mobilityRatio, value: `${card.value.moveFuel}`, unit: '燃料', color: 'var(--color-sky)' },
 ])
+
+/**
+ * 展示台照遊戲內的 rig 組合車身與砲管：精靈圖以 2.5 倍繪製（PNG 原尺寸），錨點 × 2.5 就是原尺寸座標，
+ * 整組再縮放顯示。砲管轉軸在圖寬 8%、垂直置中（同 BattleScene）。
+ */
+const ART_ZOOM = 2.5
+const HULL_BASE_Y = 14
+const RIG_SCALE = 0.6
+const barrelStyle = computed(() => ({
+  left: `${spec.value.sprite.pivotX * ART_ZOOM}px`,
+  top: `${spec.value.sprite.pivotY * ART_ZOOM}px`,
+}))
+const hullStyle = computed(() => ({ top: `${HULL_BASE_Y * ART_ZOOM}px` }))
 
 function hexColor(n: number): string {
   return `#${n.toString(16).padStart(6, '0')}`
@@ -79,14 +92,12 @@ function setPaint(team: TeamId): void {
         />
       </div>
       <div class="absolute bottom-3 left-1/2 h-7 w-48 -translate-x-1/2 rounded-[50%] border-[3px] border-ink bg-grass" />
-      <div class="tank-bob absolute bottom-5 left-1/2 flex h-28 w-44 items-end justify-center">
-        <img
-          :src="sprites.barrelUrl"
-          alt=""
-          class="absolute h-6 w-auto"
-          style="top: 32px; left: 70px; transform-origin: 12% 50%; transform: rotate(-12deg)"
-        />
-        <img :src="sprites.hullUrl" :alt="spec.name" class="relative h-20 w-auto" />
+      <div class="tank-bob absolute bottom-[38px] left-1/2 h-0 w-0">
+        <!-- rig 原點：車身底線上方 HULL_BASE_Y；整組以 RIG_SCALE 縮放 -->
+        <div class="absolute left-0 top-0 h-0 w-0" :style="{ transform: `scale(${RIG_SCALE})`, transformOrigin: '0 0', marginTop: `${-HULL_BASE_Y * ART_ZOOM * RIG_SCALE}px` }">
+          <img :src="sprites.barrelUrl" alt="" class="rig-barrel absolute max-w-none" :style="barrelStyle" />
+          <img :src="sprites.hullUrl" :alt="spec.name" class="rig-hull absolute max-w-none" :style="hullStyle" />
+        </div>
       </div>
     </div>
 
@@ -194,6 +205,14 @@ function setPaint(team: TeamId): void {
 }
 .tank-bob {
   animation: bob 2.8s ease-in-out infinite;
+}
+.rig-barrel {
+  transform-origin: 8% 50%;
+  transform: translate(-8%, -50%) rotate(-14deg);
+}
+.rig-hull {
+  left: 0;
+  transform: translate(-50%, -100%);
 }
 @keyframes bob {
   0%, 100% { transform: translate(-50%, 0); }

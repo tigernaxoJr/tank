@@ -1,0 +1,23 @@
+import { defineTank } from '../tankBlueprint'
+
+export default defineTank({
+  id: 'burrower',
+  sortOrder: 4,
+  name: '地鼠工兵 Burrower',
+  subtitle: '拆地形 · 擊退',
+  description: '它從不瞄準你。它瞄準的是你腳下那塊地。鑽地彈挖穿地表讓對手墜落，震波彈把人推下懸崖。',
+  maxHp: 115,
+  moveFuel: 300,
+  damageRadiusBonus: 0,
+  terrainRadiusBonus: 6,
+  damageMultiplier: 1,
+  climbPerPx: 4,
+  fallSafePx: 30,
+  windSensitivity: 1,
+  armor: 0,
+  shield: 0,
+  resist: { fall: 1 },
+  passive: { name: '地底老手', description: '摔落傷害完全免疫；所有砲彈的挖坑範圍 +6 px。' },
+  shots: ['BURROW_DRILL', 'BURROW_QUAKE'],
+  sprite: { scale: 0.4, pivotX: -8, pivotY: -36, face: { x: 10, y: -15, eyeGap: 15, eyeSize: 6 } },
+})

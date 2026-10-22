@@ -109,6 +109,8 @@ export interface TankCorePort {
   groundBelow(x: number, fromY: number): number
   surfaceSlopeDeg(x: number, sampleSpan?: number, fromY?: number): number
   carveCircle(cx: number, cy: number, radius: number): DirtyRect
+  /** 堆出圓形土丘：只把空氣填成土壤（基岩不變），築壘彈用 */
+  fillCircle(cx: number, cy: number, radius: number): DirtyRect
   simulateShot(params: {
     startX: number
     startY: number
@@ -399,6 +401,31 @@ export class DeterministicTankCore implements TankCorePort {
         const dy = y - cy
         if (dx * dx + dy * dy <= rSq && this.mask[y * this.width + x] !== BEDROCK) {
           this.mask[y * this.width + x] = AIR
+        }
+      }
+    }
+
+    return {
+      x: minX,
+      y: minY,
+      width: Math.max(0, maxX - minX + 1),
+      height: Math.max(0, maxY - minY + 1),
+    }
+  }
+
+  fillCircle(cx: number, cy: number, radius: number): DirtyRect {
+    const minX = Math.max(0, (cx - radius) | 0)
+    const maxX = Math.max(0, Math.min(this.width - 1, (cx + radius) | 0))
+    const minY = Math.max(0, (cy - radius) | 0)
+    const maxY = Math.max(0, Math.min(this.height - 1, (cy + radius) | 0))
+    const rSq = radius * radius
+
+    for (let y = minY; y <= maxY; y++) {
+      for (let x = minX; x <= maxX; x++) {
+        const dx = x - cx
+        const dy = y - cy
+        if (dx * dx + dy * dy <= rSq && this.mask[y * this.width + x] === AIR) {
+          this.mask[y * this.width + x] = DIRT
         }
       }
     }

@@ -42,16 +42,19 @@ describe('windRules', () => {
 
 describe('tank damage rules', () => {
   it('mitigateDamage：裝甲固定減免、至少 1 點、抗性按比例', () => {
-    const goliath = TANK_REGISTRY.goliath
-    expect(mitigateDamage(goliath, 'explosion', 34)).toBe(32)
-    expect(mitigateDamage(goliath, 'explosion', 2)).toBe(1)
-    expect(mitigateDamage(goliath, 'explosion', 0)).toBe(0)
-    expect(mitigateDamage(goliath, 'fall', 10)).toBe(6) // 抗性 0.4
-    expect(mitigateDamage(TANK_REGISTRY.aegis, 'explosion', 34)).toBe(34)
+    const bastion = TANK_REGISTRY.bastion
+    expect(mitigateDamage(bastion, 'explosion', 34)).toBe(33)
+    expect(mitigateDamage(bastion, 'explosion', 1)).toBe(1)
+    expect(mitigateDamage(bastion, 'explosion', 0)).toBe(0)
+    expect(mitigateDamage(bastion, 'fall', 10)).toBe(7) // 抗性 0.3
+    expect(mitigateDamage(TANK_REGISTRY.scorpion, 'explosion', 34)).toBe(34)
+    // 抗性 1 = 免疫（毒蠍抗毒、地鼠工兵免摔）
+    expect(mitigateDamage(TANK_REGISTRY.scorpion, 'poison', 8)).toBe(0)
+    expect(mitigateDamage(TANK_REGISTRY.burrower, 'fall', 20)).toBe(0)
   })
   it('effectiveWindMilli 乘上砲彈係數與坦克敏感度', () => {
-    expect(effectiveWindMilli(4, 5, TANK_REGISTRY.aegis)).toBe(20)
-    expect(effectiveWindMilli(4, 5, TANK_REGISTRY.zephyr)).toBe(25)
+    expect(effectiveWindMilli(4, 5, TANK_REGISTRY.scorpion)).toBe(20)
+    expect(effectiveWindMilli(4, 5, TANK_REGISTRY.hawkeye)).toBe(14)
   })
   it('fallDamageFor：安全高度內不受傷，超過後每 6px 1 點，上限 30', () => {
     expect(fallDamageFor(30)).toBe(0)

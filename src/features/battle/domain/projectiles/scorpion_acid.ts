@@ -1,0 +1,40 @@
+import { STANDARD_GRAVITY_MILLI, defineProjectile } from '../projectileBlueprint'
+
+export default defineProjectile({
+  id: 'SCORPION_ACID',
+  sortOrder: 5,
+  name: '酸蝕彈 (Acid Sting)',
+  badge: '小範圍 · 破甲 3 回合',
+  description: '命中後對手的裝甲減免與護盾失效，直到它第 3 個回合結束；專剋鐵壁堡壘與霜鯨。',
+  damageRadius: 28,
+  terrainRadius: 22,
+  maxDamage: 36,
+  magnetRadius: 20,
+  directHitMultiplier: 1,
+  speedMultiplier: 1,
+  gravityMilli: STANDARD_GRAVITY_MILLI,
+  windMultiplier: 4,
+  onHit: { status: 'corrode', turns: 3, power: 0 },
+  postImpactHoldMs: 900,
+  visual: {
+    sprite: { key: 'shell_acid', scale: 0.45 },
+    coreRadius: 6,
+    coreColor: 0xecfccb,
+    glowColor: 0x84cc16,
+    strokeColor: 0x365314,
+    fx: {
+      glow: 'fx_glow_toxic',
+      haloAlpha: 0.55,
+      trail: {
+        glowSize: 0.3,
+        glowMs: 280,
+        glowDepth: 20,
+        ring: { fill: 0xbef264, stroke: 0x65a30d },
+        sparkChance: 0,
+      },
+      explosion: { sheet: 'fx_flash', sparks: true },
+    },
+    explosionColors: [0xffffff, 0xecfccb, 0xa3e635, 0x4d7c0f],
+    cameraShakeIntensity: 0.01,
+  },
+})

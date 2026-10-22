@@ -73,8 +73,12 @@ function onTerrainCarved(x: number, y: number, radius: number): void {
   sceneInstance?.onTerrainCarved(x, y, radius)
 }
 
-function showDamage(x: number, y: number, amount: number, killed: boolean): void {
-  sceneInstance?.showDamage(x, y, amount, killed)
+function onTerrainFilled(x: number, y: number, radius: number, dirty: DirtyRect): void {
+  sceneInstance?.onTerrainFilled(x, y, radius, dirty)
+}
+
+function showDamage(x: number, y: number, amount: number, killed: boolean, color?: string): void {
+  sceneInstance?.showDamage(x, y, amount, killed, color)
 }
 
 function playProjectileFlight(options: ProjectileFlightOptions): void {
@@ -161,6 +165,7 @@ onUnmounted(() => {
 defineExpose({
   redrawTerrain,
   onTerrainCarved,
+  onTerrainFilled,
   showDamage,
   playProjectileFlight,
   focusActiveTank,

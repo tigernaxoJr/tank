@@ -3,6 +3,7 @@
  * 由 tankRegistry.ts 自動收集，新增機種不需要改任何註冊程式。
  */
 import type { BulletType, TankArchetypeId, TeamId } from '@/shared/kernel/types'
+import type { HitEffect } from './shotExtensions'
 
 /** 表情臉部位置（rig 區域座標，以面向右為準；面向左時自動鏡像） */
 export interface FaceSpec {
@@ -14,7 +15,7 @@ export interface FaceSpec {
   readonly eyeSize: number
 }
 
-/** 傷害類型：explosion/fall 已啟用；poison/burn/movement 為預留（尚無來源，新增效果時只需套用 mitigateDamage） */
+/** 傷害類型：explosion / fall / poison 已啟用；burn / movement 為預留 */
 export type DamageType = 'explosion' | 'fall' | 'poison' | 'burn' | 'movement'
 
 export interface TankBlueprint {
@@ -43,8 +44,12 @@ export interface TankBlueprint {
   readonly armor: number
   /** 護盾值：先於 HP 吸收傷害，不會自動回復 */
   readonly shield: number
-  /** 各傷害類型抗性 0~1（0.4 = 減傷 40%）；未列出視為 0。預留 poison/burn/movement */
+  /** 各傷害類型抗性 0~1（0.4 = 減傷 40%，1 = 免疫）；未列出視為 0 */
   readonly resist: Partial<Record<DamageType, number>>
+  /** 被動技能（大廳說明用；實際效果由數值欄位或 idleStatus 表達） */
+  readonly passive: { readonly name: string; readonly description: string }
+  /** 自己的回合結束時若整回合沒有移動，掛上這個狀態（鐵壁堡壘的紮根） */
+  readonly idleStatus?: HitEffect
   /** 精靈圖（以 2.5 倍繪製）的顯示縮放與砲塔轉軸（相對於坦克容器原點，原點約在車身中心上方） */
   readonly sprite: {
     readonly scale: number

@@ -16,9 +16,9 @@ const bars = computed(() => [
   { key: 'hp', label: '血量', value: `${card.value.maxHp}`, ratio: card.value.hpRatio, color: 'from-emerald-500 to-emerald-300' },
   {
     key: 'out',
-    label: '輸出',
-    value: `×${card.value.damageMultiplier.toFixed(2)}`,
-    ratio: card.value.outputRatio,
+    label: '火力',
+    value: `${card.value.firepower}`,
+    ratio: card.value.firepowerRatio,
     color: 'from-rose-500 to-orange-300',
   },
   { key: 'mob', label: '機動', value: `${card.value.moveFuel}`, ratio: card.value.mobilityRatio, color: 'from-sky-500 to-blue-400' },
@@ -36,7 +36,13 @@ function pct(ratio: number): string {
       <p class="mt-0.5 text-[11px] text-slate-300">{{ spec.description }}</p>
     </div>
 
-    <!-- 車體三項：血量 / 輸出 / 機動 -->
+    <!-- 被動技能 -->
+    <div class="rounded-lg border border-amber-400/30 bg-amber-400/10 px-2.5 py-1 text-[11px]">
+      <b class="text-amber-300">被動・{{ card.passive.name }}</b>
+      <span class="ml-1 text-slate-200">{{ card.passive.description }}</span>
+    </div>
+
+    <!-- 車體三項：血量 / 火力 / 機動 -->
     <div class="space-y-1">
       <div v-for="bar in bars" :key="bar.key" class="flex items-center gap-2 text-[10px]">
         <span class="w-8 shrink-0 font-black text-slate-300">{{ bar.label }}</span>
@@ -70,7 +76,7 @@ function pct(ratio: number): string {
         </div>
         <div class="mt-1 grid grid-cols-4 gap-x-2 text-[10px]">
           <div>
-            <div class="flex justify-between"><span class="text-slate-400">威力</span><span class="font-mono font-bold text-slate-200">{{ shot.damage }}</span></div>
+            <div class="flex justify-between"><span class="text-slate-400">威力</span><span class="font-mono font-bold text-slate-200">{{ shot.pellets > 1 ? `${shot.damage}×${shot.pellets}` : shot.damage }}</span></div>
             <div class="mt-0.5 h-1.5 overflow-hidden rounded-full bg-slate-950">
               <div class="h-full bg-rose-500" :style="{ width: pct(shot.damageRatio) }" />
             </div>
@@ -94,6 +100,7 @@ function pct(ratio: number): string {
             </div>
           </div>
         </div>
+        <div v-if="shot.effect" class="mt-1 text-[10px] font-bold text-lime-300">{{ shot.effect }}</div>
         <div class="mt-0.5 text-[10px] text-slate-400">受風影響 ×{{ shot.windMultiplier }}（含坦克風敏感度，越大越容易被吹偏）·
           <span class="font-bold text-slate-300">{{ shot.magnetRadius > 0 ? `吸附 ${shot.magnetRadius}px` : '不導引·純技術' }}</span>
         </div>

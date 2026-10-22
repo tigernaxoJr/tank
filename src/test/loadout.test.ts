@@ -55,7 +55,7 @@ describe('彈藥承諾與揭露', () => {
     expect(verifyReveal(tankId, root, sub, r)).toBe(false)
     expect(verifyReveal(tankId, root, main, { ...r, slot: 1 })).toBe(false)
     expect(verifyReveal(tankId, root, main, undefined)).toBe(false)
-    expect(verifyReveal('aegis', root, main, r)).toBe(false)
+    expect(verifyReveal('scorpion', root, main, r)).toBe(false)
     expect(revealFor(tankId, secret, 'NOPE')).toBeNull()
   })
 })
@@ -83,7 +83,7 @@ describe('開火時驗證彈藥', () => {
     const roster = ROSTER_1V1.map((r) => (r.id === 'p1' ? { ...r, tankId, loadout: [sub, main] } : r))
     const { state, core } = setupBattle(1024, 'harvest_plains', roster)
     expect(state.tanks.p1.loadout).toEqual([sub, main])
-    expect(prepareFireTrajectory(state, fire({ bulletType: 'MISSILE_STANDARD' }), core)?.bulletType).toBe(sub)
+    expect(prepareFireTrajectory(state, fire({ bulletType: 'SCORPION_ACID' }), core)?.bulletType).toBe(sub)
   })
   it('電腦接手斷線玩家：清掉承諾、改用預設明牌', () => {
     const { state } = withRoot()

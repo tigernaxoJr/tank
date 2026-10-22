@@ -34,6 +34,7 @@ export function tankAt(index: number): TankArchetypeId {
 /** 套用裝甲與抗性後的實際傷害（整數，確定性）。其他傷害類型日後直接呼叫即可 */
 export function mitigateDamage(spec: TankBlueprint, type: DamageType, raw: number): number {
   if (raw <= 0) return 0
+  if ((spec.resist[type] ?? 0) >= 1) return 0
   const flat = type === 'explosion' ? spec.armor : 0
   return Math.max(1, Math.round((raw - flat) * (1 - (spec.resist[type] ?? 0))))
 }

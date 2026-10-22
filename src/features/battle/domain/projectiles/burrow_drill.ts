@@ -1,0 +1,40 @@
+import { STANDARD_GRAVITY_MILLI, defineProjectile } from '../projectileBlueprint'
+
+export default defineProjectile({
+  id: 'BURROW_DRILL',
+  sortOrder: 8,
+  name: '鑽地彈 (Drill Charge)',
+  badge: '鑽入地下再爆 · 製造墜落',
+  description: '碰到地面後繼續往下鑽 34 px 才爆炸，把對手腳下掏空，讓它摔進坑裡、穿過薄橋或掉進深淵。直接傷害偏低，靠墜落補刀。',
+  damageRadius: 44,
+  terrainRadius: 46,
+  maxDamage: 28,
+  magnetRadius: 16,
+  directHitMultiplier: 1,
+  speedMultiplier: 0.9,
+  gravityMilli: STANDARD_GRAVITY_MILLI,
+  windMultiplier: 3,
+  terrainDepth: 34,
+  postImpactHoldMs: 1150,
+  visual: {
+    sprite: { key: 'shell_drill', scale: 0.45 },
+    coreRadius: 7,
+    coreColor: 0xfde68a,
+    glowColor: 0xb45309,
+    strokeColor: 0x451a03,
+    fx: {
+      glow: 'fx_glow_fire',
+      haloAlpha: 0.35,
+      trail: {
+        glowSize: 0.26,
+        glowMs: 240,
+        glowDepth: 20,
+        puff: { texture: 'fx_smoke', scale: 0.12, scaleJitter: 0.05, chance: 0.4 },
+        sparkChance: 0.45,
+      },
+      explosion: { sheet: 'fx_explosion', sparks: true },
+    },
+    explosionColors: [0xfef3c7, 0xd97706, 0x92400e, 0x451a03],
+    cameraShakeIntensity: 0.02,
+  },
+})

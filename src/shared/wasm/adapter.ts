@@ -97,6 +97,16 @@ export class WasmTankCore implements TankCorePort {
     }
   }
 
+  fillCircle(centerX: number, centerY: number, radius: number): DirtyRect {
+    const r = this.grid.fill_circle(centerX, centerY, radius)
+    return {
+      x: r.x,
+      y: r.y,
+      width: r.width,
+      height: r.height,
+    }
+  }
+
   isSolid(x: number, y: number): boolean {
     return this.grid.is_solid(x, y)
   }

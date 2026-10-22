@@ -1,0 +1,40 @@
+import { STANDARD_GRAVITY_MILLI, defineProjectile } from '../projectileBlueprint'
+
+export default defineProjectile({
+  id: 'BASTION_RAMPART',
+  sortOrder: 1,
+  name: '築壘彈 (Rampart Shell)',
+  badge: '無傷害 · 堆出土丘',
+  description: '落點堆出一座土丘：替自己擋住來彈、封住對手的走位，或把對手墊高。不造成任何傷害。',
+  damageRadius: 0,
+  terrainRadius: 40,
+  maxDamage: 0,
+  magnetRadius: 0,
+  directHitMultiplier: 1,
+  speedMultiplier: 1,
+  gravityMilli: STANDARD_GRAVITY_MILLI,
+  windMultiplier: 3,
+  terrainOp: 'fill',
+  postImpactHoldMs: 900,
+  visual: {
+    sprite: { key: 'shell_rampart', scale: 0.45 },
+    coreRadius: 7.5,
+    coreColor: 0xd6a85c,
+    glowColor: 0xa16207,
+    strokeColor: 0x57340f,
+    fx: {
+      glow: 'fx_glow_fire',
+      haloAlpha: 0.25,
+      trail: {
+        glowSize: 0.2,
+        glowMs: 200,
+        glowDepth: 20,
+        puff: { texture: 'fx_puff', scale: 0.12, scaleJitter: 0.05, chance: 0.7 },
+        sparkChance: 0,
+      },
+      explosion: { sheet: 'fx_puff', sparks: false },
+    },
+    explosionColors: [0xfef3c7, 0xd6a85c, 0xa16207, 0x57340f],
+    cameraShakeIntensity: 0.006,
+  },
+})

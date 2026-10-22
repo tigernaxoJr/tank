@@ -23,6 +23,7 @@ import {
   launchVelocity,
   MUZZLE_RISE,
   slopeAt,
+  TANK_GROUND_OFFSET,
   syncTankToSurface,
   walkAlongTerrain,
   type BattleState,
@@ -31,9 +32,11 @@ import {
 import { defaultLoadout, verifyReveal } from '../domain/loadout'
 import { MAP_REGISTRY } from '../domain/mapRegistry'
 import { nextWindSpeed } from '../domain/windRules'
-import { PROJECTILE_REGISTRY, type ProjectileBlueprint } from '../domain/projectileRegistry'
+import { getProjectileSpec, PROJECTILE_REGISTRY, type ProjectileBlueprint } from '../domain/projectileRegistry'
+import { traceShell, type TracedShell } from '../domain/shellFlight'
 import { SINGLE_SHOT } from '../domain/shotExtensions'
-import { effectiveWindMilli, getTankSpec, mitigateDamage, type TankBlueprint } from '../domain/tankRegistry'
+import { applyStatus, mitigateForTank } from '../domain/statusEffects'
+import { effectiveWindMilli, getTankSpec, type TankBlueprint } from '../domain/tankRegistry'
 
 let defaultCore: TankCorePort | null = null
 
@@ -62,8 +65,9 @@ export interface PreparedShotPlan {
   readonly bulletType: BulletType
 }
 
-/** 一次挖坑：供畫面重繪地形與連線重播紀錄 */
+/** 一次地形變化：供畫面重繪地形與連線重播紀錄（'carve' 挖坑、'fill' 堆土） */
 export interface CarveEvent {
+  readonly op: 'carve' | 'fill'
   readonly x: number
   readonly y: number
   readonly radius: number
@@ -71,8 +75,10 @@ export interface CarveEvent {
 }
 
 export interface ImpactResult {
-  /** 依彈丸順序的挖坑事件（沒有命中任何東西的彈丸不產生） */
+  /** 依彈丸順序的地形事件（沒有命中任何東西的彈丸不產生） */
   readonly carves: readonly CarveEvent[]
+  /** 每顆彈丸實際的爆心（鑽地彈在地面下方），順序同 plan.shots；沒命中的為 null */
+  readonly blasts: readonly ({ x: number; y: number } | null)[]
   /** 本次命中造成的總傷害（爆炸 + 摔落 + 墜入深淵），供畫面跳出傷害數字 */
   readonly damageByPlayer: Record<PlayerId, number>
 }
@@ -102,7 +108,10 @@ function hasClearLine(core: TankCorePort, x0: number, y0: number, x1: number, y1
   return true
 }
 
-/** 模擬一顆彈丸：先算物理彈道，再套用坦克吸附（飛行途中進入吸附範圍且無遮擋就彎向坦克） */
+/**
+ * 模擬一顆彈丸：依砲彈的飛行行為（跳彈、高拋、碎裂）追蹤彈道，每一段都套用坦克吸附
+ * （飛行途中進入坦克吸附範圍且無遮擋，就在該點引爆；不彎折彈道）。碎裂彈會回傳多個彈體。
+ */
 function simulatePellet(
   engine: TankCorePort,
   shooter: TankEntity,
@@ -112,46 +121,51 @@ function simulatePellet(
   power: number,
   wind: number,
   aliveOthers: readonly TankEntity[],
-): TrajectoryHit {
+): TracedShell[] {
   const { vxMilli, vyMilli } = launchVelocity(angle, power, projSpec.speedMultiplier)
-  let hit = engine.simulateShot({
-    startX: shooter.x,
-    startY: shooter.y - MUZZLE_RISE,
-    vxMilli,
-    vyMilli,
-    windMilli: effectiveWindMilli(wind, projSpec.windMultiplier, shooterSpec),
-    gravityMilli: projSpec.gravityMilli,
-    maxSteps: 1200,
-  })
-
   const magnetRadius = Math.max(TANK_HIT_RADIUS_PX, projSpec.magnetRadius)
   const magnetRadiusSq = magnetRadius * magnetRadius
 
-  // 吸附力：砲彈飛行途中進入坦克（不分敵我，友傷是刻意的技術風險）吸附範圍且無地形遮擋，
-  // 後段彈道向坦克中心彎曲並直接命中；進入坦克本體碰撞半徑則直接命中
-  for (let i = 0; i < hit.path.length; i++) {
-    const pt = hit.path[i]
-    const target = aliveOthers.find((t) => {
-      const dx = pt.x - t.x
-      const dy = pt.y - (t.y - 10)
-      const distSq = dx * dx + dy * dy
-      if (distSq > magnetRadiusSq) return false
-      return distSq <= TANK_HIT_RADIUS_PX * TANK_HIT_RADIUS_PX || hasClearLine(engine, pt.x, pt.y, t.x, t.y - 10)
-    })
-    if (target) {
-      // 不彎折彈道：砲彈沿原拋物線飛行，進入放大的判定範圍就在該點引爆（肉眼看不出吸附）
-      hit = {
-        hitX: pt.x,
-        hitY: pt.y,
-        impactedTerrain: false,
-        hitTank: true,
-        stepsTaken: Math.max(1, i * 2),
-        path: hit.path.slice(0, i + 1),
+  // 吸附力：不分敵我（友傷是刻意的技術風險），進入坦克本體碰撞半徑則一定命中
+  const magnet = (hit: TrajectoryHit): TrajectoryHit => {
+    for (let i = 0; i < hit.path.length; i++) {
+      const pt = hit.path[i]
+      const target = aliveOthers.find((t) => {
+        const dx = pt.x - t.x
+        const dy = pt.y - (t.y - 10)
+        const distSq = dx * dx + dy * dy
+        if (distSq > magnetRadiusSq) return false
+        return distSq <= TANK_HIT_RADIUS_PX * TANK_HIT_RADIUS_PX || hasClearLine(engine, pt.x, pt.y, t.x, t.y - 10)
+      })
+      if (target) {
+        // 不彎折彈道：砲彈沿原拋物線飛行，進入放大的判定範圍就在該點引爆（肉眼看不出吸附）
+        return {
+          hitX: pt.x,
+          hitY: pt.y,
+          impactedTerrain: false,
+          hitTank: true,
+          stepsTaken: Math.max(1, i * 2),
+          path: hit.path.slice(0, i + 1),
+        }
       }
-      break
     }
+    return hit
   }
-  return hit
+
+  return traceShell(
+    engine,
+    {
+      startX: shooter.x,
+      startY: shooter.y - MUZZLE_RISE,
+      vxMilli,
+      vyMilli,
+      windMilli: effectiveWindMilli(wind, projSpec.windMultiplier, shooterSpec),
+      gravityMilli: projSpec.gravityMilli,
+      maxSteps: 1200,
+    },
+    projSpec.flight,
+    magnet,
+  )
 }
 
 /**
@@ -199,8 +213,8 @@ export function prepareFireTrajectory(
   const aliveOthers = Object.values(state.tanks).filter((t) => t.id !== shooter.id && t.hp > 0)
   const pellets = (projSpec.pattern ?? SINGLE_SHOT)({ state, shooter, projectile: projSpec, cmd })
   const baseDamage = Math.round(projSpec.maxDamage * shooterSpec.damageMultiplier)
-  const shots: PreparedShot[] = pellets.map((pellet) => ({
-    hit: simulatePellet(
+  const shots: PreparedShot[] = pellets.flatMap((pellet) =>
+    simulatePellet(
       engine,
       shooter,
       shooterSpec,
@@ -209,9 +223,8 @@ export function prepareFireTrajectory(
       cmd.power + pellet.powerDelta,
       cmd.wind,
       aliveOthers,
-    ),
-    maxDamage: Math.round(baseDamage * pellet.damageScale),
-  }))
+    ).map(({ hit, damageScale }) => ({ hit, maxDamage: Math.round(baseDamage * pellet.damageScale * damageScale) })),
+  )
 
   state.lastShotPath = shots[0].hit.path.map((pt) => ({ x: pt.x, y: pt.y }))
 
@@ -225,8 +238,24 @@ export function prepareFireTrajectory(
   }
 }
 
+/** 擊退：沿地形把坦克往遠離爆心的方向推（可能被推下懸崖；落差由之後的下墜結算處理） */
+function knockBack(engine: TankCorePort, tank: TankEntity, ex: number, push: number): void {
+  if (push <= 0) return
+  const dir = tank.x === ex ? 1 : Math.sign(tank.x - ex)
+  const dest = walkAlongTerrain(engine, tank.x, groundUnderTank(engine, tank), dir * push, true, getTankSpec(tank.tankId).climbPerPx)
+  tank.x = dest.x
+}
+
+/** 堆土蓋住坦克時把它抬到新地表上（不把人活埋，避免硬控） */
+function liftOutOfTerrain(engine: TankCorePort, tank: TankEntity): void {
+  if (!engine.isSolid(tank.x, tank.y)) return
+  let ground = tank.y + TANK_GROUND_OFFSET
+  while (ground > 0 && engine.isSolid(tank.x, ground - 1)) ground--
+  syncTankToSurface(tank, ground, slopeAt(engine, tank.x, ground))
+}
+
 /**
- * 第二階段：當砲彈飛行結束、命中目標瞬間呼叫，執行地形挖洞、坦克扣血與下墜貼地。
+ * 第二階段：當砲彈飛行結束、命中目標瞬間呼叫，執行地形挖洞（或堆土）、坦克扣血、擊退、掛狀態與下墜貼地。
  * 地形被挖空後坦克會下墜：落差超過安全高度扣摔落傷害，墜出地圖底部（深淵）直接陣亡。
  */
 export function commitFireImpact(
@@ -236,29 +265,64 @@ export function commitFireImpact(
 ): ImpactResult {
   const engine = core ?? getDefaultCore(state.seed)
   const { shots, damageRadius, terrainRadius, directHitMultiplier } = plan
+  const proj = getProjectileSpec(plan.bulletType)
+  const depth = proj.terrainDepth ?? 0
   const damageByPlayer: Record<PlayerId, number> = {}
+  const blastByPlayer: Record<PlayerId, number> = {}
   const carves: CarveEvent[] = []
+  const blasts: ({ x: number; y: number } | null)[] = []
+  const hitTanks = new Set<PlayerId>()
 
-  // 依序結算每顆彈丸；各自經過裝甲 / 抗性後再加總
+  // 依序結算每顆彈丸；各自經過裝甲 / 抗性 / 狀態後再加總
   for (const { hit, maxDamage } of shots) {
-    if (!hit.impactedTerrain && !hit.hitTank) continue
-    carves.push({ x: hit.hitX, y: hit.hitY, radius: terrainRadius, dirty: engine.carveCircle(hit.hitX, hit.hitY, terrainRadius) })
+    if (!hit.impactedTerrain && !hit.hitTank) {
+      blasts.push(null)
+      continue
+    }
+    // 鑽地彈：打在地面上時往下鑽 depth 再爆（直接命中坦克則在原地爆）
+    const ex = hit.hitX
+    const ey = hit.hitTank ? hit.hitY : Math.min(engine.height - 1, hit.hitY + depth)
+    blasts.push({ x: ex, y: ey })
+    if (terrainRadius > 0) {
+      const op = proj.terrainOp === 'fill' ? 'fill' : 'carve'
+      const dirty = op === 'fill' ? engine.fillCircle(ex, ey, terrainRadius) : engine.carveCircle(ex, ey, terrainRadius)
+      carves.push({ op, x: ex, y: ey, radius: terrainRadius, dirty })
+    }
 
     for (const tank of Object.values(state.tanks)) {
       if (tank.hp <= 0) continue
-      const base = engine.computeExplosionDamage(hit.hitX, hit.hitY, tank.x, tank.y, damageRadius, maxDamage)
-      const isDirect = hit.hitTank && Math.hypot(hit.hitX - tank.x, hit.hitY - (tank.y - 10)) <= DIRECT_HIT_RADIUS_PX
-      // 直擊（爆心落在放大判定範圍內）吃滿傷害，不吃距離衰減
-      const raw = isDirect ? Math.round(maxDamage * directHitMultiplier) : base
-      damageByPlayer[tank.id] = (damageByPlayer[tank.id] ?? 0) + mitigateDamage(getTankSpec(tank.tankId), 'explosion', raw)
+      const spec = getTankSpec(tank.tankId)
+      if (maxDamage > 0) {
+        const base = engine.computeExplosionDamage(ex, ey, tank.x, tank.y, damageRadius, maxDamage)
+        const isDirect = hit.hitTank && Math.hypot(ex - tank.x, ey - (tank.y - 10)) <= DIRECT_HIT_RADIUS_PX
+        // 直擊（爆心落在放大判定範圍內）吃滿傷害，不吃距離衰減
+        const raw = isDirect ? Math.round(maxDamage * directHitMultiplier) : base
+        const dmg = mitigateForTank(tank, spec, 'explosion', raw)
+        if (dmg > 0) {
+          blastByPlayer[tank.id] = (blastByPlayer[tank.id] ?? 0) + dmg
+          hitTanks.add(tank.id)
+        }
+      }
+      if (proj.knockbackPx && damageRadius > 0) {
+        const d = Math.hypot(tank.x - ex, tank.y - 10 - ey)
+        if (d < damageRadius) knockBack(engine, tank, ex, Math.round((proj.knockbackPx * (damageRadius - d)) / damageRadius))
+      }
     }
 
     state.lastExplosion = {
-      x: hit.hitX,
-      y: hit.hitY,
+      x: ex,
+      y: ey,
       radius: Math.max(damageRadius, terrainRadius),
       timestamp: Date.now(),
     }
+  }
+
+  for (const [id, dmg] of Object.entries(blastByPlayer)) {
+    damageByPlayer[id] = proj.damageCapPerTank ? Math.min(proj.damageCapPerTank, dmg) : dmg
+  }
+
+  if (proj.terrainOp === 'fill') {
+    for (const tank of Object.values(state.tanks)) liftOutOfTerrain(engine, tank)
   }
 
   for (const tank of Object.values(state.tanks)) {
@@ -273,7 +337,7 @@ export function commitFireImpact(
       tank.shield = 0
       extra = tank.maxHp
     } else {
-      extra = mitigateDamage(spec, 'fall', fallDamageFor(tank.y - beforeY, spec.fallSafePx))
+      extra = mitigateForTank(tank, spec, 'fall', fallDamageFor(tank.y - beforeY, spec.fallSafePx))
     }
     if (extra > 0) {
       damageByPlayer[tank.id] = (damageByPlayer[tank.id] ?? 0) + extra
@@ -281,7 +345,15 @@ export function commitFireImpact(
   }
 
   applyDamageAndCheckWinner(state, damageByPlayer)
-  return { carves, damageByPlayer }
+
+  // 狀態在扣血之後才掛上（破甲不影響本次命中）；已陣亡的不掛
+  if (proj.onHit) {
+    for (const id of hitTanks) if (state.tanks[id].hp > 0) applyStatus(state.tanks[id], proj.onHit)
+  }
+  const shooter = state.tanks[plan.cmd.playerId]
+  if (proj.selfEffect && shooter && shooter.hp > 0) applyStatus(shooter, proj.selfEffect)
+
+  return { carves, blasts, damageByPlayer }
 }
 
 /**
@@ -351,6 +423,7 @@ export function moveActiveTank(
 
   tank.x = dest.x
   tank.moveFuel = Math.max(0, tank.moveFuel - moved)
+  tank.movedThisTurn = true
   if (dest.fell && dest.groundY >= engine.height) {
     // 踏出邊緣掉進深淵：車身一路掉出地圖底部，直接陣亡
     tank.y = engine.height + 60
@@ -363,7 +436,7 @@ export function moveActiveTank(
     // 從高處（橋緣、台地邊）走下去：落在下層地面，依落差與機種抗性結算摔落傷害（與被炸下墜同一套規則）
     const spec = getTankSpec(tank.tankId)
     syncTankToSurface(tank, dest.groundY, slopeAt(engine, dest.x, dest.groundY))
-    const dmg = mitigateDamage(spec, 'fall', fallDamageFor(dest.dropPx ?? 0, spec.fallSafePx))
+    const dmg = mitigateForTank(tank, spec, 'fall', fallDamageFor(dest.dropPx ?? 0, spec.fallSafePx))
     if (dmg > 0) {
       applyDamageAndCheckWinner(state, { [tank.id]: dmg })
       if (tank.hp <= 0 && !isGameOver(state)) finalizeTurnAfterHold(state)

@@ -1,0 +1,40 @@
+import { STANDARD_GRAVITY_MILLI, defineProjectile } from '../projectileBlueprint'
+
+export default defineProjectile({
+  id: 'BURROW_QUAKE',
+  sortOrder: 9,
+  name: '震波彈 (Quake Pulse)',
+  badge: '不挖坑 · 大範圍擊退',
+  description: '不破壞地形，爆炸範圍內的坦克被沿地面往外推開，愈靠近爆心推得愈遠（最多 90 px）；在懸崖邊、橋上是最可怕的一發。',
+  damageRadius: 66,
+  terrainRadius: 0,
+  maxDamage: 22,
+  magnetRadius: 20,
+  directHitMultiplier: 1,
+  speedMultiplier: 1,
+  gravityMilli: STANDARD_GRAVITY_MILLI,
+  windMultiplier: 4,
+  knockbackPx: 90,
+  postImpactHoldMs: 1150,
+  visual: {
+    sprite: { key: 'shell_quake', scale: 0.45, spin: 7 },
+    coreRadius: 7,
+    coreColor: 0xfef3c7,
+    glowColor: 0xf97316,
+    strokeColor: 0x7c2d12,
+    fx: {
+      glow: 'fx_glow_fire',
+      haloAlpha: 0.5,
+      trail: {
+        glowSize: 0.3,
+        glowMs: 300,
+        glowDepth: 20,
+        ring: { fill: 0xfed7aa, stroke: 0xf97316 },
+        sparkChance: 0,
+      },
+      explosion: { sheet: 'fx_flash', sparks: false },
+    },
+    explosionColors: [0xffffff, 0xfed7aa, 0xfb923c, 0xc2410c],
+    cameraShakeIntensity: 0.024,
+  },
+})

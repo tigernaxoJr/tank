@@ -1,21 +1,13 @@
 /**
- * 砲彈行為擴充點（介面草案，尚未接進戰鬥流程）。
- *
- * 純數值（威力、半徑、風係數）放在 ProjectileBlueprint；數值表達不了的行為分兩種擴充點：
- *  1. 開火樣式 `FirePattern`：一次開火要射出幾顆彈丸、各自的角度 / 力道偏移與傷害比例（霰彈、追蹤彈）。
- *  2. 命中效果 `HitEffect` → `StatusEffectBlueprint`：命中後掛在坦克上的回合制狀態（中毒、冰凍…）。
- * 地形新增（墊土彈 `op: 'add'`）與擊退等「命中當下的立即效果」之後再比照 `HitEffect` 擴充。
+ * 砲彈行為擴充點。純數值（威力、半徑、風係數）放在 ProjectileBlueprint；數值表達不了的行為分成四類：
+ *  1. 開火樣式 `pattern`：一次開火射出幾顆彈丸、各自的角度 / 力道偏移與傷害比例（散彈）。
+ *  2. 飛行行為 `flight`：碰到地形後的反應（跳彈、碎裂成冰錐、上升段穿過地形的高拋彈），見 shellFlight.ts。
+ *  3. 命中當下的立即效果：挖坑 / 堆土 `terrainOp`、鑽地 `terrainDepth`、擊退 `knockbackPx`。
+ *  4. 狀態 `onHit` / `selfEffect`：命中後掛在坦克上的回合制狀態（中毒、冰凍、破甲、偵察），見 statusEffects.ts。
  *
  * 共同規則（P2P 雙端必須一致）：
- *  - 全部是純函式，回傳「要做什麼」，由戰鬥流程套用；不直接改 state，也不得使用 Math.random。
- *  - 需要亂數時用 `state.seed` + `state.turnId` 派生的確定性亂數。
- *  - 結果只能是整數；狀態存在 `TankEntity.statuses`，並納入 `battleStateHash` 與快照。
- *
- * 預計的接入點（實作時才改，對現有砲彈行為不變）：
- *  - `prepareFireTrajectory`：呼叫 `pattern` 取得彈丸清單，逐顆模擬；`PreparedShotPlan` 由單一 hit 改為 `shots[]`。
- *  - `commitFireImpact`：依序結算每顆彈丸的挖坑與傷害，最後對受傷坦克套用 `onHit`。
- *  - `advanceTurn`：輪到某坦克時呼叫其各狀態的 `onTurnStart`，套用傷害與燃料上限，再遞減剩餘回合。
- *  - `BattleScene.playProjectileFlight`：由單一路徑改為多條路徑（可同時飛）。
+ *  - 全部是純函式或純資料，不得使用 Math.random；結果只能是整數。
+ *  - 狀態存在 `TankEntity.statuses`，並納入 `battleStateHash` 與快照。
  */
 import type { FireActionCommand } from '@/shared/kernel/types'
 import type { BattleState, TankEntity } from './battleState'
@@ -43,54 +35,67 @@ export interface FirePatternContext {
 /** 回傳至少一顆彈丸；順序即結算順序 */
 export type FirePattern = (ctx: FirePatternContext) => readonly Pellet[]
 
-/** 預設樣式：單發、不偏移（所有現有砲彈） */
+/** 預設樣式：單發、不偏移 */
 export const SINGLE_SHOT: FirePattern = () => [{ angleDelta: 0, powerDelta: 0, damageScale: 1 }]
 
-// ───── 2. 命中效果與狀態 ─────
+/**
+ * 散射：`count` 顆彈丸的力道以 `powerStep` 為間隔前後對稱展開（例如 5 顆、2 → -4, -2, 0, 2, 4），每顆傷害比例相同。
+ * 用力道而不是角度散開，是因為射程與力道平方成正比：任何仰角下彈丸都沿射擊方向前後排開，
+ * 且射得愈遠間距愈大，所以「距離愈近命中顆數愈多」。固定偏移、不含亂數。
+ */
+export function spreadPattern(count: number, powerStep: number, damageScale: number): FirePattern {
+  const pellets: Pellet[] = []
+  for (let i = 0; i < count; i++) {
+    pellets.push({ angleDelta: 0, powerDelta: (i - (count - 1) / 2) * powerStep, damageScale })
+  }
+  return () => pellets
+}
+
+// ───── 2. 飛行行為 ─────
+
+export type FlightBehavior =
+  /** 跳彈：第一次碰到地形不爆炸，以 `keepPermille`（千分比）保留的速度反彈一次，第二次碰撞才引爆 */
+  | { readonly kind: 'bounce'; readonly keepPermille: number }
+  /** 高拋彈：上升段（vy < 0）穿過地形，能從坑底、橋下、自己堆的土丘後方開火；下降段照常碰撞 */
+  | { readonly kind: 'lob' }
+  /**
+   * 碎裂：第一次碰到地形時不爆炸，往射擊方向碎成 `count` 片，以 `angles`（相對水平、往前）與 `speedMilli` 初速貼地飛出，
+   * 每片各自爆炸，傷害比例 `damageScale`。
+   */
+  | {
+      readonly kind: 'shards'
+      readonly angles: readonly number[]
+      readonly speedMilli: number
+      readonly damageScale: number
+    }
+
+// ───── 3. 命中效果與狀態 ─────
 
 /** 砲彈藍圖上的宣告：命中（造成傷害）的坦克會被掛上哪個狀態 */
 export interface HitEffect {
   readonly status: string
-  /** 持續回合數（以被命中坦克自己的回合計） */
+  /** 持續回合數（以掛狀態的坦克自己的回合計，見 statusEffects.ts） */
   readonly turns: number
-  /** 強度（意義由狀態自訂：中毒 = 每回合傷害、冰凍 = 燃料削減百分比） */
+  /** 強度（意義由狀態自訂：中毒 = 每回合傷害、冰凍 = 燃料削減百分比、紮根 = 減傷百分比） */
   readonly power: number
 }
 
-/** 掛在 `TankEntity.statuses` 上的實例；同種狀態不疊加，重複命中只刷新 `turnsLeft` */
-export interface StatusInstance {
-  readonly id: string
-  turnsLeft: number
-  readonly power: number
-}
-
-/** 回合開始時狀態要產生的結果（由 advanceTurn 套用） */
-export interface StatusTurnResult {
-  /** 直接扣血（會經過 mitigateDamage，傷害類型見 `damageType`）；省略 = 0 */
-  readonly damage?: number
-  /** 本回合移動燃料上限的保留比例 0~1（1 = 不變）；省略 = 1。不得為 0 以外的「跳過回合」效果 */
-  readonly moveFuelScale?: number
-}
-
-/** 狀態藍圖，放在 `statuses/<id>.ts`，比照坦克 / 砲彈一檔一模組並自動收集 */
-export interface StatusEffectBlueprint {
-  readonly id: string
-  readonly name: string
-  readonly description: string
-  /** HUD 圖示（原創美術，見 docs/04） */
-  readonly icon: string
-  /** 對應 `DamageType`，讓坦克抗性套用在持續傷害上 */
-  readonly damageType: 'poison' | 'burn' | 'movement'
-  /** 掛上後是否有 1 回合免疫（避免被鎖死） */
-  readonly immuneAfterTurns?: number
-  /** 該坦克回合開始時呼叫；純函式 */
-  onTurnStart(instance: Readonly<StatusInstance>, tank: Readonly<TankEntity>): StatusTurnResult
-}
-
-/** 在 `ProjectileBlueprint` 上新增的兩個可選欄位（省略 = 現有行為） */
+/** 在 `ProjectileBlueprint` 上新增的可選欄位（省略 = 一般砲彈行為） */
 export interface ProjectileBehavior {
   /** 省略 = `SINGLE_SHOT` */
   readonly pattern?: FirePattern
-  /** 省略 = 無狀態效果 */
+  /** 省略 = 直線拋物線，碰到地形或坦克就引爆 */
+  readonly flight?: FlightBehavior
+  /** 'carve' 挖坑（預設）、'fill' 在落點堆出土丘（築壘彈） */
+  readonly terrainOp?: 'carve' | 'fill'
+  /** 鑽地深度 (px)：碰到地面後再往下鑽這麼深才爆炸（挖坑與傷害都以鑽到的位置計算）；省略 = 0 */
+  readonly terrainDepth?: number
+  /** 一次開火對同一台坦克的爆炸傷害上限（散彈全中時避免一發秒殺，docs/06 §三之一）；省略 = 不設限 */
+  readonly damageCapPerTank?: number
+  /** 擊退 (px)：爆炸範圍內的坦克被沿地形往外推，愈靠近爆心推得愈遠；可能被推下懸崖 */
+  readonly knockbackPx?: number
+  /** 命中（受到傷害）的坦克被掛上的狀態 */
   readonly onHit?: HitEffect
+  /** 開火時掛在射手自己身上的狀態（偵察照明彈） */
+  readonly selfEffect?: HitEffect
 }

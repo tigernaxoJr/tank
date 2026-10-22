@@ -12,8 +12,14 @@
  *   WIND_COMP_ERROR × 位移，加進水平方向的 σ（σx = √(σ² + 殘餘²)）。
  * - 風速分佈：不是每場都有風。風速服從以 0 為中心的離散常態分佈（標準差 WIND_SIGMA），
  *   截斷在 [-WIND_MAX, WIND_MAX]，無風機率最高，微風、大風依距離遞減。每場對戰抽一次，整場固定。
- * - 暫不考慮：地形、移動、風的時間變化、直擊以外的導引細節。
- * - 雙方輪流開火（先攻各半），每台坦克挑選「對風速分佈加權平均後」期望傷害較高的專屬砲彈，輸出各配對的勝率。
+ * - 暫不考慮：地形、移動、風的時間變化、直擊以外的導引細節。因此冰凍（移動）、擊退、鑽地 / 墜落、堆土、跳彈、
+ *   高拋穿地、偵察的價值都不在模型內（視為「效用」）；靠這些取勝的機種（霜鯨、地鼠工兵、鐵壁堡壘）勝率宜略低於 50%。
+ * - 已模型化（docs/06 §三之八）：
+ *   - 散彈 / 碎裂：多顆彈體共用同一個瞄準誤差，各自帶固定的前後偏移（散彈以典型距離 SIM_RANGE_PX 換算力道偏移；
+ *     冰錐以平地彈道算出各片的落點偏移），每顆各自結算，同一發的總傷害受 damageCapPerTank 限制。
+ *   - 中毒：受害者自己回合開始時扣血（套用抗性，同種不疊加只刷新）；破甲：期間裝甲與護盾失效。
+ *   - 護盾：先於 HP 吸收；紮根（idleStatus）：假設機種整場不移動，每次受到的爆炸傷害都打折。
+ * - 雙方輪流開火（先攻各半），每台坦克挑選「對風速分佈加權平均後」期望價值（傷害 + 命中機率 × 中毒總量）較高的砲彈，輸出各配對的勝率。
  *
  * 可重現性：對戰用固定種子的 PRNG（mulberry32），每次執行結果完全相同。
  * 選彈用期望傷害的確定性網格積分（不取樣），避免兩種砲彈接近平手時因雜訊翻面。
@@ -32,6 +38,10 @@ const FLIGHT_STEPS = 120
 const BOT_PERFECT_SIGMA = 5 // 「變態」電腦的近似精準參考（見 sigmaX）
 const GRID_HALF = 6
 const GRID_STEP = 0.05
+/** 散彈的典型交戰距離（px）與力道：力道偏移 Δp 造成的落點偏移 ≈ 2·Δp/p × 距離。散彈機種會衝近再開火，取近距離 */
+const SIM_RANGE_PX = 300
+const SIM_POWER = 60
+const STANDARD_GRAVITY = 175
 
 // 數值直接讀自遊戲的註冊表（單一來源），不再維護副本；用 vite 的 ssrLoadModule 載入 TS。
 const vite = await createServer({ configFile: false, appType: 'custom', server: { middlewareMode: true }, logLevel: 'silent' })
@@ -39,10 +49,34 @@ const { PROJECTILE_REGISTRY } = await vite.ssrLoadModule('/src/features/battle/d
 const { TANK_REGISTRY } = await vite.ssrLoadModule('/src/features/battle/domain/tankRegistry.ts')
 await vite.close()
 
+/** 一發砲彈的各彈體沿射擊方向的落點偏移（px），以平均為中心（玩家會把整串彈體對準目標） */
+function pelletOffsets(p) {
+  let offs = [0]
+  if (p.flight?.kind === 'shards') {
+    const v = p.flight.speedMilli / 1000
+    const g = STANDARD_GRAVITY / 1000
+    offs = p.flight.angles.map((a) => (v * v * Math.sin((2 * a * Math.PI) / 180)) / g)
+  } else if (p.pattern) {
+    offs = p.pattern({}).map((pl) => (2 * pl.powerDelta * SIM_RANGE_PX) / SIM_POWER)
+  }
+  const mean = offs.reduce((a, b) => a + b, 0) / offs.length
+  return offs.map((o) => o - mean)
+}
+
 const SHELLS = Object.fromEntries(
   Object.values(PROJECTILE_REGISTRY).map((p) => [
     p.id,
-    { dmg: p.maxDamage, r: p.damageRadius, magnet: p.magnetRadius, direct: p.directHitMultiplier, wm: p.windMultiplier },
+    {
+      dmg: p.maxDamage,
+      r: p.damageRadius,
+      magnet: p.magnetRadius,
+      direct: p.directHitMultiplier,
+      wm: p.windMultiplier,
+      offsets: pelletOffsets(p),
+      cap: p.damageCapPerTank ?? Infinity,
+      poison: p.onHit?.status === 'poison' ? { turns: p.onHit.turns, power: p.onHit.power } : null,
+      corrode: p.onHit?.status === 'corrode' ? p.onHit.turns : 0,
+    },
   ]),
 )
 const TANKS = Object.fromEntries(
@@ -56,7 +90,9 @@ const TANKS = Object.fromEntries(
       armor: t.armor,
       shield: t.shield,
       resist: t.resist.explosion ?? 0,
-      shots: [...t.shots],
+      poisonResist: t.resist.poison ?? 0,
+      rootedPct: t.idleStatus?.status === 'rooted' ? t.idleStatus.power : 0,
+      shots: t.shots.filter((s) => PROJECTILE_REGISTRY[s].maxDamage > 0),
     },
   ]),
 )
@@ -126,15 +162,22 @@ function rawDamage(t, s, d) {
   if (d >= r) return 0
   return Math.trunc(((r - d) * full) / r)
 }
-// defender 的裝甲 / 爆炸抗性在此結算
-function applyDefense(raw, def) {
+// defender 的裝甲 / 爆炸抗性 / 紮根在此結算（破甲時裝甲歸零）
+function applyDefense(raw, def, corroded) {
   if (raw <= 0) return 0
-  return def ? Math.max(1, Math.round((raw - def.armor) * (1 - def.resist))) : raw
+  if (!def) return raw
+  const afterArmor = Math.max(1, Math.round((raw - (corroded ? 0 : def.armor)) * (1 - def.resist)))
+  return Math.max(1, Math.round((afterArmor * (100 - def.rootedPct)) / 100))
 }
-function dmgOf(t, s, sigma, wind, def) {
-  const sx = sigmaX(t, s, sigma, wind)
-  const d = Math.hypot(gauss() * sx, gauss() * sigma)
-  return applyDefense(rawDamage(t, s, d), def)
+/** 一發的總傷害：所有彈體共用同一個瞄準誤差，各自加上固定偏移後結算；回傳 [傷害, 是否命中] */
+function shotOf(t, s, sigma, wind, def, corroded) {
+  const sh = SHELLS[s]
+  const ex = gauss() * sigmaX(t, s, sigma, wind)
+  const ey = gauss() * sigma
+  let total = 0
+  for (const off of sh.offsets) total += applyDefense(rawDamage(t, s, Math.hypot(ex + off, ey)), def, corroded)
+  total = Math.min(sh.cap, total)
+  return [total, total > 0]
 }
 
 // 期望傷害（無防禦）：2D 高斯以網格積分（權重 φ(z1)φ(z2)），完全確定性
@@ -142,12 +185,16 @@ const GRID = []
 for (let z = -GRID_HALF; z <= GRID_HALF + 1e-9; z += GRID_STEP) GRID.push([z, Math.exp(-0.5 * z * z)])
 function expected(t, s, sigma, wind) {
   const sx = sigmaX(t, s, sigma, wind)
+  const sh = SHELLS[s]
+  const dot = sh.poison ? sh.poison.turns * sh.poison.power : 0
   let acc = 0
   let wsum = 0
   for (const [z1, w1] of GRID) {
     for (const [z2, w2] of GRID) {
       const w = w1 * w2
-      acc += w * rawDamage(t, s, Math.hypot(z1 * sx, z2 * sigma))
+      let total = 0
+      for (const off of sh.offsets) total += rawDamage(t, s, Math.hypot(z1 * sx + off, z2 * sigma))
+      acc += w * (Math.min(sh.cap, total) + (total > 0 ? dot : 0))
       wsum += w
     }
   }
@@ -181,14 +228,29 @@ for (const sigma of [5, 25, 45, 70]) {
       let wins = 0
       for (let i = 0; i < DUEL_N; i++) {
         const wind = sampleWind() // 本場風速，整場固定
-        let ha = TANKS[a].hp + TANKS[a].shield
-        let hb = TANKS[b].hp + TANKS[b].shield // 護盾與 HP 同為緩衝池，模擬時合併計算
-        let aTurn = i % 2 === 0
-        for (let turn = 0; turn < 200 && ha > 0 && hb > 0; turn++) {
-          if (aTurn) hb -= dmgOf(TANKS[a], best[a], sigma, wind, TANKS[b])
-          else ha -= dmgOf(TANKS[b], best[b], sigma, wind, TANKS[a])
-          aTurn = !aTurn
+        const side = [a, b].map((n) => ({ t: TANKS[n], s: best[n], hp: TANKS[n].hp, shield: TANKS[n].shield, poison: null, corrode: 0 }))
+        let cur = i % 2 === 0 ? 0 : 1
+        for (let turn = 0; turn < 200 && side[0].hp > 0 && side[1].hp > 0; turn++) {
+          const me = side[cur]
+          const foe = side[1 - cur]
+          // 自己回合開始：中毒扣血，狀態回合遞減（破甲維持到最後那個自己回合結束）
+          if (me.poison) {
+            me.hp -= me.t.poisonResist >= 1 ? 0 : Math.max(1, Math.round(me.poison.power * (1 - me.t.poisonResist)))
+            if (--me.poison.turns <= 0) me.poison = null
+          }
+          if (me.corrode > 0) me.corrode--
+          if (me.hp > 0) {
+            const [dmg, hit] = shotOf(me.t, me.s, sigma, wind, foe.t, foe.corrode > 0)
+            const absorbed = foe.corrode > 0 ? 0 : Math.min(foe.shield, dmg)
+            foe.shield -= absorbed
+            foe.hp -= dmg - absorbed
+            const sh = SHELLS[me.s]
+            if (hit && sh.poison) foe.poison = { turns: Math.max(foe.poison?.turns ?? 0, sh.poison.turns), power: sh.poison.power }
+            if (hit && sh.corrode) foe.corrode = Math.max(foe.corrode, sh.corrode)
+          }
+          cur = 1 - cur
         }
+        const [ha, hb] = [side[0].hp, side[1].hp]
         if (hb <= 0 && ha > 0) wins++
         else if (ha <= 0 && hb <= 0) wins += 0.5
       }
