@@ -4,7 +4,6 @@ dist/
 .vite/
 *.local
 *.tsbuildinfo
-pnpm-lock.yaml
 
 # Rust / Wasm
 target/

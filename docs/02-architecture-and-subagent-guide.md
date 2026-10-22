@@ -117,7 +117,7 @@ tank/
 
 1. **三大模組化註冊表（單一修改點原則）**：
    * **美術一律使用 CC0 素材並經烘焙腳本產出**：詳見 [`04-art-asset-pipeline.md`](./04-art-asset-pipeline.md)。新增素材須同步更新根目錄 [`CREDITS.md`](../CREDITS.md)。
-   * **新增/修改坦克**：依 [04 §六](./04-art-asset-pipeline.md) 的 Q 版風格在 [`tools/assets/paint_units.mjs`](../tools/assets/paint_units.mjs) 的 `TANKS` 畫出原創車身/砲管並執行 `npm run paint:units`，再於 [`tankRegistry.ts`](../src/features/battle/domain/tankRegistry.ts) 新增一筆 `TankBlueprint`（`sprite.scale`、砲塔轉軸 `pivotX/pivotY`，以及表情臉部位置 `sprite.face`：眼睛中心 `x/y`、兩眼距離 `eyeGap`、眼睛半高 `eyeSize`，以面向右為準，臉不可蓋住車身上的徽章與履帶）。
+   * **新增/修改坦克**：依 [04 §六](./04-art-asset-pipeline.md) 的 Q 版風格在 [`tools/assets/paint_units.mjs`](../tools/assets/paint_units.mjs) 的 `TANKS` 畫出原創車身/砲管並執行 `pnpm run paint:units`，再於 [`tankRegistry.ts`](../src/features/battle/domain/tankRegistry.ts) 新增一筆 `TankBlueprint`（`sprite.scale`、砲塔轉軸 `pivotX/pivotY`，以及表情臉部位置 `sprite.face`：眼睛中心 `x/y`、兩眼距離 `eyeGap`、眼睛半高 `eyeSize`，以面向右為準，臉不可蓋住車身上的徽章與履帶）。
    * **新增/修改跨螢幕大地图**：於 [`mapRegistry.ts`](../src/features/battle/domain/mapRegistry.ts) 新增 `MapBlueprint`（寬高如 `2400×1100` ~ `2800×1250`、波形參數、天空漸層、裝飾數量/間距、`maxWind` 風速上限、爆炸土塊顏色），並在烘焙腳本的 `MAPS` / `PROPS` 補上同 id 的設定。
    * **地圖版型與多層地形**：地圖以「基礎波形 + `layout` 特徵」組成（浮空島、吊橋、雙層薄地、階梯台地、不可破壞基岩 `BEDROCK`），`theme` 指向既有美術主題即可。坦克貼地一律用 `groundBelow`（從腳下往下找），行走一律走 `walkAlongTerrain`（爬坡上限、低天花板阻擋、不自走入深淵）。詳見 [`05-map-layout-design.md`](./05-map-layout-design.md)。
    * **參考其他遊戲的版權守則**：只能借用通用地形版型概念；禁止複製他作的地圖圖片、地形資料、音樂與文字，遊戲內地圖名稱與描述不得使用他作名稱或商標。
@@ -150,10 +150,10 @@ tank/
 
 ## 五、 測試策略與一致性驗證 (Testing)
 
-- **前端 / 戰鬥邏輯**：Vitest（`npm test`），測試放在 `src/test/`：確定性核心與 PRNG、風規則、傷害 / 裝甲 / 摔落公式、開火三階段流程、移動與走下高處、斷線處置、動作來源驗證、電腦 AI、註冊表一致性。
+- **前端 / 戰鬥邏輯**：Vitest（`pnpm test`），測試放在 `src/test/`：確定性核心與 PRNG、風規則、傷害 / 裝甲 / 摔落公式、開火三階段流程、移動與走下高處、斷線處置、動作來源驗證、電腦 AI、註冊表一致性。
   修 bug 時先補回歸測試（例：直擊吃滿傷害）；測試 helper 在 `src/test/helpers.ts`（`setupBattle` 與 `BattleArena.resetMatch` 同一流程）。
 - **Rust 核心 ↔ TS 核心一致性**：`src/test/parity.test.ts` 用 TS 核心對所有地圖 × 數個 seed 產生黃金檔 `crates/tank-core/tests/fixtures/golden.json`（地形雜湊、地表 / 坡度 / 材質取樣、挖坑後狀態、彈道），
-  Rust 的 `crates/tank-core/tests/parity.rs`（`npm run test:rust`）讀同一份檔案逐項比對。改了 TS 核心行為後：`UPDATE_GOLDEN=1 npm test` 重新產生黃金檔，再跑 `npm run test:rust` 確認 Rust 跟上。
+  Rust 的 `crates/tank-core/tests/parity.rs`（`pnpm run test:rust`）讀同一份檔案逐項比對。改了 TS 核心行為後：`UPDATE_GOLDEN=1 pnpm test` 重新產生黃金檔，再跑 `pnpm run test:rust` 確認 Rust 跟上。
   Rust 地形參數用 JSON 傳入（`TerrainGrid::reset_terrain(seed, json)`，與 TS `TerrainWaveOptions` 同形）；砲彈 `speedMultiplier`、吸附、風敏感度屬 TS 應用層，不在核心內。
 - **房間目錄伺服器**：`server/roomDirectory.test.mjs`（需先在 `server/` 執行 `npm install`，再 `node --test`）。
 - **平衡**：`node tools/balance/duel_sim.mjs`（見 `06` §三）。

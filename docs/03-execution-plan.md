@@ -100,4 +100,4 @@
 - [x] **WP-4.3：GitHub Actions 自動化構建與部署腳本**（已完成）
   - **目標檔案**：`.github/workflows/deploy.yml`
   - **任務內容**：
-    1. 自動安裝 Rust、`wasm-pack`、Node.js，執行 `cargo test`、`npm run build:wasm` 與 `npm run build` 產出靜態網站。
+    1. 自動安裝 Rust、`wasm-pack`、Node.js，執行 `cargo test`、`pnpm run build:wasm` 與 `pnpm run build` 產出靜態網站。

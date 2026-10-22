@@ -58,7 +58,7 @@
 | 翡翠浮空群島 | sky_meadow | 薄底層 + 三大浮島（島心苔石基岩）+ 小跳島 | 垂直多層攻防 |
 | 鐵壁神殿遺跡 | moon_ruins（原創：滿月、浮空神殿、拱橋、石板地、掛燈鎖鏈） | 極薄地表 + 底部半圓基岩避難所 + 中央高塔 | 地面一兩發就破，掉到基岩上求生 |
 
-主題美術由 `npm run paint:maps` 程式繪製，見 [04-art-asset-pipeline.md §五](./04-art-asset-pipeline.md)。新版型優先搭配氣氛相符的主題；沒有合適主題時再新增一個（在 `paint_map_themes.mjs` 加一組繪製函式，並登錄到 `THEME_REGISTRY`）。
+主題美術由 `pnpm run paint:maps` 程式繪製，見 [04-art-asset-pipeline.md §五](./04-art-asset-pipeline.md)。新版型優先搭配氣氛相符的主題；沒有合適主題時再新增一個（在 `paint_map_themes.mjs` 加一組繪製函式，並登錄到 `THEME_REGISTRY`）。
 
 ### 重製方針（前三張地圖）
 
@@ -69,7 +69,7 @@
 
 1. 在 `MapPresetId`（`src/shared/kernel/types.ts`）加入新 id。
 2. 在 [`mapRegistry.ts`](../src/features/battle/domain/mapRegistry.ts) 新增 `MapBlueprint`：`theme` 指向 `THEME_REGISTRY` 中的主題；
-   需要全新美術時在 `tools/assets/paint_map_themes.mjs` 新增主題並執行 `npm run paint:maps`。
+   需要全新美術時在 `tools/assets/paint_map_themes.mjs` 新增主題並執行 `pnpm run paint:maps`。
 3. 大廳縮圖由 `renderMapPreview` 依版型即時繪製地形剪影，不需要另外準備 thumbnail。
 4. 驗收：5v5 出生點都不在深淵、雙方地形對稱、坦克能在主要地面上左右移動、打穿薄層後會正確下墜。
 
