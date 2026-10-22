@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { nextTick, ref } from 'vue'
-import { BattleArena } from '@/features/battle'
+import { BattleArena, tankAt } from '@/features/battle'
 import { LobbyPanel, type StartGamePayload } from '@/features/lobby'
 import type { MapPresetId, PlayerId, ProtocolMessage, RosterSlot } from '@/shared/kernel/types'
 
@@ -11,8 +11,8 @@ const isHost = ref(true)
 const matchSeed = ref(1024)
 const mapId = ref<MapPresetId>('harvest_plains')
 const roster = ref<RosterSlot[]>([
-  { id: 'p1', name: 'Player 1', team: 'A', tankId: 'aegis', isHost: true },
-  { id: 'p2', name: 'Player 2', team: 'B', tankId: 'goliath', isHost: false },
+  { id: 'p1', name: 'Player 1', team: 'A', tankId: tankAt(0), isHost: true },
+  { id: 'p2', name: 'Player 2', team: 'B', tankId: tankAt(1), isHost: false },
 ])
 
 const lobbyRef = ref<InstanceType<typeof LobbyPanel> | null>(null)

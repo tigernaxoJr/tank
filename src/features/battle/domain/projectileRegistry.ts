@@ -19,7 +19,42 @@ export const PLAYBACK_MS_PER_STEP = 18
 /** 極近距離射擊的最短播放時間，避免砲彈瞬間消失 */
 export const MIN_FLIGHT_MS = 500
 
-export type ProjectileTrailStyle = 'flame_smoke' | 'heavy_fireball' | 'plasma_beam'
+/** 疊加混色光暈貼圖（tools/assets/paint_units.mjs 的 fx 粒子） */
+export type GlowKey = 'fx_glow_fire' | 'fx_glow_plasma'
+
+/**
+ * 砲彈專屬特效參數。渲染器只讀這些參數，不認識任何彈種或樣式名稱，
+ * 新增砲彈時只需在這裡組合出新外觀，不必改 BattleScene。
+ */
+export interface ProjectileFx {
+  /** 砲口閃光、彈體光暈與爆炸核心使用的光暈貼圖 */
+  readonly glow: GlowKey
+  /** 彈體光暈的不透明度（僅有 sprite 的彈體使用） */
+  readonly haloAlpha: number
+  /** 飛行中每步噴發的尾焰 */
+  readonly trail: {
+    readonly glowSize: number
+    readonly glowMs: number
+    readonly glowDepth: number
+    /** 擴散環（電磁環）；省略則不畫 */
+    readonly ring?: { readonly fill: number; readonly stroke: number }
+    /** 煙霧；省略則不畫 */
+    readonly puff?: {
+      readonly texture: 'fx_puff' | 'fx_smoke'
+      readonly scale: number
+      readonly scaleJitter: number
+      readonly chance: number
+    }
+    /** 每步噴出火星的機率（0 = 不噴） */
+    readonly sparkChance: number
+  }
+  readonly explosion: {
+    /** 爆炸序列影格貼圖 */
+    readonly sheet: 'fx_explosion' | 'fx_flash'
+    /** 是否四散火花 */
+    readonly sparks: boolean
+  }
+}
 
 export interface ProjectileBlueprint {
   readonly id: BulletType
@@ -52,7 +87,7 @@ export interface ProjectileBlueprint {
     readonly coreColor: number
     readonly glowColor: number
     readonly strokeColor: number
-    readonly trailStyle: ProjectileTrailStyle
+    readonly fx: ProjectileFx
     readonly explosionColors: number[]
     readonly cameraShakeIntensity: number
   }
@@ -79,7 +114,18 @@ export const PROJECTILE_REGISTRY: Record<BulletType, ProjectileBlueprint> = {
       coreColor: 0xfef08a,
       glowColor: 0xf97316,
       strokeColor: 0xc2410c,
-      trailStyle: 'flame_smoke',
+      fx: {
+        glow: 'fx_glow_fire',
+        haloAlpha: 0.55,
+        trail: {
+          glowSize: 0.32,
+          glowMs: 240,
+          glowDepth: 20,
+          puff: { texture: 'fx_puff', scale: 0.12, scaleJitter: 0.06, chance: 0.6 },
+          sparkChance: 0,
+        },
+        explosion: { sheet: 'fx_explosion', sparks: true },
+      },
       explosionColors: [0xfffbeb, 0xfde047, 0xfb923c, 0xef4444],
       cameraShakeIntensity: 0.011,
     },
@@ -104,7 +150,18 @@ export const PROJECTILE_REGISTRY: Record<BulletType, ProjectileBlueprint> = {
       coreColor: 0xffedd5,
       glowColor: 0xef4444,
       strokeColor: 0x7f1d1d,
-      trailStyle: 'heavy_fireball',
+      fx: {
+        glow: 'fx_glow_fire',
+        haloAlpha: 0.55,
+        trail: {
+          glowSize: 0.5,
+          glowMs: 320,
+          glowDepth: 20,
+          puff: { texture: 'fx_smoke', scale: 0.2, scaleJitter: 0.08, chance: 0.6 },
+          sparkChance: 0.25,
+        },
+        explosion: { sheet: 'fx_explosion', sparks: true },
+      },
       explosionColors: [0xffffff, 0xfef08a, 0xf97316, 0xdc2626, 0x7f1d1d],
       cameraShakeIntensity: 0.018,
     },
@@ -130,7 +187,18 @@ export const PROJECTILE_REGISTRY: Record<BulletType, ProjectileBlueprint> = {
       coreColor: 0xe0f2fe,
       glowColor: 0x38bdf8,
       strokeColor: 0x6366f1,
-      trailStyle: 'plasma_beam',
+      fx: {
+        glow: 'fx_glow_plasma',
+        haloAlpha: 0.9,
+        trail: {
+          glowSize: 0.42,
+          glowMs: 380,
+          glowDepth: 19,
+          ring: { fill: 0x38bdf8, stroke: 0xc084fc },
+          sparkChance: 0,
+        },
+        explosion: { sheet: 'fx_flash', sparks: false },
+      },
       explosionColors: [0xf0f9ff, 0x7dd3fc, 0x38bdf8, 0x818cf8, 0xc084fc],
       cameraShakeIntensity: 0.013,
     },
@@ -155,7 +223,18 @@ export const PROJECTILE_REGISTRY: Record<BulletType, ProjectileBlueprint> = {
       coreColor: 0xffffff,
       glowColor: 0xa3e635,
       strokeColor: 0x365314,
-      trailStyle: 'plasma_beam',
+      fx: {
+        glow: 'fx_glow_plasma',
+        haloAlpha: 0.9,
+        trail: {
+          glowSize: 0.42,
+          glowMs: 380,
+          glowDepth: 19,
+          ring: { fill: 0x38bdf8, stroke: 0xc084fc },
+          sparkChance: 0,
+        },
+        explosion: { sheet: 'fx_flash', sparks: false },
+      },
       explosionColors: [0xffffff, 0xd9f99d, 0xa3e635, 0x4d7c0f],
       cameraShakeIntensity: 0.016,
     },
@@ -163,3 +242,8 @@ export const PROJECTILE_REGISTRY: Record<BulletType, ProjectileBlueprint> = {
 }
 
 export const PROJECTILE_LIST: ProjectileBlueprint[] = Object.values(PROJECTILE_REGISTRY)
+
+/** 查砲彈；id 不認得時退回清單第一種 */
+export function getProjectileSpec(id: BulletType | undefined): ProjectileBlueprint {
+  return (id && PROJECTILE_REGISTRY[id]) || PROJECTILE_LIST[0]
+}

@@ -16,7 +16,7 @@ import {
   type TankEntity,
 } from './battleState'
 import { PROJECTILE_REGISTRY } from './projectileRegistry'
-import { TANK_REGISTRY, effectiveWindMilli } from './tankRegistry'
+import { effectiveWindMilli, getTankSpec } from './tankRegistry'
 
 export interface BotShotPlan {
   readonly targetId: PlayerId
@@ -55,10 +55,15 @@ function pickTarget(state: BattleState, bot: TankEntity): TankEntity | null {
   })
 }
 
+/** 殘血門檻：目標血量不高於此值時，電腦改用單發傷害最高的砲彈補刀 */
+const FINISHER_HP = 40
+
 function pickBullet(bot: TankEntity, target: TankEntity, random: () => number): BulletType {
-  const shots = (TANK_REGISTRY[bot.tankId] ?? TANK_REGISTRY.aegis).shots
-  // 目標殘血時優先用電漿這類高速彈；否則在兩種專屬砲彈中隨機
-  if (target.hp <= 40 && shots.includes('MISSILE_PLASMA')) return 'MISSILE_PLASMA'
+  const shots = getTankSpec(bot.tankId).shots
+  // 目標殘血時優先用單發傷害最高的砲彈（不指定特定彈種）；否則在專屬砲彈中隨機
+  if (target.hp <= FINISHER_HP) {
+    return shots.reduce((best, id) => (PROJECTILE_REGISTRY[id].maxDamage > PROJECTILE_REGISTRY[best].maxDamage ? id : best))
+  }
   return shots[random() < 0.55 ? 0 : 1]
 }
 
@@ -76,7 +81,7 @@ export function planBotShot(
   const bulletType = pickBullet(bot, target, random)
   const proj = PROJECTILE_REGISTRY[bulletType]
   // 避免炸到自己只需要看傷害範圍
-  const blast = proj.damageRadius + (TANK_REGISTRY[bot.tankId] ?? TANK_REGISTRY.aegis).damageRadiusBonus
+  const blast = proj.damageRadius + getTankSpec(bot.tankId).damageRadiusBonus
   const facingRight = target.x >= bot.x
 
   type Aim = { angle: number; power: number; score: number }
@@ -88,7 +93,7 @@ export function planBotShot(
       startY: bot.y - MUZZLE_RISE,
       vxMilli,
       vyMilli,
-      windMilli: effectiveWindMilli(state.wind, proj.windMultiplier, TANK_REGISTRY[bot.tankId] ?? TANK_REGISTRY.aegis),
+      windMilli: effectiveWindMilli(state.wind, proj.windMultiplier, getTankSpec(bot.tankId)),
       gravityMilli: proj.gravityMilli,
       maxSteps: 1200,
       targetX: target.x,
@@ -157,7 +162,7 @@ export function planBotMove(
   try {
     for (const dx of candidates) {
       // 實際模擬沿地形行走（會被陡壁擋住），避免把橋下或島上的位置當成可抵達
-      const dest = walkAlongTerrain(core, origin.x, originGround, dx, false, (TANK_REGISTRY[bot.tankId] ?? TANK_REGISTRY.aegis).climbPerPx)
+      const dest = walkAlongTerrain(core, origin.x, originGround, dx, false, getTankSpec(bot.tankId).climbPerPx)
       if (dx !== 0 && dest.x === origin.x) continue
       const x = dest.x
       bot.x = x

@@ -5,7 +5,7 @@
 import type { BotLevel, MapPresetId, PlayerId, RosterSlot, TankArchetypeId, TeamId } from '@/shared/kernel/types'
 import type { TankCorePort } from '@/shared/wasm'
 import { MAP_REGISTRY } from './mapRegistry'
-import { TANK_REGISTRY } from './tankRegistry'
+import { getTankSpec, tankAt } from './tankRegistry'
 
 export type TurnPhase = 'AIMING' | 'FIRING' | 'GAME_OVER'
 
@@ -44,8 +44,8 @@ export interface BattleState {
 }
 
 const DEFAULT_ROSTER: RosterSlot[] = [
-  { id: 'p1', name: 'Player 1', team: 'A', tankId: 'aegis', isHost: true },
-  { id: 'p2', name: 'Player 2', team: 'B', tankId: 'goliath', isHost: false },
+  { id: 'p1', name: 'Player 1', team: 'A', tankId: tankAt(0), isHost: true },
+  { id: 'p2', name: 'Player 2', team: 'B', tankId: tankAt(1), isHost: false },
 ]
 
 export function buildInterleavedTurnOrder(roster: RosterSlot[]): PlayerId[] {
@@ -77,7 +77,7 @@ export function createInitialBattleState(
   const leftMargin = 180
   const leftSpan = Math.floor(arenaWidth * 0.32)
   teamASlots.forEach((slot, idx) => {
-    const spec = TANK_REGISTRY[slot.tankId] ?? TANK_REGISTRY.aegis
+    const spec = getTankSpec(slot.tankId)
     const count = teamASlots.length
     const step = count > 1 ? Math.floor(leftSpan / (count - 1)) : 0
     const x = count === 1 ? leftMargin + Math.floor(leftSpan * 0.35) : leftMargin + idx * step
@@ -106,7 +106,7 @@ export function createInitialBattleState(
   const rightMargin = 180
   const rightSpan = Math.floor(arenaWidth * 0.32)
   teamBSlots.forEach((slot, idx) => {
-    const spec = TANK_REGISTRY[slot.tankId] ?? TANK_REGISTRY.aegis
+    const spec = getTankSpec(slot.tankId)
     const count = teamBSlots.length
     const step = count > 1 ? Math.floor(rightSpan / (count - 1)) : 0
     const x =

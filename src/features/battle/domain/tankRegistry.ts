@@ -144,6 +144,16 @@ export const TANK_REGISTRY: Record<TankArchetypeId, TankBlueprint> = {
 
 export const TANK_LIST: TankBlueprint[] = Object.values(TANK_REGISTRY)
 
+/** 查機種；id 不認得時退回清單第一台（不把任何特定機種寫死成預設） */
+export function getTankSpec(id: TankArchetypeId | undefined): TankBlueprint {
+  return (id && TANK_REGISTRY[id]) || TANK_LIST[0]
+}
+
+/** 依序輪流取機種 id（預設陣容用），新增機種自動納入輪替 */
+export function tankAt(index: number): TankArchetypeId {
+  return TANK_LIST[index % TANK_LIST.length].id
+}
+
 /** 套用裝甲與抗性後的實際傷害（整數，確定性）。其他傷害類型日後直接呼叫即可 */
 export function mitigateDamage(spec: TankBlueprint, type: DamageType, raw: number): number {
   if (raw <= 0) return 0

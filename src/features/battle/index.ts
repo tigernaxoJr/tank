@@ -10,7 +10,7 @@ export {
   type TankEntity,
   type TurnPhase,
 } from './domain/battleState'
-export { TANK_REGISTRY, TANK_LIST, type TankBlueprint } from './domain/tankRegistry'
+export { TANK_REGISTRY, TANK_LIST, getTankSpec, tankAt, type TankBlueprint } from './domain/tankRegistry'
 export { buildTankCard, type ShotCard, type TankCard } from './domain/tankStats'
 export {
   MAP_REGISTRY,
@@ -28,8 +28,10 @@ export { renderMapPreview } from './ui/mapPreview'
 export {
   PROJECTILE_REGISTRY,
   PROJECTILE_LIST,
+  getProjectileSpec,
   type ProjectileBlueprint,
-  type ProjectileTrailStyle,
+  type ProjectileFx,
+  type GlowKey,
 } from './domain/projectileRegistry'
 export {
   executeFireAction,

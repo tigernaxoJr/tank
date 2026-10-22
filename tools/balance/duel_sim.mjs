@@ -19,8 +19,10 @@
  * 選彈用期望傷害的確定性網格積分（不取樣），避免兩種砲彈接近平手時因雜訊翻面。
  *
  * 平衡原則：血量愈少輸出愈高；目標是三種瞄準精度下勝率都落在約 40% ~ 60%。
- * 數值需與 src/features/battle/domain 的 tankRegistry / projectileRegistry 同步（修改任一邊都要重跑）。
+ * 數值直接讀自 src/features/battle/domain 的 tankRegistry / projectileRegistry，改完註冊表重跑即可。
  */
+import { createServer } from 'vite'
+
 const SEED = 20261022
 const DUEL_N = 20000
 const WIND_MAX = Number(process.env.WIND_MAX ?? 9)
@@ -31,17 +33,33 @@ const BOT_PERFECT_SIGMA = 5 // 「變態」電腦的近似精準參考（見 sig
 const GRID_HALF = 6
 const GRID_STEP = 0.05
 
-const SHELLS = {
-  MISSILE_STANDARD: { dmg: 34, r: 40, magnet: 30, direct: 1, wm: 4 },
-  MISSILE_HEAVY: { dmg: 22, r: 50, magnet: 22, direct: 1, wm: 3 },
-  MISSILE_PLASMA: { dmg: 52, r: 40, magnet: 22, direct: 1, wm: 5 },
-  MISSILE_RAILGUN: { dmg: 75, r: 18, magnet: 0, direct: 1, wm: 5 },
-}
-const TANKS = {
-  aegis: { hp: 100, mult: 1.0, sens: 1, bonus: 0, armor: 0, shield: 0, resist: 0, shots: ['MISSILE_STANDARD', 'MISSILE_HEAVY'] },
-  goliath: { hp: 130, mult: 0.82, sens: 0.8, bonus: 0, armor: 2, shield: 0, resist: 0, shots: ['MISSILE_HEAVY', 'MISSILE_STANDARD'] },
-  zephyr: { hp: 80, mult: 1.15, sens: 1.25, bonus: 0, armor: 0, shield: 0, resist: 0, shots: ['MISSILE_PLASMA', 'MISSILE_RAILGUN'] },
-}
+// 數值直接讀自遊戲的註冊表（單一來源），不再維護副本；用 vite 的 ssrLoadModule 載入 TS。
+const vite = await createServer({ configFile: false, appType: 'custom', server: { middlewareMode: true }, logLevel: 'silent' })
+const { PROJECTILE_REGISTRY } = await vite.ssrLoadModule('/src/features/battle/domain/projectileRegistry.ts')
+const { TANK_REGISTRY } = await vite.ssrLoadModule('/src/features/battle/domain/tankRegistry.ts')
+await vite.close()
+
+const SHELLS = Object.fromEntries(
+  Object.values(PROJECTILE_REGISTRY).map((p) => [
+    p.id,
+    { dmg: p.maxDamage, r: p.damageRadius, magnet: p.magnetRadius, direct: p.directHitMultiplier, wm: p.windMultiplier },
+  ]),
+)
+const TANKS = Object.fromEntries(
+  Object.values(TANK_REGISTRY).map((t) => [
+    t.id,
+    {
+      hp: t.maxHp,
+      mult: t.damageMultiplier,
+      sens: t.windSensitivity,
+      bonus: t.damageRadiusBonus,
+      armor: t.armor,
+      shield: t.shield,
+      resist: t.resist.explosion ?? 0,
+      shots: [...t.shots],
+    },
+  ]),
+)
 
 // mulberry32：固定種子的 32 位元 PRNG，回傳 [0, 1)
 function makeRng(seed) {

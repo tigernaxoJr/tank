@@ -26,7 +26,7 @@ import {
 import { battleStateHash, createInitialBattleState, quantizePower } from '../domain/battleState'
 import { planBotMove, planBotShot } from '../domain/botBrain'
 import { MAP_REGISTRY, terrainOptionsFor } from '../domain/mapRegistry'
-import { TANK_REGISTRY } from '../domain/tankRegistry'
+import { getTankSpec, tankAt } from '../domain/tankRegistry'
 import BattleCanvas from './BattleCanvas.vue'
 import BattleHud from './BattleHud.vue'
 
@@ -46,8 +46,8 @@ const props = withDefaults(
     initialSeed: 1024,
     mapId: 'harvest_plains',
     roster: () => [
-      { id: 'p1', name: 'Player 1', team: 'A', tankId: 'aegis', isHost: true },
-      { id: 'p2', name: 'Player 2', team: 'B', tankId: 'goliath', isHost: false },
+      { id: 'p1', name: 'Player 1', team: 'A', tankId: tankAt(0), isHost: true },
+      { id: 'p2', name: 'Player 2', team: 'B', tankId: tankAt(1), isHost: false },
     ],
   },
 )
@@ -69,7 +69,7 @@ const state = reactive(
 const bulletChoice = reactive<Record<PlayerId, BulletType>>({})
 const bulletType = computed<BulletType>(() => {
   const tank = state.tanks[state.activePlayer]
-  const shots = (TANK_REGISTRY[tank?.tankId ?? 'aegis'] ?? TANK_REGISTRY.aegis).shots
+  const shots = getTankSpec(tank?.tankId).shots
   const chosen = bulletChoice[state.activePlayer]
   return chosen && shots.includes(chosen) ? chosen : shots[0]
 })

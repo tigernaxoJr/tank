@@ -11,7 +11,7 @@
 import { computed, reactive, ref, onMounted, onUnmounted } from 'vue'
 import { quantizePower, type BattleState } from '../domain/battleState'
 import { PROJECTILE_REGISTRY } from '../domain/projectileRegistry'
-import { TANK_REGISTRY } from '../domain/tankRegistry'
+import { TANK_LIST, getTankSpec } from '../domain/tankRegistry'
 import type { BulletType } from '@/shared/kernel/types'
 
 interface Props {
@@ -40,10 +40,10 @@ const emit = defineEmits<{
 
 const activeTank = computed(() => props.state.tanks[props.state.activePlayer])
 const activeTankSpec = computed(() =>
-  activeTank.value ? TANK_REGISTRY[activeTank.value.tankId] ?? TANK_REGISTRY.aegis : TANK_REGISTRY.aegis,
+  activeTank.value ? getTankSpec(activeTank.value.tankId) : TANK_LIST[0],
 )
 const activeSpriteUrl = computed(() => {
-  if (!activeTank.value) return TANK_REGISTRY.aegis.getSprites('A').hullUrl
+  if (!activeTank.value) return TANK_LIST[0].getSprites('A').hullUrl
   return activeTankSpec.value.getSprites(activeTank.value.team).hullUrl
 })
 

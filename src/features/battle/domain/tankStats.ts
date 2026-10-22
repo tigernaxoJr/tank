@@ -5,7 +5,7 @@
  */
 import type { BulletType, TankArchetypeId } from '@/shared/kernel/types'
 import { PROJECTILE_REGISTRY } from './projectileRegistry'
-import { TANK_LIST, TANK_REGISTRY, type DamageType } from './tankRegistry'
+import { TANK_LIST, TANK_REGISTRY, getTankSpec, type DamageType } from './tankRegistry'
 
 /** 與 launchVelocity 相同的初速係數（power 100 → 16.5 px/step） */
 const SPEED_PER_POWER_PX = 0.165
@@ -72,7 +72,7 @@ function rawShot(tankId: TankArchetypeId, bullet: BulletType) {
 }
 
 export function buildTankCard(tankId: TankArchetypeId): TankCard {
-  const tank = TANK_REGISTRY[tankId] ?? TANK_REGISTRY.aegis
+  const tank = getTankSpec(tankId)
 
   let maxHp = 1
   let maxOutput = 1

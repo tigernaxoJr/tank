@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { isForgedAction } from '../infra/messageGuards'
 import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
-import { BOT_LEVEL_SPECS, MAP_LIST, MAP_REGISTRY, renderMapPreview, TANK_LIST, TANK_REGISTRY } from '@/features/battle'
+import { BOT_LEVEL_SPECS, MAP_LIST, MAP_REGISTRY, renderMapPreview, TANK_LIST, TANK_REGISTRY, getTankSpec, tankAt } from '@/features/battle'
 import TankStatPanel from './TankStatPanel.vue'
 import {
   countTeamMembers,
@@ -55,20 +55,9 @@ const emit = defineEmits<{
 
 const gameMode = ref<'p2p' | 'hotseat'>('p2p')
 const hotseatCountPerTeam = ref(1)
-const hotseatTeamATanks = reactive<TankArchetypeId[]>([
-  'aegis',
-  'goliath',
-  'zephyr',
-  'aegis',
-  'goliath',
-])
-const hotseatTeamBTanks = reactive<TankArchetypeId[]>([
-  'goliath',
-  'zephyr',
-  'aegis',
-  'goliath',
-  'zephyr',
-])
+// 預設陣容依註冊表輪流排（B 隊錯開一台），新增機種自動納入
+const hotseatTeamATanks = reactive<TankArchetypeId[]>(Array.from({ length: 5 }, (_, i) => tankAt(i)))
+const hotseatTeamBTanks = reactive<TankArchetypeId[]>(Array.from({ length: 5 }, (_, i) => tankAt(i + 1)))
 // 單機模式各隊由玩家或電腦操控（預設：玩家 vs 電腦）
 const hotseatBotTeams = reactive<Record<TeamId, boolean>>({ A: false, B: true })
 // 各隊電腦難度（預設中等：會有瞄準偏差，不至於每發都命中）
@@ -91,7 +80,7 @@ const session = reactive<RoomSession>({
   isHost: true,
   localPlayerId: 'p1',
   localPlayerName: 'Commander',
-  selectedTankId: 'aegis',
+  selectedTankId: tankAt(0),
   selectedMapId: 'harvest_plains',
   disconnectPolicy: 'forfeit',
   locked: false,
@@ -195,7 +184,7 @@ function handleHostReceivePeerMessage(peerSlotId: PlayerId, msg: ProtocolMessage
     const slot = session.roster.find((r) => r.id === peerSlotId)
     if (slot) {
       slot.name = msg.guestName.trim() || peerSlotId.toUpperCase()
-      slot.tankId = msg.tankId || 'aegis'
+      slot.tankId = msg.tankId || tankAt(0)
       broadcastRosterFromHost()
     }
     return
@@ -288,7 +277,7 @@ async function handleHost(): Promise<void> {
           id: peerSlotId,
           name: `Player ${peerSlotId.toUpperCase()}`,
           team,
-          tankId: 'aegis',
+          tankId: tankAt(0),
           isHost: false,
           ready: false,
         })
@@ -477,12 +466,12 @@ function handleStartHotseatBattle(): void {
   const n = Math.max(1, Math.min(5, hotseatCountPerTeam.value))
   const roster: RosterSlot[] = []
   for (let i = 1; i <= n; i++) {
-    const tankId = hotseatTeamATanks[i - 1] ?? 'aegis'
+    const tankId = hotseatTeamATanks[i - 1] ?? tankAt(i - 1)
     const isBot = hotseatBotTeams.A
     roster.push({ id: `a${i}`, name: isBot ? `🤖 CPU A${i}` : `琥珀 A${i}`, team: 'A', tankId, isHost: i === 1, isBot, botLevel: isBot ? hotseatBotLevels.A : undefined })
   }
   for (let i = 1; i <= n; i++) {
-    const tankId = hotseatTeamBTanks[i - 1] ?? 'goliath'
+    const tankId = hotseatTeamBTanks[i - 1] ?? tankAt(i)
     const isBot = hotseatBotTeams.B
     roster.push({ id: `b${i}`, name: isBot ? `🤖 CPU B${i}` : `皇家藍 B${i}`, team: 'B', tankId, isHost: false, isBot, botLevel: isBot ? hotseatBotLevels.B : undefined })
   }
@@ -1202,14 +1191,14 @@ onUnmounted(() => {
               >
                 <div class="flex items-center gap-2 min-w-0">
                   <img
-                    :src="TANK_REGISTRY[hotseatTeamATanks[idx - 1] ?? 'aegis'].getSprites('A').hullUrl"
+                    :src="getTankSpec(hotseatTeamATanks[idx - 1]).getSprites('A').hullUrl"
                     class="h-8 w-8 shrink-0 object-contain drop-shadow"
                     alt=""
                   />
                   <div class="min-w-0">
                     <div class="text-xs font-extrabold text-teal-950">{{ hotseatBotTeams.A ? '🤖 CPU' : '琥珀' }} A{{ idx }}</div>
                     <div class="truncate text-[10px] text-amber-700">
-                      {{ TANK_REGISTRY[hotseatTeamATanks[idx - 1] ?? 'aegis'].name }}
+                      {{ getTankSpec(hotseatTeamATanks[idx - 1]).name }}
                     </div>
                   </div>
                 </div>
@@ -1221,7 +1210,7 @@ onUnmounted(() => {
                     type="button"
                     class="rounded-lg border px-1.5 py-1 text-[10px] font-extrabold transition cursor-pointer"
                     :class="
-                      (hotseatTeamATanks[idx - 1] ?? 'aegis') === tank.id
+                      (hotseatTeamATanks[idx - 1] ?? tankAt(idx - 1)) === tank.id
                         ? 'border-amber-300 bg-amber-400 text-slate-950 shadow'
                         : 'border-teal-600/40 bg-white text-teal-800 hover:border-amber-300/60'
                     "
@@ -1282,14 +1271,14 @@ onUnmounted(() => {
               >
                 <div class="flex items-center gap-2 min-w-0">
                   <img
-                    :src="TANK_REGISTRY[hotseatTeamBTanks[idx - 1] ?? 'goliath'].getSprites('B').hullUrl"
+                    :src="getTankSpec(hotseatTeamBTanks[idx - 1]).getSprites('B').hullUrl"
                     class="h-8 w-8 shrink-0 object-contain drop-shadow"
                     alt=""
                   />
                   <div class="min-w-0">
                     <div class="text-xs font-extrabold text-teal-950">{{ hotseatBotTeams.B ? '🤖 CPU' : '皇家藍' }} B{{ idx }}</div>
                     <div class="truncate text-[10px] text-sky-700">
-                      {{ TANK_REGISTRY[hotseatTeamBTanks[idx - 1] ?? 'goliath'].name }}
+                      {{ getTankSpec(hotseatTeamBTanks[idx - 1]).name }}
                     </div>
                   </div>
                 </div>
@@ -1301,7 +1290,7 @@ onUnmounted(() => {
                     type="button"
                     class="rounded-lg border px-1.5 py-1 text-[10px] font-extrabold transition cursor-pointer"
                     :class="
-                      (hotseatTeamBTanks[idx - 1] ?? 'goliath') === tank.id
+                      (hotseatTeamBTanks[idx - 1] ?? tankAt(idx)) === tank.id
                         ? 'border-sky-300 bg-sky-400 text-slate-950 shadow'
                         : 'border-teal-600/40 bg-white text-teal-800 hover:border-teal-600/40'
                     "

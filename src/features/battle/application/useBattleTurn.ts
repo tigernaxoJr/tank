@@ -30,7 +30,7 @@ import {
 import { MAP_REGISTRY } from '../domain/mapRegistry'
 import { nextWindSpeed } from '../domain/windRules'
 import { PROJECTILE_REGISTRY } from '../domain/projectileRegistry'
-import { TANK_REGISTRY, effectiveWindMilli, mitigateDamage } from '../domain/tankRegistry'
+import { effectiveWindMilli, getTankSpec, mitigateDamage } from '../domain/tankRegistry'
 
 let defaultCore: TankCorePort | null = null
 
@@ -104,7 +104,7 @@ export function prepareFireTrajectory(
   shooter.power = cmd.power
   state.phase = 'FIRING'
 
-  const shooterSpec = TANK_REGISTRY[shooter.tankId] ?? TANK_REGISTRY.aegis
+  const shooterSpec = getTankSpec(shooter.tankId)
   // 只接受這台坦克的專屬砲彈，其餘一律退回預設彈（兩端確定性一致）
   const bulletType = shooterSpec.shots.includes(cmd.bulletType) ? cmd.bulletType : shooterSpec.shots[0]
   const projSpec = PROJECTILE_REGISTRY[bulletType]
@@ -204,7 +204,7 @@ export function commitFireImpact(
       const isDirect = hit.hitTank && Math.hypot(hit.hitX - tank.x, hit.hitY - (tank.y - 10)) <= 2
       // 直擊（爆心已吸附到車身中心）吃滿傷害，不吃 tank.y 與車身中心的 10px 衰減
       const raw = isDirect ? Math.round(maxDamage * directHitMultiplier) : base
-      damageByPlayer[tank.id] = mitigateDamage(TANK_REGISTRY[tank.tankId] ?? TANK_REGISTRY.aegis, 'explosion', raw)
+      damageByPlayer[tank.id] = mitigateDamage(getTankSpec(tank.tankId), 'explosion', raw)
     }
 
     state.lastExplosion = {
@@ -220,7 +220,7 @@ export function commitFireImpact(
     const surfaceY = groundUnderTank(engine, tank)
     syncTankToSurface(tank, surfaceY, slopeAt(engine, tank.x, surfaceY))
     if (tank.hp <= 0) continue
-    const spec = TANK_REGISTRY[tank.tankId] ?? TANK_REGISTRY.aegis
+    const spec = getTankSpec(tank.tankId)
     let extra = 0
     if (surfaceY >= engine.height) {
       // 墜入深淵：無視護盾與抗性直接陣亡
@@ -286,7 +286,7 @@ export function moveActiveTank(
 
   const engine = core ?? getDefaultCore(state.seed)
   const fuelCost = Math.min(tank.moveFuel, Math.abs(deltaX))
-  const climbPerPx = (TANK_REGISTRY[tank.tankId] ?? TANK_REGISTRY.aegis).climbPerPx
+  const climbPerPx = getTankSpec(tank.tankId).climbPerPx
   const dest = walkAlongTerrain(engine, tank.x, groundUnderTank(engine, tank), Math.sign(deltaX) * fuelCost, true, climbPerPx)
   const moved = Math.abs(dest.x - tank.x)
   if (moved === 0) return false
@@ -303,7 +303,7 @@ export function moveActiveTank(
     if (!isGameOver(state)) finalizeTurnAfterHold(state)
   } else if (dest.fell) {
     // 從高處（橋緣、台地邊）走下去：落在下層地面，依落差與機種抗性結算摔落傷害（與被炸下墜同一套規則）
-    const spec = TANK_REGISTRY[tank.tankId] ?? TANK_REGISTRY.aegis
+    const spec = getTankSpec(tank.tankId)
     syncTankToSurface(tank, dest.groundY, slopeAt(engine, dest.x, dest.groundY))
     const dmg = mitigateDamage(spec, 'fall', fallDamageFor(dest.dropPx ?? 0, spec.fallSafePx))
     if (dmg > 0) {

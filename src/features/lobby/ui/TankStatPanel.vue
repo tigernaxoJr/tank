@@ -4,12 +4,12 @@
  * 長條圖以所有坦克 / 砲彈的最大值為 100%，方便比較「血量低 → 輸出高」的取捨。
  */
 import { computed } from 'vue'
-import { buildTankCard, TANK_REGISTRY } from '@/features/battle'
+import { buildTankCard, getTankSpec } from '@/features/battle'
 import type { TankArchetypeId } from '@/shared/kernel/types'
 
 const props = defineProps<{ tankId: TankArchetypeId }>()
 
-const spec = computed(() => TANK_REGISTRY[props.tankId] ?? TANK_REGISTRY.aegis)
+const spec = computed(() => getTankSpec(props.tankId))
 const card = computed(() => buildTankCard(props.tankId))
 
 const bars = computed(() => [
