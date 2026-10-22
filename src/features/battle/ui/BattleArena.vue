@@ -80,12 +80,50 @@ function knownShots(playerId: PlayerId): readonly BulletType[] | null {
   if (tank.loadoutRoot) return playerId === props.localRole && props.loadoutSecret ? props.loadoutSecret.loadout : null
   return availableShots(tank)
 }
-const hudShots = computed(() => knownShots(state.activePlayer))
-const bulletType = computed<BulletType>(() => {
-  const shots = hudShots.value ?? getTankSpec(state.tanks[state.activePlayer]?.tankId).shots
-  const chosen = bulletChoice[state.activePlayer]
+function bulletFor(playerId: PlayerId): BulletType {
+  const shots = knownShots(playerId) ?? getTankSpec(state.tanks[playerId]?.tankId).shots
+  const chosen = bulletChoice[playerId]
   return chosen && shots.includes(chosen) ? chosen : shots[0]
+}
+const bulletType = computed<BulletType>(() => bulletFor(state.activePlayer))
+
+// --- 駕駛艙面板顯示誰：預設「自己」= 一律顯示本機玩家的坦克；切到「回合」= 該回合出手的坦克 ---
+// 單機熱座沒有固定的「自己」，取最近一位出手的真人玩家（輪到電腦時仍顯示他）
+type HudPanelMode = 'active' | 'own'
+const PANEL_MODE_KEY = 'tank.hudPanelMode'
+function loadPanelMode(): HudPanelMode {
+  try {
+    return localStorage.getItem(PANEL_MODE_KEY) === 'active' ? 'active' : 'own'
+  } catch {
+    return 'own'
+  }
+}
+const panelMode = ref<HudPanelMode>(loadPanelMode())
+function setPanelMode(mode: HudPanelMode): void {
+  panelMode.value = mode
+  try {
+    localStorage.setItem(PANEL_MODE_KEY, mode)
+  } catch {
+    // 無痕模式等情況存不了，只影響下次預設值
+  }
+}
+const lastHumanId = ref<PlayerId | null>(null)
+watch(
+  () => state.activePlayer,
+  (id) => {
+    if (state.tanks[id] && !state.tanks[id].isBot) lastHumanId.value = id
+  },
+  { immediate: true },
+)
+const ownPlayerId = computed<PlayerId | null>(() => {
+  if (props.mode === 'p2p') return state.tanks[props.localRole] ? props.localRole : null
+  return lastHumanId.value ?? Object.values(state.tanks).find((t) => !t.isBot)?.id ?? null
 })
+const panelPlayerId = computed<PlayerId>(() =>
+  panelMode.value === 'own' && ownPlayerId.value ? ownPlayerId.value : state.activePlayer,
+)
+const panelShots = computed(() => knownShots(panelPlayerId.value))
+const panelBulletType = computed(() => bulletFor(panelPlayerId.value))
 
 // --- 回合倒數：輪到真人時開始計時，歸零就跳過回合（走一般 PASS 流程，P2P 會同步廣播） ---
 const TURN_TIME_SEC = 15
@@ -549,8 +587,11 @@ defineExpose({
     <BattleCanvas ref="canvasRef" :state="state" :core="core" :bullet-type="bulletType">
       <BattleHud
         :state="state"
-        :bullet-type="bulletType"
-        :shots="hudShots"
+        :panel-player-id="panelPlayerId"
+        :panel-mode="panelMode"
+        :has-own-tank="ownPlayerId !== null"
+        :bullet-type="panelBulletType"
+        :shots="panelShots"
         :can-control="canControl"
         :is-bot-turn="isBotTurn"
         :is-muted="isMuted"
@@ -564,6 +605,7 @@ defineExpose({
         @pass="handlePass"
         @reset-match="handleRequestNewMatch"
         @toggle-mute="handleToggleMute"
+        @set-panel-mode="setPanelMode"
         @leave-game="emit('leave-game')"
       />
     </BattleCanvas>

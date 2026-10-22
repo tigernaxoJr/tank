@@ -26,12 +26,18 @@ export function useBattleInput(ctx: BattleInputContext) {
   const lastFiredPowerByPlayer = reactive<Record<string, number>>({})
 
   const isCharging = ref(false)
-  const CHARGE_RATE_PER_SEC = 80
+  // 蓄力速度所有坦克共用同一個值（10 → 100 約 2 秒），不得依機種或砲彈改變
+  const CHARGE_RATE_PER_SEC = 45
   const CHARGE_START_POWER = 10
-  let chargeDirection = 1
   let animFrameId: number | null = null
-  let currentChargingPower = 0
-  let lastChargeTs: number | null = null
+  let chargeStartMs = 0
+  let powerBeforeCharge = 0
+
+  /** 依按住的時間算力道（10 → 100，到頂就停在 100 不回落），與影格率無關，每台坦克手感一致 */
+  function chargedPowerAt(nowMs: number): number {
+    const travelled = ((nowMs - chargeStartMs) / 1000) * CHARGE_RATE_PER_SEC
+    return quantizePower(Math.min(100, CHARGE_START_POWER + travelled))
+  }
 
   /** 砲口朝左（angle > 90）；仰角 = 與水平的夾角，不分左右 */
   const facingLeft = computed(() => (ctx.activeTank.value?.angle ?? 45) > 90)
@@ -67,37 +73,76 @@ export function useBattleInput(ctx: BattleInputContext) {
     ctx.onMove(deltaX)
   }
 
-  function onClickPowerGauge(e: MouseEvent): void {
+  function setPowerFromPointer(clientX: number): void {
     const tank = ctx.activeTank.value
     if (ctx.controlsDisabled.value || !powerBarRef.value || !tank) return
     const rect = powerBarRef.value.getBoundingClientRect()
-    const ratio = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width))
+    const ratio = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width))
     const newPower = Math.max(10, Math.min(100, quantizePower(ratio * 100)))
     ctx.onUpdateAim(tank.angle, newPower)
   }
+
+  /** 力道條：按下即設定，按住拖曳可連續微調 */
+  function onPointerDownPowerGauge(e: PointerEvent): void {
+    if (ctx.controlsDisabled.value || isCharging.value) return
+    e.preventDefault()
+    setPowerFromPointer(e.clientX)
+    const onMoveEv = (ev: PointerEvent) => setPowerFromPointer(ev.clientX)
+    const onUp = () => {
+      window.removeEventListener('pointermove', onMoveEv)
+      window.removeEventListener('pointerup', onUp)
+      window.removeEventListener('pointercancel', onUp)
+    }
+    window.addEventListener('pointermove', onMoveEv)
+    window.addEventListener('pointerup', onUp)
+    window.addEventListener('pointercancel', onUp)
+  }
+
+  // --- 按住連發：移動 / 仰角按鈕按住不放會持續作用（先單發，停頓後連續） ---
+  let repeatDelay: ReturnType<typeof setTimeout> | null = null
+  let repeatTimer: ReturnType<typeof setInterval> | null = null
+
+  function stopRepeat(): void {
+    if (repeatDelay !== null) clearTimeout(repeatDelay)
+    if (repeatTimer !== null) clearInterval(repeatTimer)
+    repeatDelay = null
+    repeatTimer = null
+  }
+
+  function holdRepeat(e: PointerEvent, action: () => void, intervalMs: number): void {
+    if (ctx.controlsDisabled.value) return
+    e.preventDefault()
+    stopRepeat()
+    action()
+    repeatDelay = setTimeout(() => {
+      repeatTimer = setInterval(() => {
+        if (ctx.controlsDisabled.value) return stopRepeat()
+        action()
+      }, intervalMs)
+    }, 260)
+    const onUp = () => {
+      window.removeEventListener('pointerup', onUp)
+      window.removeEventListener('pointercancel', onUp)
+      stopRepeat()
+    }
+    window.addEventListener('pointerup', onUp)
+    window.addEventListener('pointercancel', onUp)
+  }
+
+  const holdMove = (e: PointerEvent, dir: 1 | -1) => holdRepeat(e, () => handleMove(dir * 6), 40)
+  const holdAngle = (e: PointerEvent, delta: number) => holdRepeat(e, () => adjustAngle(delta), 70)
 
   function startCharging(): void {
     const tank = ctx.activeTank.value
     if (ctx.controlsDisabled.value || isCharging.value || !tank) return
     isCharging.value = true
-    chargeDirection = 1
-    currentChargingPower = CHARGE_START_POWER
-    lastChargeTs = null
+    chargeStartMs = performance.now()
+    powerBeforeCharge = tank.power
     ctx.onUpdateAim(tank.angle, CHARGE_START_POWER)
 
-    const loop = (ts: number) => {
+    const loop = () => {
       if (!isCharging.value || !ctx.activeTank.value) return
-      const dt = lastChargeTs === null ? 0 : Math.min(0.05, (ts - lastChargeTs) / 1000)
-      lastChargeTs = ts
-      currentChargingPower += chargeDirection * CHARGE_RATE_PER_SEC * dt
-      if (currentChargingPower >= 100) {
-        currentChargingPower = 100
-        chargeDirection = -1
-      } else if (currentChargingPower <= 10) {
-        currentChargingPower = 10
-        chargeDirection = 1
-      }
-      ctx.onUpdateAim(ctx.activeTank.value.angle, quantizePower(currentChargingPower))
+      ctx.onUpdateAim(ctx.activeTank.value.angle, chargedPowerAt(performance.now()))
       animFrameId = requestAnimationFrame(loop)
     }
     animFrameId = requestAnimationFrame(loop)
@@ -112,13 +157,14 @@ export function useBattleInput(ctx: BattleInputContext) {
     }
     const tank = ctx.activeTank.value
     if (!ctx.controlsDisabled.value && tank) {
-      const finalPower = quantizePower(currentChargingPower)
+      const finalPower = chargedPowerAt(performance.now())
       ctx.onUpdateAim(tank.angle, finalPower)
       lastFiredPowerByPlayer[tank.id] = finalPower
       ctx.onFire()
     }
   }
 
+  /** 取消蓄力（Esc 或視窗失焦）：不開火，力道還原成蓄力前的值；之後的放開也不會開火 */
   function cancelCharging(): void {
     if (isCharging.value) {
       isCharging.value = false
@@ -126,6 +172,8 @@ export function useBattleInput(ctx: BattleInputContext) {
         cancelAnimationFrame(animFrameId)
         animFrameId = null
       }
+      const tank = ctx.activeTank.value
+      if (tank) ctx.onUpdateAim(tank.angle, powerBeforeCharge)
     }
   }
 
@@ -157,6 +205,11 @@ export function useBattleInput(ctx: BattleInputContext) {
   }
 
   function handleKeyDown(e: KeyboardEvent): void {
+    if (e.key === 'Escape' && isCharging.value) {
+      e.preventDefault()
+      cancelCharging()
+      return
+    }
     if (isInputFocused() || ctx.controlsDisabled.value) return
 
     if (e.key === 'ArrowLeft') {
@@ -203,6 +256,7 @@ export function useBattleInput(ctx: BattleInputContext) {
     window.removeEventListener('keyup', handleKeyUp)
     window.removeEventListener('blur', cancelCharging)
     cancelCharging()
+    stopRepeat()
   })
 
   return {
@@ -214,7 +268,9 @@ export function useBattleInput(ctx: BattleInputContext) {
     adjustAngle,
     turnToward,
     handleMove,
-    onClickPowerGauge,
+    holdMove,
+    holdAngle,
+    onPointerDownPowerGauge,
     startCharging,
     stopChargingAndFire,
     cancelCharging,

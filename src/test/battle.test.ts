@@ -191,6 +191,69 @@ describe('移動', () => {
     state.phase = 'FIRING'
     expect(moveActiveTank(state, 20, core)).toBe(false)
   })
+
+  /** 平地上放一塊高 bumpPx 的凸起（寬 bumpW px），p1 站在凸起左側 */
+  function bumpBattle(bumpPx: number, bumpW: number) {
+    const { state, core } = setupBattle()
+    const groundY = Math.round(core.height * 0.6)
+    const bx = Math.round(core.width * 0.3)
+    core.resetTerrain(1, {
+      width: core.width,
+      height: core.height,
+      baseMode: 'none',
+      features: [
+        { kind: 'rect', x: 0, y: groundY / core.height, w: 1, h: 1, op: 'add' },
+        { kind: 'rect', x: bx / core.width, y: (groundY - bumpPx) / core.height, w: bumpW / core.width, h: bumpPx / core.height, op: 'add' },
+      ] as never,
+    })
+    const t = state.tanks.p1
+    t.x = bx - 10
+    t.y = core.surfaceY(t.x) - 12
+    return { state, core, tank: t, bx, bumpW }
+  }
+  it('小凸起（彈坑邊、碎石）可以直接壓過去，爬坡最差的巨像也行', () => {
+    const { state, core, tank, bx, bumpW } = bumpBattle(8, 20)
+    tank.tankId = 'goliath' // 爬坡最差（climbPerPx 2）
+    moveActiveTank(state, 60, core)
+    expect(tank.x).toBeGreaterThan(bx + bumpW)
+  })
+  /** 平地上一個半橢圓土丘（寬 2·rx、高 ry），p1 站在土丘左側 */
+  function moundBattle(rx: number, ry: number) {
+    const { state, core } = setupBattle()
+    const groundY = Math.round(core.height * 0.6)
+    const cx = Math.round(core.width * 0.4)
+    core.resetTerrain(1, {
+      width: core.width,
+      height: core.height,
+      baseMode: 'none',
+      features: [
+        { kind: 'rect', x: 0, y: groundY / core.height, w: 1, h: 1, op: 'add' },
+        { kind: 'ellipse', cx: cx / core.width, cy: groundY / core.height, rx: rx / core.width, ry: ry / core.height, op: 'add' },
+      ] as never,
+    })
+    const t = state.tanks.p1
+    t.tankId = 'goliath'
+    t.x = cx - rx - 10
+    t.y = core.surfaceY(t.x) - 12
+    return { state, core, tank: t, cx }
+  }
+  it('短而陡的小土丘（不是大片連續坡）爬得過去', () => {
+    const { state, core, tank, cx } = moundBattle(20, 26)
+    tank.moveFuel = 999
+    moveActiveTank(state, 80, core)
+    expect(tank.x).toBeGreaterThan(cx + 20)
+  })
+  it('大片連續陡坡仍然爬不上去', () => {
+    const { state, core, tank, cx } = moundBattle(200, 150)
+    tank.moveFuel = 999
+    moveActiveTank(state, 120, core)
+    expect(tank.x).toBeLessThan(cx - 150)
+  })
+  it('高牆仍然擋得住', () => {
+    const { state, core, tank, bx } = bumpBattle(60, 40)
+    moveActiveTank(state, 60, core)
+    expect(tank.x).toBeLessThan(bx)
+  })
 })
 
 describe('走下高處', () => {

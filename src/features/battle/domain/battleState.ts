@@ -205,6 +205,13 @@ export function syncTankToSurface(tank: TankEntity, surfaceY: number, slopeDeg: 
 
 /** 每水平移動 1px 最多可爬升的高度（約 70°），更陡的牆面會擋住坦克 */
 export const MAX_CLIMB_PER_PX = 3
+/**
+ * 像人跨過小土堆：短而陡的凸起（彈坑邊緣、碎石、小土丘）可以直接爬過去，只有大片連續陡坡與高牆擋得住。
+ * - 單步（1px 水平）最多可上 STEP_UP_PX，比這更高的垂直斷面就是牆。
+ * - 最近 STEP_WINDOW_PX 水平距離內的總爬升不得超過 climbPerPx × STEP_WINDOW_PX；坡持續陡下去就會超過而停住。
+ */
+export const STEP_UP_PX = 16
+const STEP_WINDOW_PX = 16
 /** 坦克車身高度：前方地形的淨空不足（例如橋下、洞穴天花板太低）就無法通過 */
 const TANK_HEADROOM = 18
 
@@ -236,12 +243,20 @@ export function walkAlongTerrain(
   const maxX = core.width - 30
   let x = startX
   let groundY = startGroundY
+  // 走過的每一步地面高度，用來檢查最近一段距離的平均坡度
+  const trail: number[] = [startGroundY]
   for (let i = 0; i < Math.abs(Math.round(deltaX)); i++) {
     const nx = x + dir
     if (nx < minX || nx > maxX) break
-    const probe = groundY - climbPerPx
+    const stepUp = Math.max(climbPerPx, STEP_UP_PX)
+    const probe = groundY - stepUp
     if (core.isSolid(nx, probe)) break
     const ng = core.groundBelow(nx, probe)
+    const rise = groundY - ng
+    if (rise > climbPerPx) {
+      const windowStart = trail[Math.max(0, trail.length - STEP_WINDOW_PX)]
+      if (windowStart - ng > climbPerPx * STEP_WINDOW_PX) break
+    }
     // 前方沒有地面，或落差超過安全高度（懸崖）：踏出去就是墜落（落地後的摔落傷害由呼叫端依 dropPx 結算）
     if (ng >= core.height || ng - groundY > FALL_SAFE_PX) {
       if (allowFall) return { x: nx, groundY: ng, fell: true, dropPx: ng - groundY }
@@ -250,6 +265,7 @@ export function walkAlongTerrain(
     if (core.isSolid(nx, ng - TANK_HEADROOM)) break
     x = nx
     groundY = ng
+    trail.push(ng)
   }
   return { x, groundY }
 }

@@ -88,9 +88,9 @@ export function syncAllTanksToTerrain(state: BattleState, core: TankCorePort): v
 /**
  * 第一階段：計算確定性彈道並將狀態切為 'FIRING'，此時尚未挖坑或扣血（等待砲彈飛抵目標）
  */
-/** 砲彈吸附：吸附半徑與直擊倍率由各砲彈 blueprint 決定；此為坦克本體碰撞半徑與吸附彎折步數 */
+/** 砲彈吸附（放大判定）：吸附半徑與直擊倍率由各砲彈 blueprint 決定；此為坦克本體碰撞半徑與直擊判定半徑 */
 const TANK_HIT_RADIUS_PX = 18
-const MAGNET_PULL_STEPS = 6
+const DIRECT_HIT_RADIUS_PX = 26
 
 /** 兩點間是否沒有地形遮擋（每 3px 取樣，略過終點附近 8px 以免誤判坦克所貼的地面） */
 function hasClearLine(core: TankCorePort, x0: number, y0: number, x1: number, y1: number): boolean {
@@ -139,19 +139,14 @@ function simulatePellet(
       return distSq <= TANK_HIT_RADIUS_PX * TANK_HIT_RADIUS_PX || hasClearLine(engine, pt.x, pt.y, t.x, t.y - 10)
     })
     if (target) {
-      const tx = target.x
-      const ty = target.y - 10
-      const pull = Array.from({ length: MAGNET_PULL_STEPS }, (_, k) => {
-        const r = (k + 1) / MAGNET_PULL_STEPS
-        return { x: Math.round(pt.x + (tx - pt.x) * r), y: Math.round(pt.y + (ty - pt.y) * r) }
-      })
+      // 不彎折彈道：砲彈沿原拋物線飛行，進入放大的判定範圍就在該點引爆（肉眼看不出吸附）
       hit = {
-        hitX: tx,
-        hitY: ty,
+        hitX: pt.x,
+        hitY: pt.y,
         impactedTerrain: false,
         hitTank: true,
         stepsTaken: Math.max(1, i * 2),
-        path: [...hit.path.slice(0, i + 1), ...pull],
+        path: hit.path.slice(0, i + 1),
       }
       break
     }
@@ -252,8 +247,8 @@ export function commitFireImpact(
     for (const tank of Object.values(state.tanks)) {
       if (tank.hp <= 0) continue
       const base = engine.computeExplosionDamage(hit.hitX, hit.hitY, tank.x, tank.y, damageRadius, maxDamage)
-      const isDirect = hit.hitTank && Math.hypot(hit.hitX - tank.x, hit.hitY - (tank.y - 10)) <= 2
-      // 直擊（爆心已吸附到車身中心）吃滿傷害，不吃 tank.y 與車身中心的 10px 衰減
+      const isDirect = hit.hitTank && Math.hypot(hit.hitX - tank.x, hit.hitY - (tank.y - 10)) <= DIRECT_HIT_RADIUS_PX
+      // 直擊（爆心落在放大判定範圍內）吃滿傷害，不吃距離衰減
       const raw = isDirect ? Math.round(maxDamage * directHitMultiplier) : base
       damageByPlayer[tank.id] = (damageByPlayer[tank.id] ?? 0) + mitigateDamage(getTankSpec(tank.tankId), 'explosion', raw)
     }

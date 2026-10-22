@@ -33,7 +33,7 @@ function updateMinimap(camX: number, camY: number, viewW: number, viewH: number)
   const mw = mini.width
   const mh = mini.height
   mctx.clearRect(0, 0, mw, mh)
-  mctx.fillStyle = 'rgba(14, 116, 144, 0.75)'
+  mctx.fillStyle = '#bfe3ff'
   mctx.fillRect(0, 0, mw, mh)
 
   const terrainCanvas = sceneInstance?.getTerrainCanvasSource()
@@ -46,17 +46,18 @@ function updateMinimap(camX: number, camY: number, viewW: number, viewH: number)
 
   for (const tank of Object.values(props.state.tanks)) {
     if (tank.hp <= 0) continue
-    mctx.fillStyle = tank.team === 'A' ? '#fb923c' : '#38bdf8'
-    mctx.strokeStyle = '#ffffff'
-    mctx.lineWidth = 1
+    // 與大廳 token 同色：--color-team-a / --color-team-b，外框 --color-ink
+    mctx.fillStyle = tank.team === 'A' ? '#ff9a1f' : '#3d8bff'
+    mctx.strokeStyle = '#1d2340'
+    mctx.lineWidth = 1.5
     mctx.beginPath()
-    mctx.arc(tank.x * scaleX, tank.y * scaleY, 3.5, 0, Math.PI * 2)
+    mctx.arc(tank.x * scaleX, tank.y * scaleY, 4, 0, Math.PI * 2)
     mctx.fill()
     mctx.stroke()
   }
 
-  mctx.strokeStyle = '#fde047'
-  mctx.lineWidth = 1.8
+  mctx.strokeStyle = '#1d2340'
+  mctx.lineWidth = 2
   mctx.strokeRect(camX * scaleX, camY * scaleY, viewW * scaleX, viewH * scaleY)
 }
 
@@ -92,6 +93,13 @@ function focusActiveTank(immediate = false): void {
 function panCameraBy(dx: number, dy: number): void {
   sceneInstance?.panCameraBy(dx, dy)
 }
+
+const CAMERA_PANS = [
+  { label: '鏡頭往左', dx: -260, dy: 0, rotate: 0 },
+  { label: '鏡頭往上', dx: 0, dy: -180, rotate: 90 },
+  { label: '鏡頭往下', dx: 0, dy: 180, rotate: -90 },
+  { label: '鏡頭往右', dx: 260, dy: 0, rotate: 180 },
+]
 
 function onMinimapClick(e: MouseEvent): void {
   const mini = minimapCanvas.value
@@ -164,37 +172,45 @@ defineExpose({
     <!-- Phaser 3 WebGL 戰場畫布 -->
     <div ref="phaserRoot" class="h-full w-full cursor-grab active:cursor-grabbing" />
 
-    <!-- 右上角：全場雷達小地圖 -->
-    <div class="pointer-events-auto absolute right-3 top-2.5 z-20 rounded-2xl border-[3px] border-white bg-white/85 p-1.5 shadow-lg backdrop-blur-md">
-      <div class="mb-0.5 flex items-center justify-between px-1 text-[10px] font-extrabold text-orange-600">
-        <span>🗺️ 戰場雷達</span>
-        <span class="text-teal-700">點擊跳轉</span>
+    <!-- 右上角：全場雷達小地圖 + 鏡頭控制（卡通粗描邊，與大廳同一套 token） -->
+    <div class="toon-panel pointer-events-auto absolute right-3 top-3 z-20 rounded-2xl p-1.5 font-toon">
+      <div class="mb-1 flex items-center justify-between px-1 text-sm leading-none">
+        <span>戰場雷達</span>
+        <span class="text-[13px] text-ink-soft">點擊跳轉</span>
       </div>
       <canvas
         ref="minimapCanvas"
         :width="190"
         :height="86"
-        class="block h-auto w-[150px] rounded-lg border-2 border-teal-600/30 cursor-pointer lg:w-[190px]"
+        class="block h-auto w-[150px] cursor-pointer rounded-lg border-[2.5px] border-ink lg:w-[190px]"
         @click="onMinimapClick"
       />
-    </div>
-
-    <!-- 左上角：鏡頭方向控制與鎖定按鈕 -->
-    <div class="pointer-events-auto absolute left-3 top-2.5 z-20 flex flex-wrap items-center gap-1.5">
-      <div class="inline-flex items-center gap-1 rounded-2xl border-[3px] border-white bg-white/85 p-1 text-xs font-bold text-teal-950 shadow-md backdrop-blur-md">
-        <button type="button" class="rounded-lg bg-gradient-to-b from-cyan-300 to-sky-500 px-2 py-1 text-slate-950 hover:brightness-110 cursor-pointer" @click="panCameraBy(-260, 0)">◀</button>
-        <button type="button" class="rounded-lg bg-gradient-to-b from-cyan-300 to-sky-500 px-2 py-1 text-slate-950 hover:brightness-110 cursor-pointer" @click="panCameraBy(0, -180)">▲</button>
-        <button type="button" class="rounded-lg bg-gradient-to-b from-cyan-300 to-sky-500 px-2 py-1 text-slate-950 hover:brightness-110 cursor-pointer" @click="panCameraBy(0, 180)">▼</button>
-        <button type="button" class="rounded-lg bg-gradient-to-b from-cyan-300 to-sky-500 px-2 py-1 text-slate-950 hover:brightness-110 cursor-pointer" @click="panCameraBy(260, 0)">▶</button>
+      <div class="mt-1.5 flex items-center gap-1">
+        <button
+          v-for="pan in CAMERA_PANS"
+          :key="pan.label"
+          type="button"
+          :aria-label="pan.label"
+          :title="pan.label"
+          class="toon-btn hidden h-8 w-8 rounded-lg p-0 [border-width:2.5px] [box-shadow:0_3px_0_var(--color-ink)] lg:inline-flex"
+          @click="panCameraBy(pan.dx, pan.dy)"
+        >
+          <svg viewBox="0 0 24 24" class="h-4 w-4" :style="{ transform: `rotate(${pan.rotate}deg)` }" fill="none" stroke="currentColor" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M15 5 8 12l7 7" />
+          </svg>
+        </button>
+        <button
+          type="button"
+          title="鏡頭回到出手的戰車"
+          class="toon-btn toon-btn--sun ml-auto h-8 rounded-lg px-2 text-sm [border-width:2.5px] [box-shadow:0_3px_0_var(--color-ink)]"
+          @click="focusActiveTank(false)"
+        >
+          <svg viewBox="0 0 24 24" class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
+            <circle cx="12" cy="12" r="7" /><circle cx="12" cy="12" r="2" fill="currentColor" /><path d="M12 2v4M12 18v4M2 12h4M18 12h4" />
+          </svg>
+          對準
+        </button>
       </div>
-
-      <button
-        type="button"
-        class="rounded-2xl border-[3px] border-white bg-amber-400 px-2.5 py-1.5 text-xs font-extrabold text-slate-950 shadow-md hover:bg-amber-300 cursor-pointer"
-        @click="focusActiveTank(false)"
-      >
-        🎯 鎖定坦克
-      </button>
     </div>
 
     <!-- 插槽：直接將街機駕駛艙 HUD 疊加在遊戲畫布上 -->
