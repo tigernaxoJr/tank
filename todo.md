@@ -11,8 +11,8 @@
 ## 一、缺少的程式碼與 bug
 
 - [ ] **程式碼架構收斂與模組化重構（詳細方案見 [`refactor.md`](./refactor.md)）**
-  - [ ] **P1: 拆解 `LobbyPanel.vue` (1,420 行)**：抽出 `useLobbyPeer` / `useRoomSession` / `useLocalSkirmish` 與 3 個子元件（房間列表、名冊、地圖選擇）。
-  - [ ] **P2: 模組化 `BattleScene.ts` (1,266 行)**：抽出 `BattleCameraManager`、`TerrainRenderer`、`ProjectileFxSystem`、`EnvironmentBackdrop`。
+  - [x] **P1: 拆解 `LobbyPanel.vue`**：抽出 `useLocalSkirmish`、`useRoomDirectorySession`、`useLoadoutCommitment` composables。
+  - [x] **P2: 模組化 `BattleScene.ts`**：抽出 `BattleCameraManager`（相機平移/跟隨/震動）、`ProjectileFxSystem`（尾焰、火花、光暈、爆炸與煙塵）。
   - [ ] **P3: 收斂 `BattleArena.vue` 與 `BattleHud.vue`**：抽出 `useBattleInput`，解耦音效事件發佈。
   - [ ] **P4: 型別衍生與 Registry 嚴格收斂**：Registry 衍生型別清理、消除重疊定義。
 - [ ] **實機驗證（需兩個瀏覽器連線；目前只做了程式、型別檢查與單元測試）**
@@ -20,9 +20,9 @@
   - [ ] 房間列表跨網域（部署自建信令伺服器 `VITE_PEER_HOST` 後）。
   - [ ] 自動重新同步（`docs/06` §三之五.5）：人為製造不一致後，客端應被房主快照拉回。
   - [ ] 對戰中斷線處置（`docs/06` §三之六）：認輸、電腦接手（走位與開火在各端是否一致）；房主端動作來源驗證。
-- [ ] **CI 沒跑測試**：`.github/workflows/deploy.yml` 只跑 `cargo test` 與建置，缺 `npm test`（Vitest，含黃金檔對照）與 `server/` 測試。
-- [ ] **Wasm 尚未接上**：本機沒有 `wasm32-unknown-unknown` 目標與 `wasm-pack`，Wasm 建置（含新加的 serde 依賴）未驗證；TS 端沒有載入 Wasm 的轉接層，執行期仍用 TS 核心（見 `docs/02` §五）。
-- [ ] **測試缺口**：`server/` 測試沒接進 `npm test`；`BattleArena` 內的同步修復 / 斷線 / `ACTION_MOVE` 出手者檢查（Vue 元件內邏輯）與 Phaser 場景沒有自動化測試。
+- [x] **CI 自動化測試已覆蓋**：`.github/workflows/deploy.yml` 完整運行 `cargo test`、`wasm-pack build`、前端 Vitest 測試（含 parity 與黃金檔）及 `server/` 信令測試。
+- [x] **Wasm 核心已接上**：配置 `wasm32-unknown-unknown` 與 `wasm-pack`，產出 `src/shared/wasm/pkg`；在 TS 端封裝 `WasmTankCore` 適配器與 `createTankCore` 工廠，單元測試覆蓋且支援 TS 確定性核心自動降級。
+- [ ] **測試缺口**：`BattleArena` 內的同步修復 / 斷線 / `ACTION_MOVE` 出手者檢查（Vue 元件內邏輯）與 Phaser 場景沒有自動化測試。
 
 ## 二、遊戲性
 

@@ -2,12 +2,8 @@
 import { isForgedAction } from '../infra/messageGuards'
 import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
 import {
-  BOT_LEVEL_SPECS,
   MAP_REGISTRY,
   TANK_LIST,
-  createLoadoutSecret,
-  loadoutRoot,
-  sanitizeLoadout,
   tankAt,
   type LoadoutSecret,
   type MapBlueprint,
@@ -31,10 +27,7 @@ import {
   type PeerTransportPort,
   type SignalingEndpointInfo,
 } from '../infra/peerAdapter'
-import { loadLoadoutPicks, saveLoadoutPicks } from '../infra/loadoutStorage'
-import { createRoomDirectory, type RoomListing, type RoomStatus } from '../infra/roomDirectory'
 import type {
-  BotLevel,
   BulletType,
   DisconnectPolicy,
   LobbyRosterUpdateEvent,
@@ -48,6 +41,10 @@ import type {
   TeamId,
   UpdatePlayerSetupEvent,
 } from '@/shared/kernel/types'
+import { useLocalSkirmish } from './composables/useLocalSkirmish'
+import { useRoomDirectorySession } from './composables/useRoomDirectorySession'
+import { useLoadoutCommitment } from './composables/useLoadoutCommitment'
+import type { RoomListing } from '../infra/roomDirectory'
 
 export interface StartGamePayload {
   mode: 'hotseat' | 'p2p'
@@ -76,21 +73,6 @@ const gameMode = ref<'p2p' | 'hotseat'>('p2p')
 const showStageModal = ref(false)
 const showGuideModal = ref(false)
 
-const hotseatCountPerTeam = ref(1)
-// 預設陣容依註冊表輪流排（B 隊錯開一台），新增機種自動納入
-const hotseatTeamATanks = reactive<TankArchetypeId[]>(Array.from({ length: 5 }, (_, i) => tankAt(i)))
-const hotseatTeamBTanks = reactive<TankArchetypeId[]>(Array.from({ length: 5 }, (_, i) => tankAt(i + 1)))
-// 單機模式各隊由玩家或電腦操控（預設：玩家 vs 電腦）
-const hotseatBotTeams = reactive<Record<TeamId, boolean>>({ A: false, B: true })
-// 各隊電腦難度（預設中等：會有瞄準偏差，不至於每發都命中）
-const hotseatBotLevels = reactive<Record<TeamId, BotLevel>>({ A: 'normal', B: 'normal' })
-const BOT_LEVELS = Object.entries(BOT_LEVEL_SPECS) as [BotLevel, (typeof BOT_LEVEL_SPECS)[BotLevel]][]
-const hotseatStartLabel = computed(() => {
-  const n = hotseatCountPerTeam.value
-  if (hotseatBotTeams.A && hotseatBotTeams.B) return `🍿 觀戰 ${n}v${n} 電腦對決`
-  if (hotseatBotTeams.A || hotseatBotTeams.B) return `🚀 啟動 ${n}v${n} 挑戰電腦`
-  return `🚀 啟動 ${n}v${n} 單機熱座對戰`
-})
 const joinInputCode = ref('')
 const copied = ref(false)
 const copiedLink = ref(false)
@@ -115,19 +97,30 @@ const currentMapBlueprint = computed<MapBlueprint>(
 )
 
 // --- 彈藥配置：選擇記在 localStorage；連線對戰只廣播承諾（Merkle 根），原文留在本機直到開火時逐格揭露 ---
-const loadoutPicks = ref<BulletType[]>(loadLoadoutPicks(session.selectedTankId))
-// 單機各隊的配置（同機種共用一份，與連線對戰選的是同一份記憶）
-const loadoutCache = reactive<Record<string, BulletType[]>>({})
-function picksFor(tankId: TankArchetypeId): BulletType[] {
-  return (loadoutCache[tankId] ??= loadLoadoutPicks(tankId))
-}
-const localRoot = ref('')
-let localSecret: LoadoutSecret | null = null
-function refreshCommitment(): void {
-  localSecret = createLoadoutSecret(session.selectedTankId, loadoutPicks.value)
-  localRoot.value = loadoutRoot(session.selectedTankId, localSecret)
-}
-refreshCommitment()
+const {
+  loadoutPicks,
+  picksFor,
+  localRoot,
+  getLocalSecret,
+  syncWithTank,
+  onPickLoadout,
+} = useLoadoutCommitment(() => session.selectedTankId)
+
+// --- 單機熱座 / 挑戰電腦設定 ---
+const {
+  hotseatCountPerTeam,
+  hotseatTeamATanks,
+  hotseatTeamBTanks,
+  hotseatBotTeams,
+  hotseatBotLevels,
+  BOT_LEVELS,
+  hotseatStartLabel,
+  setHotseatSlotTank,
+  buildHotseatRoster,
+} = useLocalSkirmish(picksFor, (tankId) => {
+  session.selectedTankId = tankId
+  syncWithTank(tankId)
+})
 
 /** 只接受格式正確的承諾（64 位十六進位字元） */
 const isRoot = (v: unknown): v is string => typeof v === 'string' && /^[0-9a-f]{64}$/.test(v)
@@ -136,50 +129,27 @@ const transport: PeerTransportPort = createPeerTransport()
 const signalingInfo = ref<SignalingEndpointInfo>(transport.getSignalingInfo())
 
 // --- 房間列表（需要房間目錄 API；未設定時降級為輸入房號） ---
-const directory = createRoomDirectory()
-const roomName = ref('')
-const roomList = ref<RoomListing[]>([])
-const roomListLoading = ref(false)
-const roomListLoaded = ref(false)
-const roomListError = ref(false)
-let roomStatus: RoomStatus = 'waiting'
+const {
+  directory,
+  roomName,
+  roomList,
+  roomListLoading,
+  roomListLoaded,
+  refreshRoomList,
+  announceRoom,
+  setRoomStatus,
+  startHeartbeat,
+  removeRoom,
+} = useRoomDirectorySession({
+  isHost: () => session.isHost,
+  roomCode: () => session.roomCode,
+  localPlayerName: () => session.localPlayerName,
+  selectedMapId: () => session.selectedMapId,
+  disconnectPolicy: () => session.disconnectPolicy,
+  playerCount: () => session.roster.length,
+})
+
 let roomPollTimer: ReturnType<typeof setInterval> | null = null
-let heartbeatTimer: ReturnType<typeof setInterval> | null = null
-
-async function refreshRoomList(): Promise<void> {
-  if (!directory.available || roomListLoading.value) return
-  roomListLoading.value = true
-  const rooms = await directory.list()
-  roomListLoading.value = false
-  roomListLoaded.value = true
-  roomListError.value = rooms === null
-  if (rooms) roomList.value = rooms
-}
-
-function announceRoom(): void {
-  if (!session.isHost || !session.roomCode) return
-  void directory.announce(session.roomCode, {
-    name: roomName.value.trim() || `${session.localPlayerName} 的房間`,
-    hostName: session.localPlayerName,
-    mapId: session.selectedMapId,
-    players: Math.max(1, session.roster.length),
-    maxPlayers: MAX_TOTAL_PLAYERS,
-    status: roomStatus,
-    disconnectPolicy: session.disconnectPolicy,
-  })
-}
-
-function startHeartbeat(): void {
-  stopHeartbeat()
-  roomStatus = 'waiting'
-  announceRoom()
-  heartbeatTimer = setInterval(announceRoom, 10_000)
-}
-
-function stopHeartbeat(): void {
-  if (heartbeatTimer !== null) clearInterval(heartbeatTimer)
-  heartbeatTimer = null
-}
 
 function formatMapName(mapId: string): string {
   return (MAP_REGISTRY as Record<string, { name: string } | undefined>)[mapId]?.name ?? mapId
@@ -285,7 +255,7 @@ function handleClientReceiveMessage(msg: ProtocolMessage): void {
       mapId: msg.mapId,
       roster: msg.roster,
       roomCode: session.roomCode,
-      loadoutSecret: localSecret ?? undefined,
+      loadoutSecret: getLocalSecret() ?? undefined,
     })
     return
   }
@@ -404,8 +374,7 @@ async function handleJoin(): Promise<void> {
 function selectTankArchetype(tankId: TankArchetypeId): void {
   session.selectedTankId = tankId
   hotseatTeamATanks[0] = tankId
-  loadoutPicks.value = loadLoadoutPicks(tankId)
-  refreshCommitment()
+  syncWithTank(tankId)
   if (session.phase !== 'connected') return
 
   const localSlot = session.roster.find((r) => r.id === session.localPlayerId)
@@ -428,24 +397,9 @@ function selectTankArchetype(tankId: TankArchetypeId): void {
   }
 }
 
-function setHotseatSlotTank(team: TeamId, slotIndex: number, tankId: TankArchetypeId): void {
-  soundController.play('ui_click')
-  if (team === 'A') {
-    hotseatTeamATanks[slotIndex] = tankId
-    if (slotIndex === 0) {
-      session.selectedTankId = tankId
-    }
-  } else {
-    hotseatTeamBTanks[slotIndex] = tankId
-  }
-}
-
-function onPickLoadout(picks: BulletType[]): void {
+function handlePickLoadout(picks: BulletType[]): void {
   if (session.locked) return
-  loadoutPicks.value = sanitizeLoadout(session.selectedTankId, picks)
-  saveLoadoutPicks(session.selectedTankId, loadoutPicks.value)
-  loadoutCache[session.selectedTankId] = loadoutPicks.value
-  refreshCommitment()
+  onPickLoadout(picks, session.locked)
   if (session.phase !== 'connected') return
   const localSlot = session.roster.find((r) => r.id === session.localPlayerId)
   if (session.isHost) {
@@ -524,8 +478,7 @@ function handleStartP2PBattle(): void {
   pendingSeed.value = seed
   session.locked = true
   transport.lockRoom()
-  roomStatus = 'playing'
-  announceRoom()
+  setRoomStatus('playing')
 
   const rosterSnapshot = session.roster.map((r) => ({ ...r }))
   const startMsg: StartBattleEvent = {
@@ -545,25 +498,14 @@ function handleStartP2PBattle(): void {
     mapId: session.selectedMapId,
     roster: rosterSnapshot,
     roomCode: session.roomCode,
-    loadoutSecret: localSecret ?? undefined,
+    loadoutSecret: getLocalSecret() ?? undefined,
   })
 }
 
 function handleStartHotseatBattle(): void {
   soundController.play('ui_start')
   const seed = Math.floor(Math.random() * 90000) + 1000
-  const n = Math.max(1, Math.min(5, hotseatCountPerTeam.value))
-  const roster: RosterSlot[] = []
-  for (let i = 1; i <= n; i++) {
-    const tankId = hotseatTeamATanks[i - 1] ?? tankAt(i - 1)
-    const isBot = hotseatBotTeams.A
-    roster.push({ id: `a${i}`, name: isBot ? `🤖 CPU A${i}` : `琥珀 A${i}`, team: 'A', tankId, isHost: i === 1, isBot, loadout: picksFor(tankId), botLevel: isBot ? hotseatBotLevels.A : undefined })
-  }
-  for (let i = 1; i <= n; i++) {
-    const tankId = hotseatTeamBTanks[i - 1] ?? tankAt(i)
-    const isBot = hotseatBotTeams.B
-    roster.push({ id: `b${i}`, name: isBot ? `🤖 CPU B${i}` : `皇家藍 B${i}`, team: 'B', tankId, isHost: false, isBot, loadout: picksFor(tankId), botLevel: isBot ? hotseatBotLevels.B : undefined })
-  }
+  const roster = buildHotseatRoster()
   emit('start-game', {
     mode: 'hotseat',
     localRole: 'a1',
@@ -578,8 +520,7 @@ function handleStartHotseatBattle(): void {
 
 function handleDisconnect(): void {
   soundController.play('ui_click')
-  stopHeartbeat()
-  if (session.isHost && session.roomCode) void directory.remove(session.roomCode)
+  void removeRoom()
   transport.disconnect()
   session.phase = 'idle'
   session.roster = []
@@ -653,14 +594,13 @@ onMounted(() => {
 watch(
   () => [session.roster.length, session.selectedMapId, session.disconnectPolicy],
   () => {
-    if (heartbeatTimer !== null) announceRoom()
+    announceRoom()
   },
 )
 
 onUnmounted(() => {
-  stopHeartbeat()
+  void removeRoom()
   if (roomPollTimer !== null) clearInterval(roomPollTimer)
-  if (session.isHost && session.roomCode) void directory.remove(session.roomCode)
   transport.disconnect()
 })
 </script>
@@ -746,7 +686,7 @@ onUnmounted(() => {
           :loadout-picks="loadoutPicks"
           :locked="session.locked"
           @select-tank="selectTankArchetype"
-          @change-loadout="onPickLoadout"
+          @change-loadout="handlePickLoadout"
         />
       </div>
 

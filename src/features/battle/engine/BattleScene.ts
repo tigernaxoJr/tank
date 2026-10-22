@@ -33,6 +33,8 @@ import {
 } from '../domain/projectileRegistry'
 import { TANK_LIST, effectiveWindMilli, getTankSpec } from '../domain/tankRegistry'
 import { TankFace } from './tankFace'
+import { BattleCameraManager } from './systems/BattleCameraManager'
+import { ProjectileFxSystem } from './systems/ProjectileFxSystem'
 
 const TILE = 128
 const KENNEY = './assets/kenney'
@@ -122,12 +124,8 @@ export class BattleScene extends Phaser.Scene {
   private originalDepth = new Uint16Array(0)
 
   private isCreated = false
-  private isDragging = false
-  private dragStartX = 0
-  private dragStartY = 0
-  private camStartX = 0
-  private camStartY = 0
-  private manualCamera = false
+  private cameraManager!: BattleCameraManager
+  private fxSystem!: ProjectileFxSystem
   private flyingProjectile: Phaser.GameObjects.Container | null = null
   private selectedBulletType: BulletType = PROJECTILE_LIST[0].id
   /** 最近一發砲彈的射手，受擊時讓射手做出得意（或誤傷隊友時尷尬）的反應 */
@@ -237,50 +235,39 @@ export class BattleScene extends Phaser.Scene {
     this.aimGraphics = this.add.graphics().setDepth(15)
     this.isCreated = true
 
+    const mapSpec = MAP_REGISTRY[this.battleState.mapId] ?? MAP_REGISTRY.harvest_plains
+    this.cameraManager = new BattleCameraManager({
+      scene: this,
+      worldWidth: this.core.width,
+      worldHeight: this.core.height,
+      backgroundColor: mapSpec.sky.top,
+      onCameraMoved: this.onCameraMoved,
+    })
+    this.fxSystem = new ProjectileFxSystem(
+      this,
+      () => MAP_REGISTRY[this.battleState?.mapId] ?? MAP_REGISTRY.harvest_plains,
+    )
+
     this.rebuildBackdropAndTerrain()
     this.syncTanksVisuals(0, true)
     this.focusActiveTank(true)
-
-    // 滑鼠按住拖曳平移全場鏡頭
-    this.input.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
-      this.isDragging = true
-      this.manualCamera = true
-      this.dragStartX = pointer.x
-      this.dragStartY = pointer.y
-      this.camStartX = this.cameras.main.scrollX
-      this.camStartY = this.cameras.main.scrollY
-    })
-
-    this.input.on('pointermove', (pointer: Phaser.Input.Pointer) => {
-      if (!this.isDragging) return
-      const dx = (pointer.x - this.dragStartX) * 1.35
-      const dy = (pointer.y - this.dragStartY) * 1.35
-      this.cameras.main.scrollX = this.camStartX - dx
-      this.cameras.main.scrollY = this.camStartY - dy
-    })
-
-    this.input.on('pointerup', () => {
-      this.isDragging = false
-    })
   }
 
   update(time: number, delta: number): void {
     if (!this.battleState || !this.core) return
-
     const cam = this.cameras.main
+
     if (this.flyingProjectile) {
       // 投籃節奏鏡頭平滑追隨飛行中的砲彈
-      const targetX = this.flyingProjectile.x - cam.width / 2
-      const targetY = this.flyingProjectile.y - cam.height * 0.5
-      cam.scrollX += (targetX - cam.scrollX) * 0.22
-      cam.scrollY += (targetY - cam.scrollY) * 0.22
-    } else if (!this.manualCamera && this.battleState.phase === 'AIMING') {
+      this.cameraManager.followTarget(this.flyingProjectile.x, this.flyingProjectile.y, 0.22)
+    } else if (!this.cameraManager.manualCamera && this.battleState.phase === 'AIMING') {
       const active = this.battleState.tanks[this.battleState.activePlayer]
       if (active) {
         const targetX = active.x - cam.width / 2
         const targetY = active.y - cam.height * 0.58
         cam.scrollX += (targetX - cam.scrollX) * 0.1
         cam.scrollY += (targetY - cam.scrollY) * 0.1
+        this.cameraManager.notifyMoved()
       }
     }
 
@@ -908,10 +895,7 @@ export class BattleScene extends Phaser.Scene {
   }
 
   private spawnPuff(x: number, y: number, scale: number, key: 'fx_puff' | 'fx_smoke', depth = 19): void {
-    const s = this.add.sprite(x, y, key).setScale(scale).setDepth(depth).setAlpha(0.85)
-    s.play(key)
-    this.tweens.add({ targets: s, y: y - 18, alpha: 0, scale: scale * 1.35, duration: 700 })
-    s.once(Phaser.Animations.Events.ANIMATION_COMPLETE, () => s.destroy())
+    this.fxSystem?.spawnPuff(x, y, scale, key, depth)
   }
 
   /**
@@ -934,7 +918,7 @@ export class BattleScene extends Phaser.Scene {
       return
     }
 
-    this.manualCamera = false
+    if (this.cameraManager) this.cameraManager.manualCamera = false
     if (this.flyingProjectile) {
       this.flyingProjectile.destroy()
       this.flyingProjectile = null
@@ -1049,67 +1033,11 @@ export class BattleScene extends Phaser.Scene {
 
   /** 疊加混色的光暈閃一下（砲口、尾焰、爆炸核心） */
   private flashGlow(x: number, y: number, key: GlowKey, size: number, duration: number, depth = 21): void {
-    const glow = this.add
-      .image(x, y, key)
-      .setScale(size * 0.4)
-      .setDepth(depth)
-      .setBlendMode(Phaser.BlendModes.ADD)
-    this.tweens.add({ targets: glow, scale: size, alpha: 0, duration, ease: 'Quad.Out', onComplete: () => glow.destroy() })
-  }
-
-  /** 火花：沿方向飛出並縮短淡出 */
-  private spawnSparks(x: number, y: number, count: number, speed: number, depth = 25): void {
-    for (let i = 0; i < count; i++) {
-      const a = Math.random() * Math.PI * 2
-      const dist = speed * (0.5 + Math.random() * 0.7)
-      const spark = this.add
-        .image(x, y, 'fx_spark')
-        .setRotation(a)
-        .setScale(0.5 + Math.random() * 0.5, 0.7)
-        .setDepth(depth)
-        .setBlendMode(Phaser.BlendModes.ADD)
-      this.tweens.add({
-        targets: spark,
-        x: x + Math.cos(a) * dist,
-        y: y + Math.sin(a) * dist + dist * 0.25,
-        scaleX: 0.1,
-        alpha: 0,
-        duration: 380 + Math.random() * 260,
-        ease: 'Cubic.Out',
-        onComplete: () => spark.destroy(),
-      })
-    }
+    this.fxSystem?.flashGlow(x, y, key, size, duration, depth)
   }
 
   private spawnTrailParticle(x: number, y: number, fx: ProjectileFx): void {
-    if (!this.scene.isActive()) return
-    const { trail } = fx
-
-    // 光點拖尾（疊加混色）
-    this.flashGlow(x, y, fx.glow, trail.glowSize, trail.glowMs, trail.glowDepth)
-    if (trail.ring) {
-      const ring = this.add
-        .circle(x, y, 5, trail.ring.fill, 0.5)
-        .setStrokeStyle(1.5, trail.ring.stroke)
-        .setDepth(19)
-      this.tweens.add({
-        targets: ring,
-        scale: 1.9,
-        alpha: 0,
-        duration: 340,
-        onComplete: () => ring.destroy(),
-      })
-    }
-    if (trail.sparkChance > 0 && Math.random() < trail.sparkChance) this.spawnSparks(x, y, 1, 22, 20)
-    const puff = trail.puff
-    if (puff && Math.random() < puff.chance) {
-      this.spawnPuff(
-        x + (Math.random() - 0.5) * 4,
-        y + (Math.random() - 0.5) * 4,
-        puff.scale + Math.random() * puff.scaleJitter,
-        puff.texture,
-      )
-    }
+    this.fxSystem?.spawnTrailParticle(x, y, fx)
   }
 
   triggerExplosionVisual(
@@ -1118,79 +1046,7 @@ export class BattleScene extends Phaser.Scene {
     radius = 38,
     bulletType: BulletType = PROJECTILE_LIST[0].id,
   ): void {
-    if (!this.scene.isActive()) return
-    const projSpec = getProjectileSpec(bulletType)
-    const mapSpec = MAP_REGISTRY[this.battleState.mapId] ?? MAP_REGISTRY.harvest_plains
-    this.cameras.main.shake(320, projSpec.visual.cameraShakeIntensity)
-
-    // Kenney 爆炸序列影格（電漿彈改用白藍閃光）
-    const fx = projSpec.visual.fx
-    const fxKey = fx.explosion.sheet
-    const boom = this.add.sprite(x, y, fxKey).setDepth(26)
-    boom.setScale((radius * 2.5) / boom.width)
-    boom.play(fxKey)
-    boom.once(Phaser.Animations.Events.ANIMATION_COMPLETE, () => boom.destroy())
-
-    // 疊加光核 + 白色衝擊波 + 四散火花（重砲彈火花更多）
-    this.flashGlow(x, y, fx.glow, (radius * 3.2) / 64, 520, 27)
-    const wave = this.add
-      .image(x, y, 'fx_shockwave')
-      .setScale(0.1)
-      .setAlpha(0.9)
-      .setDepth(25)
-      .setBlendMode(Phaser.BlendModes.ADD)
-    this.tweens.add({
-      targets: wave,
-      scale: (radius * 2.4) / 128,
-      alpha: 0,
-      duration: 460,
-      ease: 'Cubic.Out',
-      onComplete: () => wave.destroy(),
-    })
-    if (fx.explosion.sparks) this.spawnSparks(x, y, Math.round(radius / 4), radius * 1.6)
-
-    // 衝擊波擴散環
-    const ring = this.add
-      .circle(x, y, 10, projSpec.visual.coreColor, 0.25)
-      .setStrokeStyle(4, projSpec.visual.glowColor, 1)
-      .setDepth(25)
-    this.tweens.add({
-      targets: ring,
-      radius: radius * 1.6,
-      alpha: 0,
-      duration: 420,
-      ease: 'Cubic.Out',
-      onComplete: () => ring.destroy(),
-    })
-
-    // 地形土塊飛濺（拋物線落下）
-    for (let i = 0; i < 16; i++) {
-      const size = 2 + Math.random() * 4
-      const chunk = this.add
-        .rectangle(x, y, size, size, mapSpec.debrisColors[i % mapSpec.debrisColors.length])
-        .setDepth(24)
-      const vx = (Math.random() - 0.5) * radius * 4.5
-      const vy = -radius * (1.5 + Math.random() * 2.5)
-      const state = { t: 0 }
-      this.tweens.add({
-        targets: state,
-        t: 1,
-        duration: 700 + Math.random() * 300,
-        onUpdate: () => {
-          chunk.setPosition(x + vx * state.t, y + vy * state.t + 520 * state.t * state.t)
-          chunk.setAngle(state.t * 540)
-          chunk.setAlpha(1 - state.t * state.t)
-        },
-        onComplete: () => chunk.destroy(),
-      })
-    }
-
-    // 爆炸後殘留的煙柱
-    for (let i = 0; i < 3; i++) {
-      this.time.delayedCall(180 + i * 160, () => {
-        this.spawnPuff(x + (Math.random() - 0.5) * radius, y - 10, 0.35 + Math.random() * 0.2, 'fx_smoke', 23)
-      })
-    }
+    this.fxSystem?.triggerExplosionVisual(x, y, radius, bulletType)
   }
 
   /** 傷害數字飄字；擊毀時額外顯示 K.O. */
@@ -1238,26 +1094,26 @@ export class BattleScene extends Phaser.Scene {
   }
 
   focusActiveTank(immediate = false): void {
-    this.manualCamera = false
+    if (!this.cameraManager) return
+    this.cameraManager.manualCamera = false
     // 開局時 Vue 可能比 Phaser 場景先就緒，scene 尚未建立就先略過
     if (!this.scene?.isActive() || !this.battleState) return
     const active = this.battleState.tanks[this.battleState.activePlayer]
     if (active && immediate) {
-      this.cameras.main.centerOn(active.x, active.y - 40)
+      this.cameraManager.focusTank(active)
     }
   }
 
   panCameraBy(dx: number, dy: number): void {
-    if (!this.scene.isActive()) return
-    this.manualCamera = true
-    this.cameras.main.scrollX += dx
-    this.cameras.main.scrollY += dy
+    if (!this.scene?.isActive() || !this.cameraManager) return
+    this.cameraManager.manualCamera = true
+    this.cameraManager.panBy(dx, dy)
   }
 
   centerCameraAt(worldX: number, worldY: number): void {
-    if (!this.scene.isActive()) return
-    this.manualCamera = true
-    this.cameras.main.centerOn(worldX, worldY)
+    if (!this.scene?.isActive() || !this.cameraManager) return
+    this.cameraManager.manualCamera = true
+    this.cameraManager.centerOn(worldX, worldY)
   }
 
   getTerrainCanvasSource(): HTMLCanvasElement | null {
