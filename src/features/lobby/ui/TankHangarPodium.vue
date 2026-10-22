@@ -10,6 +10,7 @@ import {
 import { soundController } from '@/features/audio'
 import LoadoutPicker from './LoadoutPicker.vue'
 import { splitDisplayName } from './displayNames'
+import turfUrl from '@/assets/ui/stage_turf.svg'
 import type { BulletType, TankArchetypeId, TeamId } from '@/shared/kernel/types'
 
 const props = defineProps<{
@@ -91,7 +92,7 @@ function setPaint(team: TeamId): void {
           @click="setPaint(t)"
         />
       </div>
-      <div class="absolute bottom-3 left-1/2 h-7 w-48 -translate-x-1/2 rounded-[50%] border-[3px] border-ink bg-grass" />
+      <img :src="turfUrl" alt="" class="absolute bottom-2 left-1/2 h-10 w-52 max-w-none -translate-x-1/2" />
       <div class="tank-bob absolute bottom-[38px] left-1/2 h-0 w-0">
         <!-- rig 原點：車身底線上方 HULL_BASE_Y；整組以 RIG_SCALE 縮放 -->
         <div class="absolute left-0 top-0 h-0 w-0" :style="{ transform: `scale(${RIG_SCALE})`, transformOrigin: '0 0', marginTop: `${-HULL_BASE_Y * ART_ZOOM * RIG_SCALE}px` }">
@@ -198,10 +199,7 @@ function setPaint(team: TeamId): void {
 
 <style scoped>
 .stage {
-  background:
-    radial-gradient(circle at 20% 25%, rgb(255 255 255 / 0.9) 0 18px, transparent 19px),
-    radial-gradient(circle at 30% 22%, rgb(255 255 255 / 0.9) 0 24px, transparent 25px),
-    linear-gradient(#9fd8ff, #e6f6ff 75%);
+  background: url('@/assets/ui/stage_sky.svg') center bottom / cover no-repeat, #bfe4ff;
 }
 .tank-bob {
   animation: bob 2.8s ease-in-out infinite;

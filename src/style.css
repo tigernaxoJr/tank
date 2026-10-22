@@ -24,13 +24,23 @@
 }
 
 @layer components {
-  /* 面板：奶油底 + 墨線 + 硬陰影 */
+  /* 面板：奶油紙（紙漿纖維紋理 ui/paper.svg）+ 墨線 + 硬陰影，上緣一道受光亮邊 */
   .toon-panel {
-    background: var(--color-cream);
+    background: url("./assets/ui/paper.svg") 0 0 / 192px 192px, var(--color-cream);
     border: 3px solid var(--color-ink);
     border-radius: 22px;
-    box-shadow: 0 6px 0 var(--color-ink);
+    box-shadow: 0 6px 0 var(--color-ink), inset 0 3px 0 rgb(255 255 255 / 0.75);
     color: var(--color-ink);
+  }
+  /* 戰鬥 HUD 儀表板：髮絲紋金屬板（ui/plate.svg）+ 四角鉚釘 */
+  .toon-panel--plate {
+    background:
+      radial-gradient(circle at 12px 12px, #fff 0 1.2px, #8a92b2 1.6px 3px, var(--color-ink) 3.4px 4px, transparent 4.4px),
+      radial-gradient(circle at calc(100% - 12px) 12px, #fff 0 1.2px, #8a92b2 1.6px 3px, var(--color-ink) 3.4px 4px, transparent 4.4px),
+      radial-gradient(circle at 12px calc(100% - 12px), #fff 0 1.2px, #8a92b2 1.6px 3px, var(--color-ink) 3.4px 4px, transparent 4.4px),
+      radial-gradient(circle at calc(100% - 12px) calc(100% - 12px), #fff 0 1.2px, #8a92b2 1.6px 3px, var(--color-ink) 3.4px 4px, transparent 4.4px),
+      url("./assets/ui/plate.svg") 0 0 / 128px 128px,
+      linear-gradient(#f7faff, var(--color-mist));
   }
 
   /* 面板左上角的標題緞帶 */
@@ -45,22 +55,36 @@
     color: #fff;
     font-size: 1.05rem;
     line-height: 1.2;
-    box-shadow: 0 3px 0 var(--color-ink);
+    box-shadow: 0 3px 0 var(--color-ink), inset 0 2px 0 rgb(255 255 255 / 0.4);
     text-shadow: 0 2px 0 rgb(29 35 64 / 0.35);
     white-space: nowrap;
+    position: relative;
+  }
+  /* 緞帶的車縫線（定位由 absolute / relative 其中之一提供） */
+  .toon-ribbon::after {
+    content: "";
+    position: absolute;
+    inset: 2px;
+    border: 1.5px dashed rgb(255 255 255 / 0.6);
+    border-radius: inherit;
+    pointer-events: none;
   }
 
-  /* 按鈕：色塊 + 墨線 + 可按下去的硬陰影 */
+  /* 按鈕：卡紙紋（ui/card.svg）色塊 + 墨線 + 玩具塑膠光澤（上亮邊、下暗邊）+ 可按下去的硬陰影；
+     變體只改 background-color，紋理才不會被蓋掉 */
   .toon-btn {
+    --btn-gloss: inset 0 2px 0 rgb(255 255 255 / 0.6), inset 0 -3px 0 rgb(29 35 64 / 0.12);
     display: inline-flex;
     align-items: center;
     justify-content: center;
     gap: 0.4rem;
     border: 3px solid var(--color-ink);
     border-radius: 16px;
-    background: var(--color-paper);
+    background-color: var(--color-paper);
+    background-image: url("./assets/ui/card.svg");
+    background-size: 96px 96px;
     color: var(--color-ink);
-    box-shadow: 0 4px 0 var(--color-ink);
+    box-shadow: 0 4px 0 var(--color-ink), var(--btn-gloss);
     transition: transform 0.08s ease, box-shadow 0.08s ease, filter 0.15s ease;
     cursor: pointer;
     user-select: none;
@@ -68,27 +92,27 @@
   .toon-btn:hover:not(:disabled) {
     filter: brightness(1.06);
     transform: translateY(-1px);
-    box-shadow: 0 5px 0 var(--color-ink);
+    box-shadow: 0 5px 0 var(--color-ink), var(--btn-gloss);
   }
   .toon-btn:active:not(:disabled) {
     transform: translateY(4px);
-    box-shadow: 0 0 0 var(--color-ink);
+    box-shadow: 0 0 0 var(--color-ink), inset 0 3px 0 rgb(29 35 64 / 0.14);
   }
   .toon-btn:disabled {
     cursor: not-allowed;
-    background: #d9dce6;
+    background-color: #d9dce6;
     color: #8a90a8;
   }
-  .toon-btn--sun { background: var(--color-sun); }
-  .toon-btn--sky { background: var(--color-sky); color: #fff; text-shadow: 0 2px 0 rgb(29 35 64 / 0.35); }
-  .toon-btn--coral { background: var(--color-coral); color: #fff; text-shadow: 0 2px 0 rgb(29 35 64 / 0.35); }
-  .toon-btn--grass { background: var(--color-grass); }
+  .toon-btn--sun { background-color: var(--color-sun); }
+  .toon-btn--sky { background-color: var(--color-sky); color: #fff; text-shadow: 0 2px 0 rgb(29 35 64 / 0.35); }
+  .toon-btn--coral { background-color: var(--color-coral); color: #fff; text-shadow: 0 2px 0 rgb(29 35 64 / 0.35); }
+  .toon-btn--grass { background-color: var(--color-grass); }
 
   /* 輸入框 */
   .toon-input {
     border: 3px solid var(--color-ink);
     border-radius: 14px;
-    background: var(--color-paper);
+    background: url("./assets/ui/card.svg") 0 0 / 96px 96px, var(--color-paper);
     color: var(--color-ink);
     padding: 0.35rem 0.75rem;
     box-shadow: inset 0 3px 0 rgb(29 35 64 / 0.1);
@@ -118,7 +142,7 @@
     border: 3px solid var(--color-ink);
     border-radius: 14px;
     overflow: hidden;
-    background: var(--color-paper);
+    background: url("./assets/ui/card.svg") 0 0 / 96px 96px, var(--color-paper);
   }
   .toon-segment > button {
     padding: 0.3rem 0.5rem;
@@ -126,7 +150,7 @@
     color: var(--color-ink-soft);
   }
   .toon-segment > button + button { border-left: 3px solid var(--color-ink); }
-  .toon-segment > button[aria-pressed="true"] { background: var(--color-sun); color: var(--color-ink); }
+  .toon-segment > button[aria-pressed="true"] { background-color: var(--color-sun); color: var(--color-ink); box-shadow: inset 0 2px 0 rgb(255 255 255 / 0.55); }
   .toon-segment > button:disabled { cursor: not-allowed; }
 
   /* 大標題字：白字 + 墨色描邊 + 硬陰影 */

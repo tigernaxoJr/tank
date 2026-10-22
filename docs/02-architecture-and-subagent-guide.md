@@ -159,9 +159,11 @@ tank/
      - 地圖選擇禁止採用長條下拉或多按鈕垂直列表（杜絕「選個地圖還要往下拉」）。一律用 **地圖卡 (`MapPickerCard.vue`)**：縮圖＋左右箭頭切換＋中英分行的地圖名與簡介，非房主或已開戰時唯讀；卡上「全部地圖」開啟 **全地圖圖庫 (`StageSelectModal.vue`)** 網格選圖。
      - 坦克選角用 **我的戰車卡 (`TankHangarPodium.vue`)**：雲朵天空展示台上的 2.5D 浮動戰車＋兩色塗裝預覽、坦克縮圖選車、耐久／火力／機動粗框數值條、主彈／副彈格（「換彈」開 `LoadoutPicker` 彈窗）。大廳、房間與單機頁都要看得到它。
      - 大廳背景動態載入當前所選地圖的無縫視差圖層（飄移雲層、遠山、丘陵與天體），使大廳具備與戰場一致的精緻質感與空氣感。
-   * **「卡通粗描邊」視覺系統**：大廳 UI 與 Q 版坦克美術同一種語言——深墨色粗外框、平塗色塊、往下的硬陰影。所有 token 與元件類別集中在 `src/style.css`，新元件只能組合它們，不要另開一套：
+   * **「卡通粗描邊」視覺系統**：大廳 UI 與 Q 版坦克美術同一種語言——深墨色粗外框、色塊上疊**手工材質紋理**、往下的硬陰影。所有 token 與元件類別集中在 `src/style.css`，新元件只能組合它們，不要另開一套：
+     - **材質**（`tools/assets/paint_ui.mjs` 產生的 `src/assets/ui/*.svg`，每種表面各自設計，見 `docs/04` §七）：面板＝奶油紙（紙漿纖維 `paper.svg`）＋上緣受光亮邊；按鈕 / 輸入框 / 分段切換＝卡紙紋（`card.svg`），按鈕再加玩具塑膠光澤（上亮邊、下暗邊）；緞帶＝白色虛線車縫線；戰鬥 HUD 操控面板＝`.toon-panel--plate`（髮絲紋金屬 `plate.svg`＋四角鉚釘）；我的戰車展示台與空戰局插圖改用畫好的天空（`stage_sky.svg`、`empty_sky.svg`）與草皮台（`stage_turf.svg`）。紋理必須淡到不影響文字閱讀；新表面要新畫一張專屬紋理，不能直接沿用別的表面的圖。
+     - **紋理不被蓋掉**：`.toon-btn` 的變體與元件內的上色一律改 `background-color`（或 Tailwind `bg-*`），不要用 `background` 簡寫，否則會清掉紋理圖層。
      - **色票**（Tailwind `@theme`）：`ink` 墨線 `#1d2340`、`cream` 面板底、`paper` 白、`mist` 淡藍、`sun` 陽光黃（主要動作）、`sky` 天空藍（次要動作 / 標題緞帶）、`coral` 珊瑚紅（錯誤 / 對戰中）、`grass` 草綠（可加入 / 準備好）、`team-a` 橘隊、`team-b` 藍隊。
-     - **元件類別**：`.toon-panel`（奶油底面板＋3px 墨線＋硬陰影）、`.toon-ribbon`（面板左上角標題緞帶）、`.toon-btn` ＋ `--sun / --sky / --coral / --grass`（按下會壓下去的硬陰影按鈕）、`.toon-input`、`.toon-pill`、`.toon-segment`（以 `aria-pressed` 標示選中的分段切換）、`.toon-title`（白字＋墨色描邊＋硬陰影的大標題）。
+     - **元件類別**：`.toon-panel`（奶油紙面板＋3px 墨線＋硬陰影；`.toon-panel--plate` 為 HUD 金屬板）、`.toon-ribbon`（面板左上角標題緞帶，含車縫線）、`.toon-btn` ＋ `--sun / --sky / --coral / --grass`（按下會壓下去的硬陰影按鈕）、`.toon-input`、`.toon-pill`、`.toon-segment`（以 `aria-pressed` 標示選中的分段切換）、`.toon-title`（白字＋墨色描邊＋硬陰影的大標題）。
      - **字型**：中文 jf 粉圓 (Huninn)、標題 / 數字 / 英文 Baloo 2（`font-toon` / `font-num`，皆 SIL OFL，見 `CREDITS.md`）。
      - 不用 emoji 當圖示；字級以 `text-sm` 為下限（徽章小字除外），層級靠字級與顏色，不靠全部加粗。
    * **大廳三畫面＋單機頁**：大廳為 `fixed inset-0` 全畫面，由 `LobbyPanel.vue` 依狀態切換（`lobbyView`: `hub` / `room` / `hotseat`），連線與協定邏輯留在 `LobbyPanel`，畫面元件只收 props / 發事件：

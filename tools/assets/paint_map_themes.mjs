@@ -102,28 +102,6 @@ function band(seed, top, depth, amp, cycles, color, period = T) {
   return `<polygon points="0,${top} ${period},${top} ${bottom}" fill="${color}"/>`
 }
 
-function bricks({ top, rows, rowH, widths, colors, mortar, seed, mortarPx = 2, bevel }) {
-  const r = rng(seed)
-  let out = ''
-  for (let row = 0; row < rows; row++) {
-    const y = top + row * rowH
-    const w = widths[row % widths.length]
-    const offset = row % 2 ? w / 2 : 0
-    out += `<rect x="0" y="${y}" width="${T}" height="${rowH}" fill="${mortar}"/>`
-    for (let x = -offset; x < T; x += w) {
-      const c = colors[Math.floor(r() * colors.length)]
-      const cell = (xx) =>
-        `<rect x="${xx + mortarPx / 2}" y="${y + mortarPx / 2}" width="${w - mortarPx}" height="${rowH - mortarPx}" rx="2" fill="${c}"/>` +
-        (bevel
-          ? `<rect x="${xx + mortarPx / 2}" y="${y + mortarPx / 2}" width="${w - mortarPx}" height="3" fill="${bevel}" opacity="0.55"/>`
-          : '')
-      out += cell(x)
-      if (x < 0) out += cell(x + T)
-    }
-  }
-  return out
-}
-
 /** Pebbles / speckles scattered seamlessly across a tile area. */
 function speckles(seed, count, area, colors, rMin, rMax, size = T) {
   const r = rng(seed)
@@ -136,6 +114,122 @@ function speckles(seed, count, area, colors, rMin, rMax, size = T) {
     const c = colors[Math.floor(r() * colors.length)]
     out += wrap(x, rx, (xx) => `<ellipse cx="${f1(xx)}" cy="${f1(y)}" rx="${f1(rx)}" ry="${f1(ry)}" fill="${c}"/>`, size)
   }
+  return out
+}
+
+/** Like wrap(), but also copies across the top/bottom seam (fill tiles repeat vertically too). */
+function wrapXY(x, y, half, draw, size = T) {
+  let out = ''
+  for (const dy of [0, y - half < 0 ? size : null, y + half > size ? -size : null]) {
+    if (dy === null) continue
+    out += wrap(x, half, (xx) => draw(xx, y + dy), size)
+  }
+  return out
+}
+
+/** Shaded stone: dark rim offset down-right, body, light cap up-left, one glint (light from top-left). */
+function pebble(x, y, rx, ry, rot, [light, base, dark], glint = true) {
+  return wrapXY(x, y, Math.max(rx, ry) + 2, (xx, yy) =>
+    `<g transform="rotate(${f1(rot)} ${f1(xx)} ${f1(yy)})">` +
+    `<ellipse cx="${f1(xx + 0.7)}" cy="${f1(yy + 0.9)}" rx="${f1(rx + 0.7)}" ry="${f1(ry + 0.7)}" fill="${dark}"/>` +
+    `<ellipse cx="${f1(xx)}" cy="${f1(yy)}" rx="${f1(rx)}" ry="${f1(ry)}" fill="${base}"/>` +
+    `<ellipse cx="${f1(xx - rx * 0.28)}" cy="${f1(yy - ry * 0.36)}" rx="${f1(rx * 0.55)}" ry="${f1(ry * 0.42)}" fill="${light}"/>` +
+    (glint && rx > 2.2 ? `<circle cx="${f1(xx - rx * 0.4)}" cy="${f1(yy - ry * 0.45)}" r="0.7" fill="#fff" opacity="0.7"/>` : '') +
+    `</g>`,
+  )
+}
+
+/** Soil crumbs: 1–2 px light and dark grains, light ones get a dark grain just below (tiny shadow). */
+function crumbs(seed, count, area, light, dark) {
+  const r = rng(seed)
+  let out = ''
+  for (let i = 0; i < count; i++) {
+    const x = r() * T
+    const y = area[0] + r() * (area[1] - area[0])
+    const s = 0.6 + r() * 0.8
+    const lit = r() < 0.5
+    out += wrapXY(x, y, 3, (xx, yy) =>
+      lit
+        ? `<circle cx="${f1(xx + 0.4)}" cy="${f1(yy + 0.7)}" r="${f1(s)}" fill="${dark}"/><circle cx="${f1(xx)}" cy="${f1(yy)}" r="${f1(s)}" fill="${light}"/>`
+        : `<circle cx="${f1(xx)}" cy="${f1(yy)}" r="${f1(s)}" fill="${dark}"/>`,
+    )
+  }
+  return out
+}
+
+/** A root that wanders down from y0 and sprouts thin rootlets; drawn twice (dark under, colour over) for depth. */
+function rootSystem(seed, x0, y0, len, color, dark, width = 2) {
+  const r = rng(seed)
+  let pts = [[x0, y0]]
+  let x = x0
+  let y = y0
+  const steps = 6
+  for (let i = 0; i < steps; i++) {
+    x += (r() - 0.5) * 9
+    y += len / steps
+    pts.push([x, y])
+  }
+  const line = (p) => p.map(([px, py], i) => `${i ? 'L' : 'M'}${f1(px)},${f1(py)}`).join('')
+  const branches = []
+  for (let i = 1; i < steps; i++) {
+    if (r() < 0.65) {
+      const [bx, by] = pts[i]
+      const side = r() < 0.5 ? -1 : 1
+      const bl = 4 + r() * 7
+      branches.push(`M${f1(bx)},${f1(by)} q${f1(side * bl * 0.6)},${f1(bl * 0.2)} ${f1(side * bl)},${f1(bl * 0.8)}`)
+    }
+  }
+  const draw = (dx) =>
+    `<g transform="translate(${dx} 0)" fill="none" stroke-linecap="round" stroke-linejoin="round">` +
+    `<path d="${line(pts)}" stroke="${dark}" stroke-width="${f1(width + 1.2)}" transform="translate(0.6 0.8)"/>` +
+    `<path d="${line(pts)}" stroke="${color}" stroke-width="${f1(width)}"/>` +
+    `<path d="${branches.join('')}" stroke="${color}" stroke-width="${f1(Math.max(0.8, width * 0.45))}"/>` +
+    `</g>`
+  return wrap(x0, 16, (xx) => draw(f1(xx - x0)), T)
+}
+
+/**
+ * Dry-stone wall tile: irregular rounded stones in rows that sum to T (seamless both ways),
+ * each with its own bevel (light top-left, shadow bottom-right), plus per-stone extras via `mark`.
+ */
+function stoneWall({ seed, rowHeights, minW, maxW, palettes, mortar, mortarShade, gap = 2.4, mark, top = 0, round = [0.28, 0.14] }) {
+  const r = rng(seed)
+  let out = `<rect y="${top}" width="${T}" height="${rowHeights.reduce((a, b) => a + b, 0)}" fill="${mortar}"/>`
+  let y = top
+  rowHeights.forEach((rh, row) => {
+    const widths = []
+    let sum = 0
+    while (sum < T - minW) {
+      const w = minW + r() * (maxW - minW)
+      widths.push(w)
+      sum += w
+    }
+    const scale = T / sum
+    let x = r() * T
+    widths.forEach((w0) => {
+      const w = w0 * scale
+      const [light, base, dark] = palettes[Math.floor(r() * palettes.length)]
+      const sy = y + gap / 2 + (r() - 0.5) * 1.6
+      const sh = rh - gap - Math.abs(r() - 0.5) * 3
+      const rx = Math.min(w, sh) * (round[0] + r() * round[1])
+      const extra = mark ? mark(r, w, sh) : () => ''
+      const stone = (xx) => {
+        const sx = xx + gap / 2
+        const sw = w - gap
+        return (
+          `<rect x="${f1(sx)}" y="${f1(sy)}" width="${f1(sw)}" height="${f1(sh)}" rx="${f1(rx)}" fill="${dark}"/>` +
+          `<rect x="${f1(sx)}" y="${f1(sy)}" width="${f1(sw - 1.6)}" height="${f1(sh - 2)}" rx="${f1(rx)}" fill="${base}"/>` +
+          `<rect x="${f1(sx + 1.2)}" y="${f1(sy + 1)}" width="${f1(sw * 0.62)}" height="${f1(Math.min(4, sh * 0.22))}" rx="${f1(Math.min(2, rx))}" fill="${light}" opacity="0.8"/>` +
+          extra(sx, sy, sw, sh)
+        )
+      }
+      out += wrap(x + w / 2, w / 2 + 2, (cx) => stone(cx - w / 2), T)
+      x = (x + w) % T
+    })
+    // shadow line under the row: mortar reads recessed
+    out += `<rect x="0" y="${f1(y + rh - 1)}" width="${T}" height="1" fill="${mortarShade}" opacity="0.6"/>`
+    y += rh
+  })
   return out
 }
 
@@ -156,6 +250,20 @@ function strata(seed, colors, count) {
     out += bandDown(seed + i, step * i - step / 2, 3 + (i % 3), 1 + (i % 2), colors[i % colors.length])
   }
   out += bandDown(seed + count, T - step / 2, 3, 2, colors[0])
+  return out
+}
+
+/** Bevel the seams strata() drew: a dark line just above each seam, a lit line on the layer below it. */
+function strataSeams(seed, count, light, dark) {
+  const step = T / count
+  let out = ''
+  const seam = (s, y, amp, cycles) => {
+    const pts = ridge(s, y, [[cycles, amp], [cycles * 2 + 1, amp * 0.45]], T, 2)
+    const d = (dy) => pts.map(([x, yy], i) => `${i ? 'L' : 'M'}${f1(x)},${f1(yy + dy)}`).join('')
+    return `<path d="${d(-0.8)}" stroke="${dark}" stroke-width="1" fill="none" opacity="0.7"/><path d="${d(0.9)}" stroke="${light}" stroke-width="1" fill="none" opacity="0.55"/>`
+  }
+  for (let i = 1; i < count; i++) out += seam(seed + i, step * i - step / 2, 3 + (i % 3), 1 + (i % 2))
+  out += seam(seed + count, T - step / 2, 3, 2)
   return out
 }
 
@@ -396,27 +504,113 @@ const THEMES = {
       return svg(W, H, out)
     },
     terrain_cap() {
+      // buried temple paving: sandstone ashlar (bedding lines, chipped corners, wind pits) under drifted sand
       const fill = this.fillBody()
       const defs = fill.defs + noiseFilter('n', T, 0.08, 5)
       let out = fill.out
-      out += bricks({ top: 10, rows: 4, rowH: 22, widths: [64, 32, 64, 32], colors: ['#dba467', '#d29558', '#e0ad72'], mortar: '#a3683f', seed: 52, bevel: '#f3c98a' })
-      out += band(53, 0, 9, 2.5, 2, '#f2c983')
-      out += band(54, 0, 5, 1.5, 3, '#f9dca0')
-      out += noiseRect('n', T, 0.22)
+      out += stoneWall({
+        seed: 52,
+        top: 10,
+        rowHeights: [22, 22, 22, 22],
+        minW: 26,
+        maxW: 58,
+        round: [0.08, 0.06],
+        palettes: [['#f6d29a', '#dba467', '#9c6a3c'], ['#f0c88c', '#d29558', '#935f33'], ['#fadcaa', '#e0ad72', '#a57444']],
+        mortar: '#c99a62',
+        mortarShade: '#8a5a33',
+        mark: (r) => {
+          const lines = Array.from({ length: 2 + Math.floor(r() * 2) }, () => [r(), r()])
+          const pits = Array.from({ length: 3 }, () => [r(), r(), 0.6 + r() * 0.8])
+          const chip = r()
+          return (sx, sy, sw, sh) => {
+            let m = lines.map(([a, b]) => `<path d="M${f1(sx + 2 + a * 4)},${f1(sy + 6 + b * (sh - 10))} h${f1(sw * (0.4 + a * 0.4))}" stroke="#b9824c" stroke-width="0.8" opacity="0.7"/>`).join('')
+            m += pits.map(([a, b, pr]) => `<circle cx="${f1(sx + 3 + a * (sw - 6))}" cy="${f1(sy + 4 + b * (sh - 7))}" r="${f1(pr)}" fill="#a87244"/>`).join('')
+            if (chip < 0.4) m += `<polygon points="${f1(sx + sw - 6)},${f1(sy)} ${f1(sx + sw)},${f1(sy)} ${f1(sx + sw)},${f1(sy + 5)}" fill="#c99a62"/><path d="M${f1(sx + sw - 6)},${f1(sy)} L${f1(sx + sw)},${f1(sy + 5)}" stroke="#8a5a33" stroke-width="0.8"/>`
+            // sand drifted onto the top edge
+            m += `<path d="M${f1(sx + sw * 0.15)},${f1(sy + 0.6)} q${f1(sw * 0.3)},-1.6 ${f1(sw * 0.6)},0" stroke="#f9dca0" stroke-width="1.6" fill="none" stroke-linecap="round"/>`
+            return m
+          }
+        },
+      })
+      // loose sand on top: dune ripples, darker lee shadow
+      out += band(53, 0, 12, 2.5, 2, '#e9bd76')
+      out += band(54, 0, 8, 1.5, 3, '#f9dca0')
+      const r = rng(55)
+      for (let i = 0; i < 9; i++) {
+        const x = r() * T
+        const y = 2 + r() * 6
+        const w = 9 + r() * 7
+        out += wrap(x, w, (xx) => `<path d="M${f1(xx - w / 2)},${f1(y + 0.8)} q${f1(w * 0.6)},-2.4 ${f1(w)},0" stroke="#d9a35c" stroke-width="1" fill="none"/><path d="M${f1(xx - w / 2)},${f1(y)} q${f1(w * 0.6)},-2.4 ${f1(w)},0" stroke="#fff1c8" stroke-width="0.8" fill="none"/>`, T)
+      }
+      out += crumbs(56, 40, [0, 12], '#fff1c8', '#c48a4a')
+      out += noiseRect('n', T, 0.12)
       return svg(T, T, out, defs)
     },
     fillBody() {
+      // packed desert sediment: cross-bedded sand layers, white caliche nodules, terracotta pottery shards
       const defs = noiseFilter('nf', T, 0.06, 7)
       let out = strata(61, ['#b06a39', '#a35f32', '#bb7543', '#9c5a30', '#b26d3c'], 5)
-      out += speckles(62, 14, [4, 124], ['#8a4c28', '#c98a55', '#7a4225'], 2, 5)
-      out += noiseRect('n', T, 0.25)
-      return { defs, out: out.replaceAll("url(#n)", "url(#nf)") }
+      out += strataSeams(61, 5, '#d9965e', '#6e3c1c')
+      const r = rng(62)
+      for (let i = 0; i < 22; i++) {
+        const x = r() * T
+        const y = r() * T
+        const l = 6 + r() * 8
+        out += wrapXY(x, y, l, (xx, yy) => `<path d="M${f1(xx)},${f1(yy)} l${f1(l)},${f1(-l * 0.3)}" stroke="${i % 2 ? '#c98a55' : '#8a4c28'}" stroke-width="0.7" opacity="0.7"/>`)
+      }
+      for (const [x, y, rx] of [[16, 30, 3.4], [70, 70, 2.6], [104, 108, 3], [46, 116, 2]]) {
+        out += pebble(x, y, rx, rx * 0.7, r() * 90, ['#fff6e2', '#e6d6b8', '#9a7a58'])
+      }
+      // pottery shards: curved terracotta fragments, black painted band, pale broken edge
+      for (const [x, y, rot] of [[92, 34, 15], [32, 86, -25]]) {
+        out += wrapXY(x, y, 8, (xx, yy) =>
+          `<g transform="rotate(${rot} ${xx} ${yy})"><path d="M${xx - 6},${yy + 2} q6,-5 12,0 l-2,3 q-4,-3 -8,0z" fill="#5a2a14"/><path d="M${xx - 6},${yy + 1} q6,-5 12,0 l-2,3 q-4,-3 -8,0z" fill="#c0612d"/>` +
+          `<path d="M${xx - 4.4},${yy + 0.6} q4.4,-3.2 8.8,0" stroke="#2a1a14" stroke-width="0.9" fill="none"/><path d="M${xx + 6},${yy + 1} l-2,3" stroke="#f0b48a" stroke-width="0.7"/></g>`)
+      }
+      out += crumbs(63, 90, [0, T], '#e0a56c', '#6e3c1c')
+      out += noiseRect('n', T, 0.16)
+      return { defs, out: out.replaceAll('url(#n)', 'url(#nf)') }
     },
     terrain_fill() {
       const { defs, out } = this.fillBody()
       return svg(T, T, out, defs)
     },
-    bedrock: () => carvedBedrock({ base: ['#4a3f5c', '#544767', '#43395a'], mortar: '#2a2238', inlay: '#e2b84a', seed: 71 }),
+    // temple foundation: speckled granite ashlar with carved (original) glyphs and worn gold leaf
+    bedrock: () => {
+      const glyphs = [
+        (x, y) => `<circle cx="${x}" cy="${y}" r="4" fill="none"/>${[0, 1, 2, 3, 4, 5, 6, 7].map((i) => `<path d="M${f1(x + Math.cos((i * TAU) / 8) * 5.6)},${f1(y + Math.sin((i * TAU) / 8) * 5.6)} l${f1(Math.cos((i * TAU) / 8) * 2)},${f1(Math.sin((i * TAU) / 8) * 2)}"/>`).join('')}`,
+        (x, y) => `<path d="M${x - 8},${y - 2} l2.6,-3 l2.6,3 l2.6,-3 l2.6,3 l2.6,-3 l2.6,3 M${x - 8},${y + 3} l2.6,-3 l2.6,3 l2.6,-3 l2.6,3 l2.6,-3 l2.6,3" fill="none"/>`,
+        (x, y) => `<path d="M${x},${y - 6} v12 M${x - 5},${y - 1} h10 M${x - 3},${y + 6} h6" fill="none"/><circle cx="${x}" cy="${y - 6}" r="1.4"/>`,
+        (x, y) => `<path d="M${x - 7},${y + 4} L${x},${y - 6} L${x + 7},${y + 4}z M${x - 3},${y + 4} v-3 h6 v3" fill="none"/>`,
+      ]
+      const out = stoneWall({
+        seed: 71,
+        rowHeights: [32, 32, 32, 32],
+        minW: 40,
+        maxW: 70,
+        gap: 3,
+        round: [0.06, 0.04],
+        palettes: [['#7a6c90', '#544767', '#352c45'], ['#706385', '#4a3f5c', '#2f2740'], ['#83759a', '#5a4c6e', '#3a3050']],
+        mortar: '#241c30',
+        mortarShade: '#120d18',
+        mark: (r) => {
+          const g = glyphs[Math.floor(r() * glyphs.length)]
+          const worn = r()
+          const flecks = Array.from({ length: 14 }, () => [r(), r(), r()])
+          return (sx, sy, sw, sh) => {
+            let m = flecks.map(([a, b, c]) => `<rect x="${f1(sx + 2 + a * (sw - 5))}" y="${f1(sy + 3 + b * (sh - 6))}" width="${c < 0.5 ? 1 : 1.4}" height="1" fill="${c < 0.4 ? '#c9a3b6' : c < 0.75 ? '#1c1626' : '#e8e2f0'}"/>`).join('')
+            const cx = +f1(sx + sw / 2)
+            const cy = +f1(sy + sh / 2 + 1)
+            // carved = dark groove offset down-right, gold leaf on top (rubbed off on worn blocks)
+            const leaf = worn < 0.35 ? '#8a7aa0' : '#e2b84a'
+            m += `<g stroke="#1a1424" stroke-width="2" fill="#1a1424" transform="translate(0.7 0.8)">${g(cx, cy)}</g>`
+            m += `<g stroke="${leaf}" stroke-width="1.3" fill="${leaf}">${g(cx, cy)}</g>`
+            return m
+          }
+        },
+      })
+      return svg(T, T, out)
+    },
     props: [
       // obelisk
       () => svg(60, 220, `<polygon points="8,220 52,220 44,40 16,40" fill="#c98a55"/><polygon points="16,40 44,40 30,8" fill="#e2b84a"/><rect x="22" y="56" width="6" height="150" fill="#e8b27a" opacity="0.7"/><rect x="34" y="70" width="6" height="18" fill="#8a4c28"/><circle cx="37" cy="110" r="5" fill="#8a4c28"/><rect x="0" y="206" width="60" height="14" fill="#a96535"/>`),
@@ -517,35 +711,103 @@ const THEMES = {
       return svg(W, H, out)
     },
     terrain_cap() {
+      // reaped wheat field: cut straw stubble → sod with hanging blades → dark loam topsoil with roots
       const fill = this.fillBody()
       const defs = fill.defs + noiseFilter('n', T, 0.08, 13)
       let out = fill.out
-      // straw-gold topsoil with wheat stubble, then a thin green under-layer
-      out += band(241, 0, 18, 3, 2, '#7da447')
-      out += band(242, 0, 13, 2.5, 3, '#e3b04b')
-      out += band(243, 0, 6, 1.5, 4, '#f6d675')
-      const r = rng(244)
-      for (let i = 0; i < 22; i++) {
-        const x = r() * T
-        const y = 3 + r() * 9
-        out += wrap(x, 3, (xx) => `<path d="M${f1(xx)},${f1(y + 4)} l${f1(r() * 2 - 1)},-4" stroke="${i % 2 ? '#c48d2e' : '#fff0b3'}" stroke-width="1.6" stroke-linecap="round"/>`, T)
+      out += band(240, 0, 44, 4, 2, '#5b3820')
+      out += crumbs(245, 70, [18, 46], '#8a5f3c', '#3b2414')
+      for (const [x, y, rx, ry, rot] of [[22, 34, 3, 2.2, 10], [71, 28, 2.4, 1.8, -20], [104, 38, 3.4, 2.4, 30]]) {
+        out += pebble(x, y, rx, ry, rot, ['#d8cbb6', '#a99a85', '#5e4f3e'])
       }
-      out += noiseRect('n', T, 0.15)
+      // earthworm burrow: dark hole with a lit lower lip
+      out += `<ellipse cx="50" cy="38" rx="3.2" ry="2.2" fill="#2a170b"/><path d="M47,39.5 q3,2 6.4,0" stroke="#7d5636" stroke-width="1" fill="none"/>`
+      ;[[8, 30], [39, 36], [63, 26], [92, 40], [118, 32]].forEach(([x, len], i) => {
+        out += rootSystem(246 + i, x, 12, len, '#a9845a', '#2e1a0c', 1.3)
+      })
+      // sod with blades hanging into the soil
+      out += band(241, 0, 17, 2.5, 2, '#4f8a33')
+      const r = rng(244)
+      for (let i = 0; i < 34; i++) {
+        const x = r() * T
+        const y = 12 + r() * 4
+        const len = 3 + r() * 5
+        const c = i % 3 ? '#3d6e27' : '#6aa845'
+        out += wrap(x, 3, (xx) => `<polygon points="${f1(xx - 1.3)},${f1(y)} ${f1(xx + 1.3)},${f1(y)} ${f1(xx + (r() - 0.5) * 2)},${f1(y + len)}" fill="${c}"/>`, T)
+      }
+      out += band(249, 0, 13, 1.5, 3, '#6aa845')
+      // straw stubble: gold mat, then individual cut stalks (lit left edge, shadow right) and fallen strands
+      out += band(242, 0, 9, 1.5, 3, '#d9a440')
+      for (let i = 0; i < 30; i++) {
+        const x = (i / 30) * T + r() * 3.4
+        const h = 3.5 + r() * 5
+        const lean = (r() - 0.5) * 2.4
+        const c = i % 4 ? '#f2cd6a' : '#fff0b3'
+        out += wrap(x, 4, (xx) =>
+          `<polygon points="${f1(xx + 0.4)},${f1(h)} ${f1(xx + 1.6)},${f1(h)} ${f1(xx + 1.6 + lean)},0 ${f1(xx + 0.4 + lean)},0" fill="#9c6c1e"/>` +
+          `<polygon points="${f1(xx - 0.8)},${f1(h - 0.5)} ${f1(xx + 0.7)},${f1(h - 0.5)} ${f1(xx + 0.7 + lean)},0 ${f1(xx - 0.8 + lean)},0" fill="${c}"/>`, T)
+      }
+      for (let i = 0; i < 7; i++) {
+        const x = r() * T
+        const y = 2 + r() * 5
+        const dx = 8 + r() * 8
+        out += wrap(x, dx, (xx) => `<path d="M${f1(xx)},${f1(y)} l${f1(dx)},${f1((r() - 0.5) * 3)}" stroke="#fbe39a" stroke-width="1.2" stroke-linecap="round"/><path d="M${f1(xx)},${f1(y + 1)} l${f1(dx)},${f1((r() - 0.5) * 2)}" stroke="#a87423" stroke-width="0.7" opacity="0.7"/>`, T)
+      }
+      out += noiseRect('n', T, 0.1)
       return svg(T, T, out, defs)
     },
     fillBody() {
+      // subsoil: layered clay with lit seams, a gravel lens, scattered field stones and fine root hairs
       const defs = noiseFilter('nf', T, 0.06, 15)
-      let out = strata(251, ['#6e4428', '#61391f', '#784b2c', '#5a341d', '#704529'], 5)
-      out += speckles(252, 16, [6, 124], ['#9b8571', '#b39d86', '#4a2c18', '#86705c'], 2, 5)
-      out += roots(253, '#4f2f1a', '#3f2412', true)
-      out += noiseRect('n', T, 0.25)
+      const layers = ['#6e4428', '#61391f', '#7a4d2d', '#5a341d', '#714629']
+      let out = strata(251, layers, 5)
+      out += strataSeams(251, 5, '#9a6a44', '#3e2413')
+      const g = rng(254)
+      for (let i = 0; i < 16; i++) {
+        out += pebble(g() * T, 72 + g() * 12, 1.8 + g() * 2, 1.3 + g() * 1.3, g() * 180, i % 2 ? ['#cbbca4', '#9a8a74', '#4d3f30'] : ['#b8a48a', '#8a7660', '#46372a'], false)
+      }
+      for (const [x, y, rx, ry, rot] of [[18, 22, 5, 3.6, 12], [86, 40, 3.6, 2.6, -25], [52, 104, 6, 4, 5], [112, 116, 3, 2.2, 40], [30, 62, 2.6, 2, 0]]) {
+        out += pebble(x, y, rx, ry, rot, ['#e2d6c2', '#b3a48d', '#5c4c3a'])
+      }
+      out += crumbs(255, 120, [0, T], '#93684a', '#3b2414')
+      out += rootSystem(256, 34, 0, 40, '#8f6a48', '#3b2414', 0.9)
+      out += rootSystem(257, 96, 50, 34, '#8f6a48', '#3b2414', 0.9)
+      out += noiseRect('n', T, 0.18)
       return { defs, out: out.replaceAll('url(#n)', 'url(#nf)') }
     },
     terrain_fill() {
       const { defs, out } = this.fillBody()
       return svg(T, T, out, defs)
     },
-    bedrock: () => carvedBedrock({ base: ['#7b756b', '#857e72', '#6f695f'], mortar: '#47423b', moss: '#7da447', seed: 261 }),
+    // field-stone dry wall in warm greys, earthy mortar, lichen rosettes and moss on top edges
+    bedrock: () =>
+      svg(T, T, stoneWall({
+        seed: 261,
+        rowHeights: [26, 21, 30, 22, 29],
+        minW: 22,
+        maxW: 46,
+        palettes: [['#c8c1b1', '#9a9384', '#6a6458'], ['#d2c7b1', '#a99e88', '#766c5b'], ['#b5b3a8', '#8c8a80', '#605e56']],
+        mortar: '#4a3f33',
+        mortarShade: '#2a221a',
+        mark: (r, w, h) => {
+          const k = r()
+          const lx = r()
+          const ly = r()
+          return (sx, sy, sw, sh) => {
+            let m = ''
+            if (k < 0.35) m += `<ellipse cx="${f1(sx + sw * (0.3 + lx * 0.4))}" cy="${f1(sy + 1.2)}" rx="${f1(sw * 0.28)}" ry="2" fill="#6f9a3c"/><ellipse cx="${f1(sx + sw * (0.3 + lx * 0.4) - 1)}" cy="${f1(sy + 0.6)}" rx="${f1(sw * 0.18)}" ry="1" fill="#97c158"/>`
+            else if (k < 0.6) {
+              const cx = sx + sw * (0.25 + lx * 0.5)
+              const cy = sy + sh * (0.35 + ly * 0.35)
+              m += `<circle cx="${f1(cx)}" cy="${f1(cy)}" r="2.4" fill="#d7c56a" opacity="0.85"/><circle cx="${f1(cx + 2.6)}" cy="${f1(cy + 1.2)}" r="1.4" fill="#d7c56a" opacity="0.85"/><circle cx="${f1(cx - 0.6)}" cy="${f1(cy - 0.5)}" r="1" fill="#efe39a"/>`
+            } else if (k < 0.8) {
+              const cx = sx + sw * (0.3 + lx * 0.4)
+              m += `<path d="M${f1(cx)},${f1(sy + 1)} l${f1(2 - ly * 4)},${f1(sh * 0.35)} l${f1(ly * 3)},${f1(sh * 0.3)}" stroke="#4c463d" stroke-width="1" fill="none" stroke-linecap="round"/>`
+            }
+            return m
+          }
+        },
+      })),
     props: [
       // round hay bale
       () => svg(110, 80, `<ellipse cx="55" cy="76" rx="50" ry="5" fill="#000" opacity="0.15"/><rect x="8" y="10" width="94" height="66" rx="33" fill="#e2ad45"/><circle cx="76" cy="43" r="30" fill="#f0c766"/><circle cx="76" cy="43" r="20" fill="none" stroke="#c99033" stroke-width="3"/><circle cx="76" cy="43" r="10" fill="none" stroke="#c99033" stroke-width="3"/><rect x="30" y="10" width="5" height="66" fill="#b0402f"/>`),
@@ -653,34 +915,87 @@ const THEMES = {
       return svg(W, H, out)
     },
     terrain_cap() {
+      // cooled pāhoehoe crust: ash dusting → ropy black basalt with gas vesicles → glowing crack network
       const fill = this.fillBody()
-      const defs = fill.defs + noiseFilter('n', T, 0.09, 17)
+      const defs = fill.defs + noiseFilter('n', T, 0.09, 17) +
+        `<filter id="glow" x="-0.2" y="-0.2" width="1.4" height="1.4"><feGaussianBlur stdDeviation="1.6"/></filter>`
       let out = fill.out
-      // black cooled-lava crust with glowing seams
-      out += band(341, 0, 16, 3, 2, '#1e171b')
-      out += band(342, 0, 11, 2, 3, '#2b2226')
-      out += band(343, 0, 4, 1, 4, '#4a3a40')
+      out += band(341, 0, 30, 4, 2, '#1c1518')
+      out += band(342, 0, 20, 3, 3, '#262024')
+      // ropy folds: stacked arcs with a lit crest and a dark trough
       const r = rng(344)
-      for (let i = 0; i < 5; i++) {
-        const x = r() * T
-        out += wrap(x, 14, (xx) => `<path d="M${f1(xx)},${f1(3 + r() * 4)} l${f1(4 + r() * 4)},${f1(4 + r() * 4)} l${f1(-2 + r() * 6)},${f1(3 + r() * 4)}" stroke="#ff7a2a" stroke-width="1.6" fill="none" stroke-linecap="round"/>`, T)
+      for (let i = 0; i < 9; i++) {
+        const x = (i / 9) * T + r() * 6
+        const y = 6 + r() * 10
+        const w = 10 + r() * 6
+        out += wrap(x, w, (xx) =>
+          `<path d="M${f1(xx - w / 2)},${f1(y + 1.2)} q${f1(w / 2)},-4 ${f1(w)},0" stroke="#0e0a0c" stroke-width="1.4" fill="none"/>` +
+          `<path d="M${f1(xx - w / 2)},${f1(y)} q${f1(w / 2)},-4 ${f1(w)},0" stroke="#5a4a50" stroke-width="1" fill="none"/>`, T)
       }
-      out += noiseRect('n', T, 0.18)
+      // vesicles: dark holes with a lit lower lip
+      for (let i = 0; i < 14; i++) {
+        const x = r() * T
+        const y = 4 + r() * 22
+        const rr = 0.8 + r() * 1.4
+        out += wrap(x, 3, (xx) => `<circle cx="${f1(xx)}" cy="${f1(y)}" r="${f1(rr)}" fill="#07050a"/><path d="M${f1(xx - rr)},${f1(y + 0.3)} a${f1(rr)},${f1(rr)} 0 0 0 ${f1(rr * 2)},0" stroke="#6b5a60" stroke-width="0.7" fill="none"/>`, T)
+      }
+      // crack network: wide blurred glow, orange body, yellow-hot core
+      const cracks = [
+        [[6, 30], [14, 22], [12, 14], [20, 8]],
+        [[40, 31], [46, 24], [58, 22], [62, 13]],
+        [[58, 22], [70, 26], [78, 31]],
+        [[92, 30], [96, 20], [108, 16], [112, 7]],
+        [[96, 20], [88, 13]],
+        [[120, 31], [126, 22], [134, 18]],
+      ]
+      const cd = cracks.map((c) => c.map(([x, y], i) => `${i ? 'L' : 'M'}${x},${y}`).join('')).join('')
+      const crackLayer = (dx) =>
+        `<g transform="translate(${dx} 0)" fill="none" stroke-linecap="round" stroke-linejoin="round">` +
+        `<path d="${cd}" stroke="#ff5a1a" stroke-width="5" opacity="0.55" filter="url(#glow)"/>` +
+        `<path d="${cd}" stroke="#ff7a2a" stroke-width="2"/><path d="${cd}" stroke="#ffd36a" stroke-width="0.8"/></g>`
+      out += crackLayer(0) + crackLayer(-T)
+      // ash dusting on the very top, thicker in the hollows
+      out += band(343, 0, 3, 1, 4, '#5e5258')
+      out += crumbs(345, 30, [0, 3], '#8d8088', '#3a3035')
+      out += noiseRect('n', T, 0.14)
       return svg(T, T, out, defs)
     },
     fillBody() {
+      // scoria and tuff layers: porous red-brown clasts, glassy obsidian shards, sulfur crusts, a rare ember vein
       const defs = noiseFilter('nf', T, 0.07, 19)
-      let out = strata(351, ['#4a2a26', '#3f2320', '#55302a', '#3a201e', '#4d2c27'], 5)
-      out += speckles(352, 12, [6, 124], ['#2a1816', '#6a3f34', '#1e1210'], 2, 5)
-      out += speckles(353, 5, [10, 120], ['#ff8a3a', '#ffb64a'], 1, 2)
-      out += noiseRect('n', T, 0.28)
+      let out = strata(351, ['#4a2a26', '#3b211f', '#5a332b', '#36201e', '#4d2c27'], 5)
+      out += strataSeams(351, 5, '#7a4a3c', '#1e1012')
+      const r = rng(352)
+      for (let i = 0; i < 9; i++) {
+        const x = r() * T
+        const y = r() * T
+        const rx = 2.6 + r() * 3
+        out += pebble(x, y, rx, rx * 0.75, r() * 180, ['#9a5a44', '#6e3a2c', '#24120f'], false)
+        // pores
+        for (let k = 0; k < 3; k++) {
+          const px = x + (r() - 0.5) * rx
+          const py = y + (r() - 0.5) * rx * 0.6
+          out += wrapXY(px, py, 2, (xx, yy) => `<circle cx="${f1(xx)}" cy="${f1(yy)}" r="0.6" fill="#2a1410"/>`)
+        }
+      }
+      for (const [x, y, s, rot] of [[24, 40, 5, 20], [78, 92, 4, -30], [110, 30, 3.4, 60]]) {
+        out += wrapXY(x, y, s + 2, (xx, yy) =>
+          `<g transform="rotate(${rot} ${xx} ${yy})"><polygon points="${xx - s},${yy + s * 0.5} ${xx + s * 0.2},${yy - s} ${xx + s},${yy + s * 0.4}" fill="#0c0a12"/>` +
+          `<path d="M${f1(xx - s * 0.4)},${f1(yy + s * 0.1)} L${f1(xx + s * 0.1)},${f1(yy - s * 0.6)}" stroke="#b9b4d8" stroke-width="0.8"/></g>`)
+      }
+      for (const [x, y] of [[54, 60], [8, 104]]) {
+        out += wrapXY(x, y, 5, (xx, yy) => `<circle cx="${xx}" cy="${yy}" r="2.2" fill="#c9b42a"/><circle cx="${xx + 2.4}" cy="${yy + 1}" r="1.6" fill="#e8d84a"/><circle cx="${xx - 0.7}" cy="${yy - 0.8}" r="0.8" fill="#fff6a0"/>`)
+      }
+      out += `<path d="M62,114 L69,110 L73,112 L80,106 L86,107" stroke="#ff7a2a" stroke-width="1.2" fill="none" opacity="0.9"/><path d="M62,114 L69,110 L73,112 L80,106 L86,107" stroke="#ffd36a" stroke-width="0.5" fill="none"/>`
+      out += crumbs(353, 90, [0, T], '#7a4a3c', '#1e1012')
+      out += noiseRect('n', T, 0.2)
       return { defs, out: out.replaceAll('url(#n)', 'url(#nf)') }
     },
     terrain_fill() {
       const { defs, out } = this.fillBody()
       return svg(T, T, out, defs)
     },
-    bedrock: () => carvedBedrock({ base: ['#2a2233', '#30283a', '#251e2e'], mortar: '#120d18', inlay: '#ff7a2a', seed: 361 }),
+    bedrock: () => basaltColumns(),
     props: [
       // basalt pillar cluster
       () => svg(90, 150, [[10, 70, '#352430'], [30, 30, '#2e1f28'], [50, 50, '#3a2834'], [68, 90, '#2e1f28']].map(([x, top, c]) => `<rect x="${x}" y="${top}" width="20" height="${150 - top}" fill="${c}"/><polygon points="${x},${top} ${x + 10},${top - 6} ${x + 20},${top}" fill="#5a4050"/><rect x="${x + 3}" y="${top + 4}" width="4" height="${142 - top}" fill="#4d3540" opacity="0.7"/>`).join('')),
@@ -749,30 +1064,103 @@ const THEMES = {
       return svg(W, H, out)
     },
     terrain_cap() {
+      // spring meadow on a sky island: thick two-tone sod with clover and daisies → humus with a fine root mat
       const fill = this.fillBody()
       const defs = fill.defs + noiseFilter('n', T, 0.07, 9)
       let out = fill.out
-      out += speckles(152, 8, [30, 124], ['#a89a8a', '#6b4a32'], 2, 5)
-      out += band(153, 0, 16, 3, 3, '#4f9a3a')
-      out += band(154, 0, 11, 2.5, 5, '#6cc04a')
-      out += band(155, 0, 5, 1.5, 7, '#8fd866')
-      out += speckles(156, 7, [3, 10], ['#ff8fb1', '#ffe066', '#ffffff'], 1.5, 2.4)
-      out += roots(157, '#5e3c26', '#4a2e1c', true)
-      out += noiseRect('n', T, 0.2)
+      out += band(150, 0, 40, 4, 2, '#5a3a24')
+      out += crumbs(151, 60, [16, 40], '#8a6446', '#36210f')
+      for (let i = 0; i < 9; i++) {
+        const r = rng(158 + i)
+        out += rootSystem(158 + i, (i / 9) * T + r() * 8, 12, 14 + r() * 22, '#b48c62', '#2e1a0c', 0.9)
+      }
+      for (const [x, y, rx] of [[30, 30, 3], [96, 34, 2.4]]) out += pebble(x, y, rx, rx * 0.7, 10, ['#e6e2da', '#b6afa4', '#5e564c'])
+      // sod: dark base, blades hanging into the soil, lighter top with upright blades
+      out += band(153, 0, 17, 3, 3, '#3f8a30')
+      const r = rng(154)
+      for (let i = 0; i < 40; i++) {
+        const x = r() * T
+        const y = 12 + r() * 4
+        const len = 3 + r() * 6
+        out += wrap(x, 3, (xx) => `<polygon points="${f1(xx - 1.4)},${f1(y)} ${f1(xx + 1.4)},${f1(y)} ${f1(xx + (r() - 0.5) * 3)},${f1(y + len)}" fill="${i % 3 ? '#2f6f24' : '#4f9a3a'}"/>`, T)
+      }
+      out += band(155, 0, 11, 2.5, 5, '#5fb244')
+      for (let i = 0; i < 46; i++) {
+        const x = r() * T
+        const y = 4 + r() * 7
+        const h = 3 + r() * 4
+        out += wrap(x, 3, (xx) => `<polygon points="${f1(xx - 1.1)},${f1(y)} ${f1(xx + 1.1)},${f1(y)} ${f1(xx + (r() - 0.5) * 2.5)},${f1(y - h)}" fill="${i % 2 ? '#8fd866' : '#4f9a3a'}"/>`, T)
+      }
+      out += band(156, 0, 3, 1, 7, '#9fe070')
+      // clover: three round leaflets with a pale chevron
+      for (const [x, y] of [[18, 7], [61, 9], [104, 6]]) {
+        out += wrap(x, 5, (xx) => [[-1.6, 0], [1.6, 0], [0, -2.4]].map(([dx, dy]) => `<circle cx="${f1(xx + dx)}" cy="${f1(y + dy)}" r="1.9" fill="#3f8a30"/><circle cx="${f1(xx + dx - 0.3)}" cy="${f1(y + dy - 0.3)}" r="1.3" fill="#6cc04a"/>`).join('') + `<path d="M${xx - 0.6},${y - 0.6} l0.6,0.6 l0.6,-0.6" stroke="#d6f5b8" stroke-width="0.5" fill="none"/>`, T)
+      }
+      // flowers: daisy (white petals, yellow eye), buttercup, pink clover head
+      const flower = (x, y, petal, eye) => wrap(x, 4, (xx) =>
+        [0, 1, 2, 3, 4].map((k) => `<circle cx="${f1(xx + Math.cos((k * TAU) / 5 - 1.57) * 1.7)}" cy="${f1(y + Math.sin((k * TAU) / 5 - 1.57) * 1.7)}" r="1.2" fill="${petal}"/>`).join('') +
+        `<circle cx="${xx}" cy="${y}" r="0.9" fill="${eye}"/>`, T)
+      out += flower(8, 4, '#ffffff', '#ffc531') + flower(44, 3, '#ffe066', '#f29a1f') + flower(78, 5, '#ffffff', '#ffc531') + flower(118, 3, '#ff9fc0', '#d8507e')
+      out += noiseRect('n', T, 0.1)
       return svg(T, T, out, defs)
     },
     fillBody() {
+      // warm loam: lit layer seams, white quartz pebbles with mica glints, a couple of acorns, thin roots
       const defs = noiseFilter('nf', T, 0.06, 11)
-      let out = strata(161, ['#7a4e33', '#70472e', '#835538', '#6b432b'], 4)
-      out += speckles(162, 12, [4, 124], ['#9a8a7a', '#5e3c26', '#b5a593'], 2, 6)
-      out += noiseRect('n', T, 0.22)
-      return { defs, out: out.replaceAll("url(#n)", "url(#nf)") }
+      let out = strata(161, ['#7a4e33', '#6c442b', '#835538', '#65402a'], 4)
+      out += strataSeams(161, 4, '#a5765a', '#3e2615')
+      const r = rng(162)
+      for (let i = 0; i < 8; i++) {
+        const rx = 2 + r() * 3
+        out += pebble(r() * T, r() * T, rx, rx * 0.72, r() * 180, i % 3 ? ['#d6d0c4', '#a39b8e', '#4e463c'] : ['#c4bcb0', '#8f877a', '#443c33'], false)
+      }
+      for (const [x, y, rot] of [[40, 60, -20], [104, 100, 25]]) {
+        out += wrapXY(x, y, 6, (xx, yy) =>
+          `<g transform="rotate(${rot} ${xx} ${yy})"><ellipse cx="${xx}" cy="${yy + 1.4}" rx="2.6" ry="3.4" fill="#3b2414"/><ellipse cx="${xx}" cy="${yy + 1}" rx="2.4" ry="3.2" fill="#b0702f"/><ellipse cx="${xx - 0.8}" cy="${yy + 0.4}" rx="0.8" ry="1.8" fill="#d99a52"/>` +
+          `<path d="M${xx - 3},${yy - 1.6} q3,-2.6 6,0z" fill="#6e4a26"/><path d="M${xx - 2.4},${yy - 2} h4.8" stroke="#a07040" stroke-width="0.5"/><path d="M${xx},${yy - 3} v-1.4" stroke="#6e4a26" stroke-width="0.8"/></g>`)
+      }
+      out += crumbs(163, 100, [0, T], '#a5765a', '#3e2615')
+      out += rootSystem(164, 70, 0, 36, '#9a7452', '#3e2615', 0.9)
+      out += noiseRect('n', T, 0.16)
+      return { defs, out: out.replaceAll('url(#n)', 'url(#nf)') }
     },
     terrain_fill() {
       const { defs, out } = this.fillBody()
       return svg(T, T, out, defs)
     },
-    bedrock: () => carvedBedrock({ base: ['#6b7a83', '#74848c', '#62717a'], mortar: '#3f4a52', moss: '#5f9e4a', seed: 171 }),
+    // sky-island marble: pale blue-grey blocks with white veins, moss cushions that drip over the edges, tiny ferns
+    bedrock: () =>
+      svg(T, T, stoneWall({
+        seed: 171,
+        rowHeights: [30, 34, 30, 34],
+        minW: 34,
+        maxW: 60,
+        gap: 3,
+        round: [0.18, 0.1],
+        palettes: [['#d4dde4', '#9aabb6', '#5f6f7a'], ['#dfe6ea', '#a8b6bf', '#66757f'], ['#c9d3dc', '#8fa0ac', '#56656f']],
+        mortar: '#3f4a52',
+        mortarShade: '#262e34',
+        mark: (r) => {
+          const vein = [r(), r(), r(), r()]
+          const k = r()
+          const mx = r()
+          return (sx, sy, sw, sh) => {
+            let m = `<path d="M${f1(sx + 3)},${f1(sy + sh * (0.3 + vein[0] * 0.4))} q${f1(sw * 0.3)},${f1((vein[1] - 0.5) * 10)} ${f1(sw * 0.55)},${f1((vein[2] - 0.5) * 6)} t${f1(sw * 0.35)},${f1((vein[3] - 0.5) * 8)}" stroke="#f4f8fb" stroke-width="0.9" fill="none" opacity="0.85"/>`
+            if (k < 0.55) {
+              const cx = sx + sw * (0.25 + mx * 0.5)
+              const w = sw * 0.32
+              m += `<path d="M${f1(cx - w)},${f1(sy + 3)} q${f1(w)},-6 ${f1(w * 2)},0 v2 q-2,4 -3,0 q-3,5 -5,0 q-2,3 -4,0 q-3,4 ${f1(-(w * 2 - 12))},-1z" fill="#4f9a3a"/>` +
+                `<path d="M${f1(cx - w * 0.7)},${f1(sy + 1.4)} q${f1(w * 0.7)},-3.6 ${f1(w * 1.4)},0" stroke="#8fd866" stroke-width="1.2" fill="none"/>`
+            } else if (k < 0.7) {
+              const fx = sx + sw * (0.2 + mx * 0.6)
+              const fy = sy + sh - 2
+              m += `<path d="M${f1(fx)},${f1(fy)} q-1,-5 2,-9" stroke="#3f8a30" stroke-width="0.8" fill="none"/>` +
+                [0.3, 0.55, 0.8].map((t) => `<path d="M${f1(fx + t * 1.6)},${f1(fy - t * 8)} l-2.4,-1 M${f1(fx + t * 1.6)},${f1(fy - t * 8)} l2.4,-1.4" stroke="#5fb244" stroke-width="0.9"/>`).join('')
+            }
+            return m
+          }
+        },
+      })),
     props: [
       () => svg(140, 200, roundTree(70, 200, 195, '#7a5232', '#4f9a3a', '#7cc35a')),
       () => svg(110, 210, pine(55, 210, 205, '#3f7a4a')),
@@ -833,40 +1221,94 @@ const THEMES = {
       return svg(W, H, out)
     },
     terrain_cap() {
+      // polar night: wind-packed snow drifts (blue shadows, sparkles, drips) over cut ice blocks with bubbles and refraction
       const fill = this.fillBody()
       const defs = fill.defs + noiseFilter('n', T, 0.05, 13)
       let out = fill.out
-      out += bricks({ top: 14, rows: 4, rowH: 26, widths: [64, 42.6667, 64, 32], colors: ['#9fd0f0', '#8fc3ea', '#a9d8f5'], mortar: '#6a9fcd', seed: 242, bevel: '#e4f4ff' })
-      for (let i = 0; i < 6; i++) {
-        const r = rng(243 + i)
+      out += stoneWall({
+        seed: 242,
+        top: 14,
+        rowHeights: [26, 26, 26, 26],
+        minW: 30,
+        maxW: 60,
+        gap: 2,
+        round: [0.1, 0.06],
+        palettes: [['#e4f4ff', '#9fd0f0', '#5a8fc0'], ['#dcefff', '#8fc3ea', '#5287ba'], ['#eef8ff', '#a9d8f5', '#6298c6']],
+        mortar: '#6a9fcd',
+        mortarShade: '#3f6f9e',
+        mark: (r) => {
+          const bubbles = Array.from({ length: 5 }, () => [r(), r(), 0.5 + r() * 1.1])
+          const crack = r()
+          const cx = r()
+          return (sx, sy, sw, sh) => {
+            // refraction: two parallel diagonal glints
+            let m = `<path d="M${f1(sx + sw * 0.55)},${f1(sy + 3)} l${f1(-sh * 0.45)},${f1(sh - 6)} M${f1(sx + sw * 0.55 + 4)},${f1(sy + 3)} l${f1(-sh * 0.3)},${f1(sh * 0.6)}" stroke="#ffffff" stroke-width="1.1" opacity="0.55"/>`
+            m += bubbles.map(([a, b, br]) => `<circle cx="${f1(sx + 3 + a * (sw - 6))}" cy="${f1(sy + 4 + b * (sh - 8))}" r="${f1(br)}" fill="none" stroke="#f2faff" stroke-width="0.6"/>`).join('')
+            if (crack < 0.45) {
+              const x0 = sx + sw * (0.2 + cx * 0.6)
+              m += `<path d="M${f1(x0)},${f1(sy + sh - 2)} l2,-6 l-3,-4 l2,-5" stroke="#4a7fb0" stroke-width="0.9" fill="none"/><path d="M${f1(x0 + 0.8)},${f1(sy + sh - 2)} l2,-6 l-3,-4 l2,-5" stroke="#f2faff" stroke-width="0.5" fill="none"/>`
+            }
+            return m
+          }
+        },
+      })
+      // snow: blue-shadowed underside, white drift, icicle-like drips over the first block row
+      out += band(244, 0, 18, 3, 2, '#9fbfe0')
+      out += band(245, 0, 14, 2.5, 3, '#f2f8ff')
+      const r = rng(246)
+      for (let i = 0; i < 10; i++) {
         const x = r() * T
-        const seg = `,${f1(20 + r() * 80)} l${f1(r() * 10 - 5)},${f1(8 + r() * 10)} l${f1(r() * 10 - 5)},${f1(8 + r() * 10)}`
-        out += wrap(x, 12, (xx) => `<path d="M${f1(xx)}${seg}" stroke="#e4f4ff" stroke-width="1.3" fill="none" opacity="0.8"/>`, T)
+        const len = 3 + r() * 6
+        out += wrap(x, 3, (xx) => `<path d="M${f1(xx - 1.8)},14 q1.8,${f1(len * 1.6)} 3.6,0z" fill="#e4f0ff"/>`, T)
       }
-      out += band(244, 0, 14, 3, 2, '#c8dcf2')
-      out += band(245, 0, 10, 2, 3, '#f2f8ff')
-      out += noiseRect('n', T, 0.14)
+      for (let i = 0; i < 8; i++) {
+        const x = r() * T
+        const y = 3 + r() * 6
+        const w = 10 + r() * 8
+        out += wrap(x, w, (xx) => `<path d="M${f1(xx - w / 2)},${f1(y)} q${f1(w / 2)},-3 ${f1(w)},0" stroke="#c8daf0" stroke-width="1" fill="none"/>`, T)
+      }
+      // sparkles: tiny four-point stars
+      for (let i = 0; i < 9; i++) {
+        const x = r() * T
+        const y = 1.5 + r() * 9
+        const s = 1 + r() * 1.2
+        out += wrap(x, 3, (xx) => `<path d="M${f1(xx)},${f1(y - s)} L${f1(xx + 0.35)},${f1(y)} L${f1(xx)},${f1(y + s)} L${f1(xx - 0.35)},${f1(y)}z M${f1(xx - s)},${f1(y)} L${f1(xx)},${f1(y + 0.35)} L${f1(xx + s)},${f1(y)} L${f1(xx)},${f1(y - 0.35)}z" fill="#ffffff"/>`, T)
+      }
+      out += noiseRect('n', T, 0.08)
       return svg(T, T, out, defs)
     },
     fillBody() {
+      // glacier ice: annual layers with lit seams, strings of air bubbles, fractures, frozen moraine stones
       const defs = noiseFilter('nf', T, 0.05, 15)
-      let out = strata(251, ['#4c7fb3', '#4577aa', '#5588bc', '#3f6fa0'], 4)
+      let out = strata(251, ['#4c7fb3', '#4174a8', '#5588bc', '#3c6c9e'], 4)
+      out += strataSeams(251, 4, '#8fc3ea', '#2d5582')
+      const r = rng(252)
       for (let i = 0; i < 7; i++) {
-        const r = rng(252 + i)
         const x = r() * T
         const y = r() * T
-        const seg = ` l${f1(r() * 14 - 7)},${f1(10 + r() * 8)} l${f1(r() * 14 - 7)},${f1(6 + r() * 8)}`
-        out += wrap(x, 14, (xx) => `<path d="M${f1(xx)},${f1(y)}${seg}" stroke="#a9d1f2" stroke-width="1.2" fill="none" opacity="0.7"/>`, T)
+        const dx = (r() - 0.5) * 6
+        out += wrapXY(x, y, 12, (xx, yy) =>
+          [0, 1, 2, 3, 4].map((k) => `<circle cx="${f1(xx + dx * k * 0.4)}" cy="${f1(yy - k * 2.4)}" r="${f1(0.5 + (4 - k) * 0.18)}" fill="none" stroke="#cfe6fa" stroke-width="0.5"/>`).join(''))
       }
-      out += speckles(259, 10, [4, 124], ['#cfe6fa', '#33608f'], 1.5, 3.5)
-      out += noiseRect('n', T, 0.16)
-      return { defs, out: out.replaceAll("url(#n)", "url(#nf)") }
+      for (let i = 0; i < 5; i++) {
+        const x = r() * T
+        const y = r() * T
+        const seg = ` l${f1(r() * 10 - 5)},${f1(8 + r() * 8)} l${f1(r() * 10 - 5)},${f1(6 + r() * 8)}`
+        out += wrapXY(x, y, 18, (xx, yy) => `<path d="M${f1(xx + 0.7)},${f1(yy)}${seg}" stroke="#2d5582" stroke-width="1" fill="none"/><path d="M${f1(xx)},${f1(yy)}${seg}" stroke="#bfe0fa" stroke-width="0.8" fill="none"/>`)
+      }
+      for (const [x, y, rx] of [[30, 52, 3.6], [96, 20, 2.6], [76, 104, 3]]) {
+        out += pebble(x, y, rx, rx * 0.7, 20, ['#8a8f9e', '#5a5f6e', '#2a2e3a'], false)
+        // frost halo: the stone is seen through ice
+        out += wrapXY(x, y, rx + 3, (xx, yy) => `<ellipse cx="${xx}" cy="${yy}" rx="${f1(rx + 2)}" ry="${f1(rx * 0.7 + 2)}" fill="#cfe6fa" opacity="0.25"/>`)
+      }
+      out += noiseRect('n', T, 0.12)
+      return { defs, out: out.replaceAll('url(#n)', 'url(#nf)') }
     },
     terrain_fill() {
       const { defs, out } = this.fillBody()
       return svg(T, T, out, defs)
     },
-    bedrock: () => crystalBedrock(),
+    bedrock: () => amethystBedrock(),
     props: [
       () => svg(120, 220, pine(60, 220, 215, '#1f4a5e', '#f2f8ff')),
       () => svg(90, 120, `<polygon points="45,4 60,60 45,118 30,60" fill="#8fd3ff"/><polygon points="45,4 60,60 45,118" fill="#5fb3ea"/><polygon points="20,40 30,80 20,118 10,80" fill="#a9e0ff"/><polygon points="72,50 82,84 72,118 62,84" fill="#7fc6f5"/><polygon points="45,4 52,40 45,60" fill="#ffffff" opacity="0.7"/>`),
@@ -933,27 +1375,122 @@ const THEMES = {
       return svg(W, H, out)
     },
     terrain_cap() {
+      // moonlit ruins: worn, cracked flagstones with moss and silver lichen in the joints → rubble-laden dark soil
       const fill = this.fillBody()
       const defs = fill.defs + noiseFilter('n', T, 0.07, 17)
       let out = fill.out
-      out += speckles(342, 8, [30, 124], ['#6a5a68', '#33252f'], 3, 6)
-      out += bricks({ top: 0, rows: 1, rowH: 20, widths: [42.6667], colors: ['#a597b0', '#9688a3', '#b0a3ba'], mortar: '#4a3744', seed: 343, mortarPx: 3, bevel: '#d6cce0' })
-      out += speckles(344, 6, [0, 6], ['#6d8f4e', '#7fa35a'], 3, 6)
-      out += noiseRect('n', T, 0.2)
+      // rubble layer: broken dressed stone with chisel marks
+      const r = rng(342)
+      for (let i = 0; i < 6; i++) {
+        const x = r() * T
+        const y = 28 + r() * 40
+        const s = 3 + r() * 4
+        const rot = r() * 60 - 30
+        out += wrap(x, s + 2, (xx) =>
+          `<g transform="rotate(${f1(rot)} ${f1(xx)} ${f1(y)})"><polygon points="${f1(xx - s)},${f1(y - s * 0.6)} ${f1(xx + s * 0.8)},${f1(y - s * 0.7)} ${f1(xx + s)},${f1(y + s * 0.5)} ${f1(xx - s * 0.6)},${f1(y + s * 0.7)}" fill="#1e151c" transform="translate(0.8 1)"/>` +
+          `<polygon points="${f1(xx - s)},${f1(y - s * 0.6)} ${f1(xx + s * 0.8)},${f1(y - s * 0.7)} ${f1(xx + s)},${f1(y + s * 0.5)} ${f1(xx - s * 0.6)},${f1(y + s * 0.7)}" fill="#5e5268"/>` +
+          `<polygon points="${f1(xx - s)},${f1(y - s * 0.6)} ${f1(xx + s * 0.8)},${f1(y - s * 0.7)} ${f1(xx + s * 0.5)},${f1(y - s * 0.2)} ${f1(xx - s * 0.7)},${f1(y - s * 0.1)}" fill="#7e7290"/>` +
+          `<path d="M${f1(xx - s * 0.3)},${f1(y)} l1,2 M${f1(xx + s * 0.2)},${f1(y)} l1,2" stroke="#5a4a64" stroke-width="0.7"/></g>`, T)
+      }
+      out += crumbs(345, 40, [20, 70], '#6a5a68', '#1e151c')
+      // flagstones (top course) with worn rounded tops
+      out += stoneWall({
+        seed: 343,
+        rowHeights: [20],
+        minW: 28,
+        maxW: 52,
+        gap: 3,
+        round: [0.18, 0.1],
+        palettes: [['#d6cce0', '#a597b0', '#6a5c78'], ['#cbc0d6', '#9688a3', '#5f526e'], ['#ddd3e6', '#b0a3ba', '#74668a']],
+        mortar: '#3a2b36',
+        mortarShade: '#1e151c',
+        mark: (r2) => {
+          const crack = r2()
+          const lichen = Array.from({ length: 3 }, () => [r2(), r2()])
+          const cx = r2()
+          return (sx, sy, sw, sh) => {
+            let m = lichen.map(([a, b]) => `<circle cx="${f1(sx + 3 + a * (sw - 6))}" cy="${f1(sy + 4 + b * (sh - 8))}" r="1.3" fill="#e8e4ee" opacity="0.7"/><circle cx="${f1(sx + 4.4 + a * (sw - 6))}" cy="${f1(sy + 4.6 + b * (sh - 8))}" r="0.8" fill="#e8e4ee" opacity="0.6"/>`).join('')
+            if (crack < 0.5) {
+              const x0 = sx + sw * (0.25 + cx * 0.5)
+              m += `<path d="M${f1(x0)},${f1(sy)} l-2,5 l3,4 l-1,6" stroke="#4a3a54" stroke-width="1" fill="none"/><path d="M${f1(x0 + 0.8)},${f1(sy + 0.4)} l-2,5 l3,4" stroke="#e0d6ea" stroke-width="0.5" fill="none"/>`
+            }
+            return m
+          }
+        },
+      })
+      // moss creeping out of the joints and over the stone tops
+      for (let i = 0; i < 7; i++) {
+        const x = r() * T
+        const w = 4 + r() * 7
+        out += wrap(x, w, (xx) => `<ellipse cx="${f1(xx)}" cy="1.4" rx="${f1(w)}" ry="2.4" fill="#4f7a3a"/><ellipse cx="${f1(xx - 1)}" cy="0.8" rx="${f1(w * 0.6)}" ry="1.2" fill="#7fa35a"/><path d="M${f1(xx - w * 0.4)},3 v${f1(2 + r() * 3)} M${f1(xx + w * 0.3)},3 v${f1(1 + r() * 3)}" stroke="#4f7a3a" stroke-width="1" stroke-linecap="round"/>`, T)
+      }
+      out += noiseRect('n', T, 0.12)
       return svg(T, T, out, defs)
     },
     fillBody() {
+      // dark night soil: rubble chunks, a broken brick, pale bone-white grit, faint glowing spores
       const defs = noiseFilter('nf', T, 0.06, 19)
-      let out = strata(351, ['#3a2b36', '#352731', '#40303c', '#31242d'], 4)
-      out += speckles(352, 10, [4, 124], ['#5a4a58', '#6a5a68', '#2a1e27'], 3, 7)
-      out += noiseRect('n', T, 0.2)
-      return { defs, out: out.replaceAll("url(#n)", "url(#nf)") }
+      let out = strata(351, ['#3a2b36', '#33252f', '#40303c', '#2e222b'], 4)
+      out += strataSeams(351, 4, '#5a4858', '#18101a')
+      const r = rng(352)
+      for (let i = 0; i < 8; i++) {
+        const rx = 2.4 + r() * 3.6
+        out += pebble(r() * T, r() * T, rx, rx * 0.7, r() * 180, ['#7a6a80', '#56485e', '#1a1220'], false)
+      }
+      for (const [x, y, rot] of [[90, 46, 12], [24, 98, -18]]) {
+        out += wrapXY(x, y, 9, (xx, yy) =>
+          `<g transform="rotate(${rot} ${xx} ${yy})"><rect x="${xx - 7}" y="${yy - 3}" width="14" height="6" fill="#1a1220" transform="translate(0.8 1)"/><path d="M${xx - 7},${yy - 3} h14 v6 h-9 l-2,-2 l-3,2z" fill="#6e4a52"/><rect x="${xx - 7}" y="${yy - 3}" width="14" height="1.4" fill="#9a6e74"/></g>`)
+      }
+      for (const [x, y] of [[60, 20], [112, 84], [40, 64]]) {
+        out += wrapXY(x, y, 4, (xx, yy) => `<circle cx="${xx}" cy="${yy}" r="2.4" fill="#b8a6ff" opacity="0.18"/><circle cx="${xx}" cy="${yy}" r="0.8" fill="#e0d6ff"/>`)
+      }
+      out += crumbs(353, 90, [0, T], '#6a5a68', '#18101a')
+      out += noiseRect('n', T, 0.16)
+      return { defs, out: out.replaceAll('url(#n)', 'url(#nf)') }
     },
     terrain_fill() {
       const { defs, out } = this.fillBody()
       return svg(T, T, out, defs)
     },
-    bedrock: () => carvedBedrock({ base: ['#6a5f78', '#736882', '#61566f'], mortar: '#3a3045', inlay: '#d6b25e', seed: 361 }),
+    // temple masonry: dressed lilac blocks carved with moon-phase reliefs in pale gold, ivy and silver lichen
+    bedrock: () => {
+      const phases = [
+        (x, y) => `<circle cx="${x}" cy="${y}" r="5.4"/>`,
+        (x, y) => `<path d="M${x},${y - 5.4} a5.4,5.4 0 0 1 0,10.8z"/><circle cx="${x}" cy="${y}" r="5.4" fill="none"/>`,
+        (x, y) => `<path d="M${x - 1},${y - 5.4} a5.4,5.4 0 1 0 0,10.8 a4,5.4 0 1 1 0,-10.8z"/>`,
+        (x, y) => `<circle cx="${x - 9}" cy="${y}" r="2"/><circle cx="${x}" cy="${y}" r="3"/><circle cx="${x + 9}" cy="${y}" r="2"/>`,
+      ]
+      const out = stoneWall({
+        seed: 361,
+        rowHeights: [32, 32, 32, 32],
+        minW: 44,
+        maxW: 72,
+        gap: 3,
+        round: [0.06, 0.04],
+        palettes: [['#9a8eac', '#6a5f78', '#413750'], ['#a297b4', '#736882', '#463c56'], ['#9387a6', '#61566f', '#3a3048']],
+        mortar: '#2a2034',
+        mortarShade: '#140e1a',
+        mark: (r) => {
+          const g = phases[Math.floor(r() * phases.length)]
+          const ivy = r()
+          const ix = r()
+          return (sx, sy, sw, sh) => {
+            const cx = +f1(sx + sw / 2)
+            const cy = +f1(sy + sh / 2 + 1)
+            // recessed panel, then the relief
+            let m = `<rect x="${f1(cx - 13)}" y="${f1(cy - 9)}" width="26" height="18" rx="2" fill="#2e2638" opacity="0.5"/><rect x="${f1(cx - 13)}" y="${f1(cy + 8)}" width="26" height="1" fill="#a297b4" opacity="0.6"/>`
+            m += `<g fill="#1e1828" stroke="#1e1828" stroke-width="1" transform="translate(0.7 0.8)">${g(cx, cy)}</g><g fill="#d6b25e" stroke="#d6b25e" stroke-width="0.8">${g(cx, cy)}</g>`
+            if (ivy < 0.35) {
+              const vx = sx + sw * (0.15 + ix * 0.7)
+              m += `<path d="M${f1(vx)},${f1(sy)} q-3,8 1,14 q3,6 -1,12" stroke="#3f6a34" stroke-width="1.2" fill="none"/>` +
+                [4, 11, 18, 24].map((dy, k) => `<ellipse cx="${f1(vx + (k % 2 ? 2.4 : -2.4))}" cy="${f1(sy + dy)}" rx="2.2" ry="1.4" fill="${k % 2 ? '#6d8f4e' : '#4f7a3a'}" transform="rotate(${k % 2 ? 30 : -30} ${f1(vx + (k % 2 ? 2.4 : -2.4))} ${f1(sy + dy)})"/>`).join('')
+            }
+            return m
+          }
+        },
+      })
+      return svg(T, T, out)
+    },
     props: [
       () => svg(80, 170, column(40, 170, 165, 40, '#8a7d96', '#b5a8c2', 0.4)),
       () => svg(70, 120, `<rect x="27" y="40" width="16" height="80" fill="#4a3f55"/><rect x="18" y="108" width="34" height="12" fill="#4a3f55"/><path d="M8,40 h54 l-8,14 h-38z" fill="#5a4a66"/><ellipse cx="35" cy="30" rx="16" ry="18" fill="#ff9a3c"/><ellipse cx="35" cy="34" rx="9" ry="11" fill="#ffd27a"/><circle cx="35" cy="22" r="14" fill="#ff9a3c" opacity="0.25"/>`),
@@ -1092,38 +1629,101 @@ const THEMES = {
       return svg(W, H, out)
     },
     terrain_cap() {
+      // beach: dry white sand with wind ripples and shells → wet-sand line with a sheen → pink coral sand
       const fill = this.fillBody()
       const defs = fill.defs + noiseFilter('n', T, 0.1, 23)
       let out = fill.out
-      // white sand over a wet-sand seam, with shells and pebbles in the top
-      out += band(541, 0, 26, 3, 2, '#d9b98a')
-      out += band(542, 0, 22, 2.5, 3, '#f3e2b8')
-      out += band(543, 0, 12, 2, 4, '#fffaea')
-      out += speckles(544, 9, [4, 18], ['#ffffff', '#f7b3a3', '#e8c48f'], 1.4, 2.6)
-      out += noiseRect('n', T, 0.12)
+      out += band(541, 0, 30, 3, 2, '#c9a77a')
+      out += band(542, 0, 27, 2.5, 3, '#e6cfa2')
+      // wet line: darker damp sand with a thin water sheen on its upper edge
+      out += band(546, 0, 22, 2, 2, '#d8bf93')
+      out += band(543, 0, 18, 2, 4, '#fffaea')
+      out += crumbs(547, 60, [1, 26], '#ffffff', '#cdb28a')
+      // wind ripples: short arcs, shadow under a lit crest
+      const r = rng(544)
+      for (let i = 0; i < 12; i++) {
+        const x = r() * T
+        const y = 3 + r() * 11
+        const w = 7 + r() * 6
+        out += wrap(x, w, (xx) => `<path d="M${f1(xx - w / 2)},${f1(y + 0.9)} q${f1(w / 2)},-2.4 ${f1(w)},0" stroke="#d9c39a" stroke-width="1" fill="none"/><path d="M${f1(xx - w / 2)},${f1(y)} q${f1(w / 2)},-2.4 ${f1(w)},0" stroke="#ffffff" stroke-width="0.8" fill="none"/>`, T)
+      }
+      // scallop: fan with ribs; cone shell: spiral; sea glass: frosted chip with a glint
+      const scallop = (x, y, s, c, rib) => wrap(x, s + 1, (xx) =>
+        `<path d="M${f1(xx - s)},${f1(y)} a${s},${s} 0 0 1 ${f1(2 * s)},0 l${f1(-s * 0.6)},${f1(s * 0.5)} h${f1(-s * 0.8)}z" fill="${c}" stroke="${rib}" stroke-width="0.6"/>` +
+        [-0.5, 0, 0.5].map((k) => `<path d="M${f1(xx + k * s * 0.3)},${f1(y + s * 0.45)} L${f1(xx + k * s * 1.3)},${f1(y - s * 0.6)}" stroke="${rib}" stroke-width="0.6"/>`).join(''), T)
+      out += scallop(30, 10, 5, '#ffd9cc', '#d98a76') + scallop(97, 16, 4, '#fff1d6', '#c9a06a')
+      out += wrap(66, 8, (xx) => `<g transform="translate(${xx} 13) scale(1.6) translate(${-xx} -13)"><path d="M${xx - 4},14 L${xx + 4},11 L${xx + 2},16z" fill="#f2b38a" stroke="#b5714d" stroke-width="0.6"/><path d="M${xx - 1},12.8 l1,2.2 M${xx + 1.6},12 l0.8,2.4" stroke="#b5714d" stroke-width="0.6"/></g>`, T)
+      for (const [x, y, c] of [[12, 19, '#9fdcf0'], [82, 6, '#b8e8c8'], [118, 21, '#9fdcf0']]) {
+        out += wrap(x, 3, (xx) => `<polygon points="${xx - 1.8},${y} ${xx},${y - 1.6} ${xx + 2},${y - 0.4} ${xx + 1},${y + 1.4}" fill="${c}" opacity="0.9"/><circle cx="${xx - 0.4}" cy="${y - 0.6}" r="0.5" fill="#fff"/>`, T)
+      }
+      out += noiseRect('n', T, 0.08)
       return svg(T, T, out, defs)
     },
     fillBody() {
+      // pink coral sand: cross-bedded layers, white coral twigs, broken shell, star-sand grains
       const defs = noiseFilter('nf', T, 0.07, 29)
       let out = strata(551, ['#e8937e', '#de8670', '#f0a28a', '#d47a65', '#e99a83'], 5)
-      out += speckles(552, 10, [6, 124], ['#c96a56', '#f6bca8', '#b45c4a'], 2, 5)
+      out += strataSeams(551, 5, '#fbc0ab', '#b9604e')
       const r = rng(553)
-      // fossil shells: tiny spirals and scallops
-      for (let i = 0; i < 4; i++) {
-        const x = 12 + r() * 104
-        const y = 24 + r() * 92
-        out += i % 2
-          ? `<path d="M${f1(x - 5)},${f1(y + 3)} q5,-10 10,0z" fill="#fde3d4" opacity="0.8"/><path d="M${f1(x)},${f1(y + 3)} v-6 M${f1(x - 3)},${f1(y + 3)} l1.5,-5 M${f1(x + 3)},${f1(y + 3)} l-1.5,-5" stroke="#d98a76" stroke-width="0.8"/>`
-          : `<path d="M${f1(x)},${f1(y)} m-1,0 a1.5,1.5 0 1 1 2.5,1.5 a3,3 0 1 1 -4.5,-3 a4.5,4.5 0 1 1 6,5" stroke="#fde3d4" stroke-width="1.3" fill="none" opacity="0.85"/>`
+      // cross-bedding: short diagonal laminae inside each layer
+      for (let i = 0; i < 26; i++) {
+        const x = r() * T
+        const y = r() * T
+        const l = 6 + r() * 8
+        out += wrapXY(x, y, l, (xx, yy) => `<path d="M${f1(xx)},${f1(yy)} l${f1(l)},${f1(l * 0.35)}" stroke="${i % 2 ? '#f6b29b' : '#c86c58'}" stroke-width="0.7" opacity="0.7"/>`)
       }
-      out += noiseRect('n', T, 0.22)
+      // coral twigs
+      for (const [x, y, rot] of [[22, 46, -20], [92, 18, 30], [70, 100, 10]]) {
+        out += wrapXY(x, y, 9, (xx, yy) =>
+          `<g transform="rotate(${rot} ${xx} ${yy})" stroke-linecap="round" fill="none"><path d="M${xx - 6},${yy + 1} h12 M${xx - 2},${yy + 1} l-2,-4 M${xx + 2},${yy + 1} l2,-4 M${xx + 5},${yy + 1} l1,3" stroke="#b9604e" stroke-width="2.4"/>` +
+          `<path d="M${xx - 6},${yy} h12 M${xx - 2},${yy} l-2,-4 M${xx + 2},${yy} l2,-4 M${xx + 5},${yy} l1,3" stroke="#fff3ea" stroke-width="1.6"/></g>`)
+      }
+      // shell fragments (half-moons) and star-sand grains
+      for (let i = 0; i < 7; i++) {
+        const x = r() * T
+        const y = r() * T
+        const s = 1.8 + r() * 1.6
+        out += wrapXY(x, y, s + 1, (xx, yy) => `<path d="M${f1(xx - s)},${f1(yy)} a${f1(s)},${f1(s)} 0 0 1 ${f1(2 * s)},0z" fill="#fde3d4" stroke="#c86c58" stroke-width="0.5"/>`)
+      }
+      out += crumbs(554, 90, [0, T], '#fff1e8', '#b9604e')
+      out += noiseRect('n', T, 0.14)
       return { defs, out: out.replaceAll('url(#n)', 'url(#nf)') }
     },
     terrain_fill() {
       const { defs, out } = this.fillBody()
       return svg(T, T, out, defs)
     },
-    bedrock: () => carvedBedrock({ base: ['#4f8a8c', '#589496', '#467f81'], mortar: '#2b5557', moss: '#7fd6b4', seed: 561 }),
+    // ivory coral limestone: porous blocks, brain-coral swirls, coralline algae, barnacle clusters
+    bedrock: () =>
+      svg(T, T, stoneWall({
+        seed: 561,
+        rowHeights: [32, 30, 34, 32],
+        minW: 30,
+        maxW: 56,
+        gap: 3,
+        palettes: [['#fffaf0', '#eadfc8', '#b9a888'], ['#fff3e2', '#e2d2b6', '#ad9a78'], ['#fbf5ea', '#efe3cc', '#c0ae8e']],
+        mortar: '#8f7a5a',
+        mortarShade: '#5e4e38',
+        mark: (r) => {
+          const k = r()
+          const a = r()
+          const b = r()
+          const pores = Array.from({ length: 6 }, () => [r(), r(), 0.5 + r() * 0.7])
+          return (sx, sy, sw, sh) => {
+            let m = pores.map(([px, py, pr]) => `<circle cx="${f1(sx + 3 + px * (sw - 6))}" cy="${f1(sy + 5 + py * (sh - 9))}" r="${f1(pr)}" fill="#a8916c"/>`).join('')
+            const cx = sx + sw * (0.3 + a * 0.4)
+            const cy = sy + sh * (0.4 + b * 0.3)
+            if (k < 0.3) m += `<path d="M${f1(cx - 7)},${f1(cy)} q2,-4 4,0 t4,0 t4,0 M${f1(cx - 6)},${f1(cy + 3)} q2,-4 4,0 t4,0 t4,0" stroke="#c9b089" stroke-width="1" fill="none"/>`
+            else if (k < 0.55) m += `<ellipse cx="${f1(cx)}" cy="${f1(sy + sh - 4)}" rx="${f1(sw * 0.3)}" ry="2.6" fill="#e58aa0"/><ellipse cx="${f1(cx - 2)}" cy="${f1(sy + sh - 4.8)}" rx="${f1(sw * 0.16)}" ry="1.2" fill="#f7b8c6"/>`
+            else if (k < 0.8) {
+              for (const [dx, dy, br] of [[0, 0, 2.6], [4.4, 1.6, 2], [1.6, 4, 1.8]]) {
+                m += `<circle cx="${f1(cx + dx)}" cy="${f1(cy + dy)}" r="${br}" fill="#d9ccb8" stroke="#8f7a5a" stroke-width="0.7"/><circle cx="${f1(cx + dx)}" cy="${f1(cy + dy)}" r="${f1(br * 0.4)}" fill="#6a5a44"/>`
+              }
+            }
+            return m
+          }
+        },
+      })),
     props: [
       // wind-bent palm
       () => svg(240, 260, windPalm(60, 260, 200, '#a8693c', '#2f8a4a', '#58b860', 1)),
@@ -1147,50 +1747,74 @@ const THEMES = {
 
 // ───────────────────────── tiles & hanging pieces ─────────────────────────
 
-function carvedBedrock({ base, mortar, inlay, moss, seed }) {
-  let out = `<rect width="${T}" height="${T}" fill="${mortar}"/>`
-  out += bricks({ top: 0, rows: 4, rowH: 32, widths: [64, 64, 64, 64], colors: base, mortar, seed, mortarPx: 4, bevel: '#ffffff' })
-  const r = rng(seed + 1)
-  for (let row = 0; row < 4; row++) {
-    const y = row * 32
-    const offset = row % 2 ? 32 : 0
-    for (let x = -offset; x < T; x += 64) {
-      const glyph = (xx) => {
-        let g = `<rect x="${xx + 4}" y="${y + 28}" width="56" height="2" fill="#000" opacity="0.25"/>`
-        if (inlay) {
-          g += `<rect x="${xx + 10}" y="${y + 9}" width="44" height="2" fill="${inlay}" opacity="0.85"/>`
-          const k = Math.floor(r() * 3)
-          if (k === 0) g += `<circle cx="${xx + 32}" cy="${y + 19}" r="5" fill="none" stroke="${inlay}" stroke-width="2" opacity="0.85"/>`
-          if (k === 1) g += `<path d="M${xx + 24},${y + 24} l8,-10 l8,10" fill="none" stroke="${inlay}" stroke-width="2" opacity="0.85"/>`
-          if (k === 2) g += `<rect x="${xx + 29}" y="${y + 14}" width="6" height="10" fill="${inlay}" opacity="0.85"/>`
-        }
-        if (moss && r() < 0.6) g += `<ellipse cx="${xx + 14 + r() * 36}" cy="${y + 4}" rx="${10 + r() * 8}" ry="4" fill="${moss}" opacity="0.9"/>`
-        return g
+/** Volcano bedrock: columnar-jointed basalt (vertical columns cut by cross-joints), magma seeping in a few joints. */
+function basaltColumns() {
+  const r = rng(361)
+  const widths = [20, 26, 18, 24, 22, 18]
+  let out = `<rect width="${T}" height="${T}" fill="#0d0a12"/>`
+  let glow = ''
+  let x = 0
+  widths.forEach((w, ci) => {
+    let y = -r() * 30
+    while (y < T) {
+      const h = 22 + r() * 22
+      const hue = ['#2c2a3a', '#33303f', '#272533'][Math.floor(r() * 3)]
+      const seg = (yy) =>
+        `<rect x="${x + 1}" y="${f1(yy + 1)}" width="${w - 2}" height="${f1(h - 2)}" rx="2" fill="#16131d"/>` +
+        `<rect x="${x + 1}" y="${f1(yy + 1)}" width="${w - 3.4}" height="${f1(h - 3.4)}" rx="2" fill="${hue}"/>` +
+        // hexagonal column faces: a lit left facet and a darker right facet
+        `<rect x="${x + 1.6}" y="${f1(yy + 1.6)}" width="${f1(w * 0.22)}" height="${f1(h - 4.6)}" fill="#4a4660" opacity="0.8"/>` +
+        `<rect x="${f1(x + w * 0.66)}" y="${f1(yy + 1.6)}" width="${f1(w * 0.2)}" height="${f1(h - 4.6)}" fill="#1c1a26" opacity="0.7"/>` +
+        `<rect x="${x + 1.6}" y="${f1(yy + 1.6)}" width="${w - 4.6}" height="1.2" fill="#6a6584" opacity="0.8"/>`
+      out += seg(y)
+      if (y < 0) out += seg(y + T)
+      if (y + h > T) out += seg(y - T)
+      if (r() < 0.22) {
+        const gy = y + h - 0.5
+        const g = (yy) => `<rect x="${x + 2}" y="${f1(yy - 1)}" width="${w - 4}" height="2" rx="1" fill="#ff7a2a"/><rect x="${x + 4}" y="${f1(yy - 0.4)}" width="${w - 8}" height="0.8" fill="#ffd36a"/>`
+        if (gy > 2 && gy < T - 2) glow += g(gy)
       }
-      out += glyph(x)
-      if (x < 0) out += glyph(x + T)
+      y += h
     }
-  }
-  return svg(T, T, out)
+    x += w
+  })
+  return svg(T, T, out + glow)
 }
 
-function crystalBedrock() {
-  let out = `<rect width="${T}" height="${T}" fill="#241d47"/>`
-  const facets = [
-    [[0, 0], [64, 0], [40, 46], [0, 30]],
-    [[64, 0], [128, 0], [128, 36], [88, 52], [40, 46]],
-    [[0, 30], [40, 46], [30, 96], [0, 90]],
-    [[40, 46], [88, 52], [100, 100], [30, 96]],
-    [[88, 52], [128, 36], [128, 90], [100, 100]],
-    [[0, 90], [30, 96], [64, 128], [0, 128]],
-    [[30, 96], [100, 100], [64, 128]],
-    [[100, 100], [128, 90], [128, 128], [64, 128]],
-  ]
-  const fills = ['#3b2f78', '#4a3c92', '#2f2766', '#5646a8', '#3a2f7a', '#463a8c', '#5c4cb2', '#352b70']
-  facets.forEach((poly, i) => {
-    out += `<polygon points="${poly.map((p) => p.join(',')).join(' ')}" fill="${fills[i]}" stroke="#8b7cf0" stroke-width="1.2" stroke-opacity="0.55"/>`
-  })
-  out += `<polygon points="44,50 60,52 52,70" fill="#c4b8ff" opacity="0.5"/><polygon points="96,10 110,8 104,26" fill="#c4b8ff" opacity="0.4"/>`
+/** Aurora bedrock: dark geode matrix packed with amethyst prisms (lit / mid / shadow facets, tip glints). */
+function amethystBedrock() {
+  const r = rng(271)
+  let out = `<rect width="${T}" height="${T}" fill="#1c1636"/>`
+  out += crumbs(272, 80, [0, T], '#3a2f66', '#0e0b1e')
+  const prism = (x, y, len, w, ang) => {
+    const c = Math.cos(ang)
+    const s = Math.sin(ang)
+    const P = (u, v) => `${f1(x + u * c - v * s)},${f1(y + u * s + v * c)}`
+    const body = [P(0, -w), P(len, -w), P(len + w * 1.3, 0), P(len, w), P(0, w)]
+    return (
+      `<polygon points="${body.join(' ')}" fill="#120e26" transform="translate(0.8 1)"/>` +
+      `<polygon points="${P(0, -w)} ${P(len, -w)} ${P(len + w * 1.3, 0)} ${P(0, 0)}" fill="#8f7ae6"/>` +
+      `<polygon points="${P(0, 0)} ${P(len + w * 1.3, 0)} ${P(len, w)} ${P(0, w)}" fill="#4a3c9c"/>` +
+      `<polygon points="${P(len, -w)} ${P(len + w * 1.3, 0)} ${P(len, 0)}" fill="#c4b8ff"/>` +
+      `<path d="M${P(len * 0.15, -w * 0.55)} L${P(len * 0.8, -w * 0.55)}" stroke="#e6e0ff" stroke-width="0.8" opacity="0.8"/>` +
+      `<circle cx="${P(len + w * 0.9, -w * 0.1).split(',')[0]}" cy="${P(len + w * 0.9, -w * 0.1).split(',')[1]}" r="0.9" fill="#fff"/>`
+    )
+  }
+  // clusters radiate from a few roots; each prism is wrapped across both seams
+  // geode banding in the matrix
+  for (const [cx, cy, rr] of [[64, 64, 60], [0, 0, 40], [128, 128, 30]]) {
+    out += wrapXY(cx, cy, rr + 2, (xx, yy) => `<circle cx="${xx}" cy="${yy}" r="${rr}" fill="none" stroke="#2c2454" stroke-width="3"/><circle cx="${xx}" cy="${yy}" r="${rr - 9}" fill="none" stroke="#251e48" stroke-width="2"/>`)
+  }
+  for (const [cx, cy] of [[20, 110], [84, 76], [40, 40], [112, 14], [70, 124], [110, 52], [6, 64], [56, 2]]) {
+    const n = 4 + Math.floor(r() * 4)
+    for (let i = 0; i < n; i++) {
+      const ang = -Math.PI / 2 + (r() - 0.5) * 2.6
+      const len = 9 + r() * 15
+      const w = 2.4 + r() * 2.2
+      const jx = (r() - 0.5) * 6
+      out += wrapXY(cx + jx, cy, 34, (xx, yy) => prism(xx, yy, len, w, ang))
+    }
+  }
   return svg(T, T, out)
 }
 

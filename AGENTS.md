@@ -31,7 +31,7 @@
    - 戰鬥畫面必須以 `100dvh`（`fixed inset-0`）全視窗呈現，所有儀表板與控制項直接疊加在遊戲畫布上（禁止傳統 HTML 表單滑桿與網頁捲動），且對戰設定區必須支援直覺選車。
 7. **遊戲大廳美學與零表單捲動守則 (Lobby Visual Style: Sky, War, Joy)**：
    - 大廳走「天空 (Sky) × 戰爭 (War) × 歡樂 (Joy)」明亮街機風格，主色為湛藍、陽光金、暖橘與亮白，**嚴禁使用果青色 (Murky Teal / Cyan-green) 等濁色調**。
-   - 大廳 UI 採「卡通粗描邊」視覺系統（深墨色粗外框、平塗色塊、硬陰影，token 與 `.toon-*` 元件類別集中在 `src/style.css`，新元件只能組合它們）。
+   - 大廳 UI 採「卡通粗描邊」視覺系統（深墨色粗外框、色塊上疊每種表面專屬的手工紋理、硬陰影，token 與 `.toon-*` 元件類別集中在 `src/style.css`，新元件只能組合它們）。
    - 地圖禁止下拉捲動表單，改以地圖卡（左右箭頭切換）+ 彈窗圖庫；坦克採「我的戰車卡」2.5D 展示台；大廳動態載入地圖視差圖層維持遊戲質感。詳見 [`docs/02-architecture-and-subagent-guide.md`](./docs/02-architecture-and-subagent-guide.md)。
 8. **Git Commit 鐵律**：
    - 在使用者給出明確的 commit 指令前，**絕對禁止**自行執行 `git commit`。
@@ -66,6 +66,6 @@
 | 測試 | Vitest（`pnpm test`，測試在 `src/test/`；Rust 核心用 `pnpm run test:rust`） |
 | 連線 | PeerJS (WebRTC P2P) + 輕量信令伺服器 (`server/`, Node.js)；`@noble/hashes`（SHA-256，連線對戰的彈藥承諾 / 揭露） |
 | 核心運算 | Rust → WebAssembly (`crates/tank-core`, `wasm-pack`) |
-| 美術資產管線 | Blender 算繪 (`tools/blender`)、Kenney 烘焙 (`tools/assets/bake_kenney_assets.py`, Pillow)、原創地圖主題與 Q 版坦克/砲彈程式繪製 (`tools/assets/paint_map_themes.mjs`、`tools/assets/paint_units.mjs`, `@resvg/resvg-js` devDependency)、vtracer / magick / svgo / rembg（見 [`docs/04-art-asset-pipeline.md`](./docs/04-art-asset-pipeline.md)） |
+| 美術資產管線 | Blender 算繪 (`tools/blender`)、Kenney 烘焙 (`tools/assets/bake_kenney_assets.py`, Pillow)、原創地圖主題、Q 版坦克/砲彈與大廳/HUD 紋理程式繪製 (`tools/assets/paint_map_themes.mjs`、`tools/assets/paint_units.mjs`、`tools/assets/paint_ui.mjs`, `@resvg/resvg-js` devDependency)、vtracer / magick / svgo / rembg（見 [`docs/04-art-asset-pipeline.md`](./docs/04-art-asset-pipeline.md)） |
 | 素材授權 | Kenney CC0 + 專案原創程式繪製美術（地圖主題、坦克、砲彈；見 `CREDITS.md`） |
 - 新增、移除或升級上述任一技術時，**必須同步更新本表**與 [`docs/README.md`](./docs/README.md)。

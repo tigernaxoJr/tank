@@ -273,11 +273,8 @@ function tap(fn: () => void): void {
   opacity: 0.6;
 }
 .empty-sky {
-  background:
-    radial-gradient(circle at 22% 35%, #fff 0 14px, transparent 15px),
-    radial-gradient(circle at 32% 30%, #fff 0 19px, transparent 20px),
-    radial-gradient(circle at 78% 30%, #fff 0 11px, transparent 12px),
-    linear-gradient(#9fd8ff, #e6f6ff);
+  background: url('@/assets/ui/empty_sky.svg') center bottom / cover no-repeat, #cdeaff;
+  overflow: hidden;
 }
 .tank-drive {
   animation: drive 0.6s ease-in-out infinite alternate;

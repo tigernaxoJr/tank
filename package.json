@@ -14,7 +14,8 @@
     "build:wasm": "wasm-pack build crates/tank-core --target web --out-dir ../../src/shared/wasm/pkg",
     "render:assets": "blender -b -P tools/blender/render_assets.py",
     "paint:maps": "node tools/assets/paint_map_themes.mjs",
-    "paint:units": "node tools/assets/paint_units.mjs"
+    "paint:units": "node tools/assets/paint_units.mjs",
+    "paint:ui": "node tools/assets/paint_ui.mjs"
   },
   "dependencies": {
     "@noble/hashes": "^2.4.0",

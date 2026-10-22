@@ -336,7 +336,7 @@ onUnmounted(() => {
       v-if="state.phase !== 'GAME_OVER'"
       class="pointer-events-auto absolute bottom-3 left-1/2 w-[min(1180px,calc(100%-24px))] -translate-x-1/2"
     >
-      <div class="toon-panel relative px-3 pb-2.5 pt-5 md:px-4">
+      <div class="toon-panel toon-panel--plate relative px-3 pb-2.5 pt-5 md:px-4">
         <!-- 面板切換：一律顯示自己的坦克，或跟著該回合出手的坦克 -->
         <div class="absolute -top-4 left-4 flex items-center gap-2">
           <div class="toon-segment panel-switch text-sm shadow-[0_3px_0_var(--color-ink)]" role="group" aria-label="駕駛艙顯示">
