@@ -20,11 +20,11 @@ export default defineConfig({
         description: '回合制砲擊對戰：單機練習或用房號連線對打',
         lang: 'zh-Hant',
         id: './',
-        start_url: './',
+        start_url: './?source=pwa',
         scope: './',
         display: 'standalone',
-        display_override: ['fullscreen', 'standalone'],
-        orientation: 'landscape',
+        // 不在 manifest 宣告 orientation：Android 的 WebAPK 若在直拿時被強制橫向啟動，會卡在啟動畫面
+        // 沒有反應；橫向改由 main.ts 啟動後鎖定，直拿時由 #rotate-hint 提示
         background_color: '#bfe4ff',
         theme_color: '#4cb2ff',
         icons: [
