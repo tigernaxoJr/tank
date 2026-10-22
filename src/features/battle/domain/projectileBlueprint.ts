@@ -3,6 +3,7 @@
  * （default export `defineProjectile({...})`），由 projectileRegistry.ts 自動收集。
  */
 import type { BulletType } from '@/shared/kernel/types'
+import type { ProjectileBehavior } from './shotExtensions'
 
 /** 一般砲彈共用的重力（千分位 px / step²） */
 export const STANDARD_GRAVITY_MILLI = 175
@@ -48,7 +49,8 @@ export interface ProjectileFx {
   }
 }
 
-export interface ProjectileBlueprint {
+/** `pattern`（開火樣式）與 `onHit`（命中狀態）為可選擴充點，介面見 shotExtensions.ts */
+export interface ProjectileBlueprint extends ProjectileBehavior {
   readonly id: BulletType
   /** 顯示與預設選彈的排序（小的在前） */
   readonly sortOrder: number

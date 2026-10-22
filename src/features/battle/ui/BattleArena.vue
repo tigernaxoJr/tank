@@ -212,19 +212,21 @@ function applyFireCommand(cmd: FireActionCommand, isLocal: boolean): void {
 
   canvasRef.value?.playProjectileFlight({
     shooterId: cmd.playerId,
-    path: plan.hit.path,
+    flights: plan.shots.map(({ hit }) => ({
+      path: hit.path,
+      explosionX: hit.hitX,
+      explosionY: hit.hitY,
+      explosionRadius: Math.max(plan.damageRadius, plan.terrainRadius),
+    })),
     bulletType: plan.bulletType,
-    explosionX: plan.hit.hitX,
-    explosionY: plan.hit.hitY,
-    explosionRadius: Math.max(plan.damageRadius, plan.terrainRadius),
     onArriveImpact: () => {
-      const { dirty, damageByPlayer } = commitFireImpact(state, plan, core)
-      if (dirty) {
-        carveLog.push(plan.hit.hitX, plan.hit.hitY, plan.terrainRadius)
-        canvasRef.value?.redrawTerrain(dirty)
-        canvasRef.value?.onTerrainCarved(plan.hit.hitX, plan.hit.hitY, plan.terrainRadius)
-        soundController.play('explosion')
+      const { carves, damageByPlayer } = commitFireImpact(state, plan, core)
+      for (const c of carves) {
+        carveLog.push(c.x, c.y, c.radius)
+        canvasRef.value?.redrawTerrain(c.dirty)
+        canvasRef.value?.onTerrainCarved(c.x, c.y, c.radius)
       }
+      if (carves.length > 0) soundController.play('explosion')
       for (const [pid, dmg] of Object.entries(damageByPlayer)) {
         const tank = state.tanks[pid]
         if (tank && dmg > 0) canvasRef.value?.showDamage(tank.x, tank.y - 48, dmg, tank.hp <= 0)

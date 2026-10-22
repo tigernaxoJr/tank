@@ -27,6 +27,7 @@ import {
   PLAYBACK_MS_PER_STEP,
   PROJECTILE_LIST,
   getProjectileSpec,
+  type ProjectileBlueprint,
   type GlowKey,
   type ProjectileFx,
 } from '../domain/projectileRegistry'
@@ -78,14 +79,20 @@ interface PropActor {
   hanging?: boolean
 }
 
-export interface ProjectileFlightOptions {
-  shooterId: string
+/** 一顆彈丸的飛行路徑與落點 */
+export interface ProjectileFlight {
   path: { x: number; y: number }[]
-  bulletType: BulletType
   explosionX: number
   explosionY: number
   /** 爆炸視覺半徑 (px)，取傷害範圍與挖坑半徑較大者 */
   explosionRadius: number
+}
+
+export interface ProjectileFlightOptions {
+  shooterId: string
+  /** 一次開火的所有彈丸（單發 = 1 顆）；同時起飛，全部落地後才結算，鏡頭跟隨第一顆 */
+  flights: ProjectileFlight[]
+  bulletType: BulletType
   onArriveImpact: () => void
   onSequenceComplete: () => void
 }
@@ -914,13 +921,15 @@ export class BattleScene extends Phaser.Scene {
    * - 飛抵終點時觸發 `onArriveImpact`（挖坑與扣血），接著停留 `postImpactHoldMs` 讓玩家看清爆炸結果後再呼叫 `onSequenceComplete` 切換回合
    */
   playProjectileFlight(options: ProjectileFlightOptions): void {
-    const { shooterId, path, bulletType, explosionX, explosionY, explosionRadius, onArriveImpact, onSequenceComplete } =
-      options
+    const { shooterId, flights, bulletType, onArriveImpact, onSequenceComplete } = options
     const projSpec = getProjectileSpec(bulletType)
+    const showExplosions = (): void => {
+      for (const f of flights) this.triggerExplosionVisual(f.explosionX, f.explosionY, f.explosionRadius, bulletType)
+    }
 
-    if (!this.scene.isActive() || path.length < 2) {
+    if (!this.scene.isActive() || flights.length === 0 || flights.some((f) => f.path.length < 2)) {
       onArriveImpact()
-      this.triggerExplosionVisual(explosionX, explosionY, explosionRadius, bulletType)
+      showExplosions()
       setTimeout(() => onSequenceComplete(), projSpec.postImpactHoldMs)
       return
     }
@@ -932,12 +941,11 @@ export class BattleScene extends Phaser.Scene {
     }
 
     // 砲口閃光 (Kenney Flash 序列) + 砲管後座
-    const muzzle = this.muzzleWorldPoint(shooterId) ?? path[0]
+    const muzzle = this.muzzleWorldPoint(shooterId) ?? flights[0].path[0]
     const flash = this.add.sprite(muzzle.x, muzzle.y, 'fx_flash').setScale(0.32).setDepth(24)
     flash.play('fx_flash')
     flash.once(Phaser.Animations.Events.ANIMATION_COMPLETE, () => flash.destroy())
-    const fx = projSpec.visual.fx
-    this.flashGlow(muzzle.x, muzzle.y, fx.glow, 0.9, 220)
+    this.flashGlow(muzzle.x, muzzle.y, projSpec.visual.fx.glow, 0.9, 220)
     const shooterActor = this.tankActors.get(shooterId)
     this.lastShooterId = shooterId
     if (shooterActor) {
@@ -945,6 +953,34 @@ export class BattleScene extends Phaser.Scene {
       shooterActor.face.trigger('fire', this.game.loop.time)
     }
 
+    let remaining = flights.length
+    const onFlightDone = (): void => {
+      if (--remaining > 0) return
+      this.flyingProjectile = null
+
+      // 1. 全部抵達落點：執行真實地形挖坑與傷害結算
+      onArriveImpact()
+
+      // 2. 播放該砲彈專屬爆炸序列與震動
+      showExplosions()
+
+      // 3. 停留 postImpactHoldMs 讓玩家看清楚命中結果與坦克下墜，再切換下一回合
+      this.time.delayedCall(projSpec.postImpactHoldMs, () => {
+        onSequenceComplete()
+      })
+    }
+    flights.forEach((f, i) => this.launchFlight(f.path, muzzle, projSpec, i === 0, onFlightDone))
+  }
+
+  /** 播放單顆彈丸的飛行動畫；`primary` 的彈體供鏡頭跟隨與瞄準預覽參考 */
+  private launchFlight(
+    path: { x: number; y: number }[],
+    muzzle: { x: number; y: number },
+    projSpec: ProjectileBlueprint,
+    primary: boolean,
+    onDone: () => void,
+  ): void {
+    const fx = projSpec.visual.fx
     // 砲彈：實體彈使用 Kenney 彈體精靈並沿速度方向旋轉；能量彈畫發光核心
     const projContainer = this.add.container(muzzle.x, muzzle.y).setDepth(22)
     let body: Phaser.GameObjects.Image | null = null
@@ -967,7 +1003,7 @@ export class BattleScene extends Phaser.Scene {
           .setStrokeStyle(2.5, projSpec.visual.strokeColor),
       ])
     }
-    this.flyingProjectile = projContainer
+    if (primary) this.flyingProjectile = projContainer
 
     // 固定播放時鐘：路徑每點 = 2 個模擬步，不依射程縮放，視覺重力加速度才會一致
     const flightDuration = Math.max(MIN_FLIGHT_MS, (path.length - 1) * 2 * PLAYBACK_MS_PER_STEP)
@@ -1006,18 +1042,7 @@ export class BattleScene extends Phaser.Scene {
       },
       onComplete: () => {
         projContainer.destroy()
-        this.flyingProjectile = null
-
-        // 1. 抵達落點瞬間：執行真實地形挖坑與傷害結算
-        onArriveImpact()
-
-        // 2. 播放該砲彈專屬爆炸序列與震動
-        this.triggerExplosionVisual(explosionX, explosionY, explosionRadius, bulletType)
-
-        // 3. 停留 postImpactHoldMs 讓玩家看清楚命中結果與坦克下墜，再切換下一回合
-        this.time.delayedCall(projSpec.postImpactHoldMs, () => {
-          onSequenceComplete()
-        })
+        onDone()
       },
     })
   }

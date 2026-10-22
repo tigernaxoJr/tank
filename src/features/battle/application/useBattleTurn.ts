@@ -26,11 +26,13 @@ import {
   syncTankToSurface,
   walkAlongTerrain,
   type BattleState,
+  type TankEntity,
 } from '../domain/battleState'
 import { MAP_REGISTRY } from '../domain/mapRegistry'
 import { nextWindSpeed } from '../domain/windRules'
-import { PROJECTILE_REGISTRY } from '../domain/projectileRegistry'
-import { effectiveWindMilli, getTankSpec, mitigateDamage } from '../domain/tankRegistry'
+import { PROJECTILE_REGISTRY, type ProjectileBlueprint } from '../domain/projectileRegistry'
+import { SINGLE_SHOT } from '../domain/shotExtensions'
+import { effectiveWindMilli, getTankSpec, mitigateDamage, type TankBlueprint } from '../domain/tankRegistry'
 
 let defaultCore: TankCorePort | null = null
 
@@ -41,20 +43,35 @@ function getDefaultCore(seed: number): TankCorePort {
   return defaultCore
 }
 
+/** 一顆彈丸的確定性彈道與它的單發傷害（已含機種傷害倍率與樣式的傷害比例） */
+export interface PreparedShot {
+  readonly hit: TrajectoryHit
+  readonly maxDamage: number
+}
+
 export interface PreparedShotPlan {
   readonly cmd: FireActionCommand
-  readonly hit: TrajectoryHit
+  /** 一次開火的所有彈丸（單發 = 1 顆），依開火樣式 `pattern` 產生，結算順序即陣列順序 */
+  readonly shots: readonly PreparedShot[]
   /** 傷害範圍 (px)：決定誰會受傷、傷害衰減 */
   readonly damageRadius: number
   /** 挖坑半徑 (px)：決定地形被破壞多大 */
   readonly terrainRadius: number
-  readonly maxDamage: number
   readonly directHitMultiplier: number
   readonly bulletType: BulletType
 }
 
+/** 一次挖坑：供畫面重繪地形與連線重播紀錄 */
+export interface CarveEvent {
+  readonly x: number
+  readonly y: number
+  readonly radius: number
+  readonly dirty: DirtyRect
+}
+
 export interface ImpactResult {
-  readonly dirty: DirtyRect | null
+  /** 依彈丸順序的挖坑事件（沒有命中任何東西的彈丸不產生） */
+  readonly carves: readonly CarveEvent[]
   /** 本次命中造成的總傷害（爆炸 + 摔落 + 墜入深淵），供畫面跳出傷害數字 */
   readonly damageByPlayer: Record<PlayerId, number>
 }
@@ -84,46 +101,28 @@ function hasClearLine(core: TankCorePort, x0: number, y0: number, x1: number, y1
   return true
 }
 
-export function prepareFireTrajectory(
-  state: BattleState,
-  cmd: FireActionCommand,
-  core?: TankCorePort,
-): PreparedShotPlan | null {
-  if (
-    state.phase === 'GAME_OVER' ||
-    cmd.playerId !== state.activePlayer ||
-    cmd.turnId !== state.turnId
-  ) {
-    return null
-  }
-  const engine = core ?? getDefaultCore(state.seed)
-  const shooter = state.tanks[cmd.playerId]
-  if (!shooter || shooter.hp <= 0) return null
-
-  shooter.angle = cmd.angle
-  shooter.power = cmd.power
-  state.phase = 'FIRING'
-
-  const shooterSpec = getTankSpec(shooter.tankId)
-  // 只接受這台坦克的專屬砲彈，其餘一律退回預設彈（兩端確定性一致）
-  const bulletType = shooterSpec.shots.includes(cmd.bulletType) ? cmd.bulletType : shooterSpec.shots[0]
-  const projSpec = PROJECTILE_REGISTRY[bulletType]
-
-  const { vxMilli, vyMilli } = launchVelocity(cmd.angle, cmd.power, projSpec.speedMultiplier)
-
+/** 模擬一顆彈丸：先算物理彈道，再套用坦克吸附（飛行途中進入吸附範圍且無遮擋就彎向坦克） */
+function simulatePellet(
+  engine: TankCorePort,
+  shooter: TankEntity,
+  shooterSpec: TankBlueprint,
+  projSpec: ProjectileBlueprint,
+  angle: number,
+  power: number,
+  wind: number,
+  aliveOthers: readonly TankEntity[],
+): TrajectoryHit {
+  const { vxMilli, vyMilli } = launchVelocity(angle, power, projSpec.speedMultiplier)
   let hit = engine.simulateShot({
     startX: shooter.x,
     startY: shooter.y - MUZZLE_RISE,
     vxMilli,
     vyMilli,
-    windMilli: effectiveWindMilli(cmd.wind, projSpec.windMultiplier, shooterSpec),
+    windMilli: effectiveWindMilli(wind, projSpec.windMultiplier, shooterSpec),
     gravityMilli: projSpec.gravityMilli,
     maxSteps: 1200,
   })
 
-  const aliveOthers = Object.values(state.tanks).filter(
-    (t) => t.id !== shooter.id && t.hp > 0,
-  )
   const magnetRadius = Math.max(TANK_HIT_RADIUS_PX, projSpec.magnetRadius)
   const magnetRadiusSq = magnetRadius * magnetRadius
 
@@ -156,19 +155,58 @@ export function prepareFireTrajectory(
       break
     }
   }
+  return hit
+}
 
-  state.lastShotPath = hit.path.map((pt) => ({ x: pt.x, y: pt.y }))
+export function prepareFireTrajectory(
+  state: BattleState,
+  cmd: FireActionCommand,
+  core?: TankCorePort,
+): PreparedShotPlan | null {
+  if (
+    state.phase === 'GAME_OVER' ||
+    cmd.playerId !== state.activePlayer ||
+    cmd.turnId !== state.turnId
+  ) {
+    return null
+  }
+  const engine = core ?? getDefaultCore(state.seed)
+  const shooter = state.tanks[cmd.playerId]
+  if (!shooter || shooter.hp <= 0) return null
 
-  const damageRadius = projSpec.damageRadius + shooterSpec.damageRadiusBonus
-  const terrainRadius = projSpec.terrainRadius + shooterSpec.terrainRadiusBonus
-  const maxDamage = Math.round(projSpec.maxDamage * shooterSpec.damageMultiplier)
+  shooter.angle = cmd.angle
+  shooter.power = cmd.power
+  state.phase = 'FIRING'
+
+  const shooterSpec = getTankSpec(shooter.tankId)
+  // 只接受這台坦克的專屬砲彈，其餘一律退回預設彈（兩端確定性一致）
+  const bulletType = shooterSpec.shots.includes(cmd.bulletType) ? cmd.bulletType : shooterSpec.shots[0]
+  const projSpec = PROJECTILE_REGISTRY[bulletType]
+
+  const aliveOthers = Object.values(state.tanks).filter((t) => t.id !== shooter.id && t.hp > 0)
+  const pellets = (projSpec.pattern ?? SINGLE_SHOT)({ state, shooter, projectile: projSpec, cmd })
+  const baseDamage = Math.round(projSpec.maxDamage * shooterSpec.damageMultiplier)
+  const shots: PreparedShot[] = pellets.map((pellet) => ({
+    hit: simulatePellet(
+      engine,
+      shooter,
+      shooterSpec,
+      projSpec,
+      cmd.angle + pellet.angleDelta,
+      cmd.power + pellet.powerDelta,
+      cmd.wind,
+      aliveOthers,
+    ),
+    maxDamage: Math.round(baseDamage * pellet.damageScale),
+  }))
+
+  state.lastShotPath = shots[0].hit.path.map((pt) => ({ x: pt.x, y: pt.y }))
 
   return {
     cmd,
-    hit,
-    damageRadius,
-    terrainRadius,
-    maxDamage,
+    shots,
+    damageRadius: projSpec.damageRadius + shooterSpec.damageRadiusBonus,
+    terrainRadius: projSpec.terrainRadius + shooterSpec.terrainRadiusBonus,
     directHitMultiplier: projSpec.directHitMultiplier,
     bulletType,
   }
@@ -184,27 +222,22 @@ export function commitFireImpact(
   core?: TankCorePort,
 ): ImpactResult {
   const engine = core ?? getDefaultCore(state.seed)
-  const { hit, damageRadius, terrainRadius, maxDamage, directHitMultiplier } = plan
+  const { shots, damageRadius, terrainRadius, directHitMultiplier } = plan
   const damageByPlayer: Record<PlayerId, number> = {}
-  let dirty: DirtyRect | null = null
+  const carves: CarveEvent[] = []
 
-  if (hit.impactedTerrain || hit.hitTank) {
-    dirty = engine.carveCircle(hit.hitX, hit.hitY, terrainRadius)
+  // 依序結算每顆彈丸；各自經過裝甲 / 抗性後再加總
+  for (const { hit, maxDamage } of shots) {
+    if (!hit.impactedTerrain && !hit.hitTank) continue
+    carves.push({ x: hit.hitX, y: hit.hitY, radius: terrainRadius, dirty: engine.carveCircle(hit.hitX, hit.hitY, terrainRadius) })
 
     for (const tank of Object.values(state.tanks)) {
       if (tank.hp <= 0) continue
-      const base = engine.computeExplosionDamage(
-        hit.hitX,
-        hit.hitY,
-        tank.x,
-        tank.y,
-        damageRadius,
-        maxDamage,
-      )
+      const base = engine.computeExplosionDamage(hit.hitX, hit.hitY, tank.x, tank.y, damageRadius, maxDamage)
       const isDirect = hit.hitTank && Math.hypot(hit.hitX - tank.x, hit.hitY - (tank.y - 10)) <= 2
       // 直擊（爆心已吸附到車身中心）吃滿傷害，不吃 tank.y 與車身中心的 10px 衰減
       const raw = isDirect ? Math.round(maxDamage * directHitMultiplier) : base
-      damageByPlayer[tank.id] = mitigateDamage(getTankSpec(tank.tankId), 'explosion', raw)
+      damageByPlayer[tank.id] = (damageByPlayer[tank.id] ?? 0) + mitigateDamage(getTankSpec(tank.tankId), 'explosion', raw)
     }
 
     state.lastExplosion = {
@@ -235,7 +268,7 @@ export function commitFireImpact(
   }
 
   applyDamageAndCheckWinner(state, damageByPlayer)
-  return { dirty, damageByPlayer }
+  return { carves, damageByPlayer }
 }
 
 /**

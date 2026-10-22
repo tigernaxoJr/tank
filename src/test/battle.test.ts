@@ -109,7 +109,7 @@ describe('開火流程', () => {
       for (let angle = 20; angle <= 80; angle++) {
         const s = structuredClone(state)
         const plan = prepareFireTrajectory(s, fire({ angle, power }), core)
-        if (plan?.hit.hitTank) {
+        if (plan?.shots[0].hit.hitTank) {
           expect(commitFireImpact(s, plan, core).damageByPlayer.p2).toBe(expected)
           found = true
           break outer
@@ -118,11 +118,28 @@ describe('開火流程', () => {
     }
     expect(found).toBe(true)
   })
+  it('預設樣式為單發，單發傷害 = 砲彈傷害 × 機種倍率', () => {
+    const { state, core } = setupBattle()
+    const plan = prepareFireTrajectory(state, fire(), core)!
+    expect(plan.shots).toHaveLength(1)
+    expect(plan.shots[0].maxDamage).toBe(Math.round(PROJECTILE_REGISTRY.MISSILE_STANDARD.maxDamage * TANK_REGISTRY.aegis.damageMultiplier))
+  })
+  it('多顆彈丸依序結算：各自挖坑、各自經過裝甲後加總傷害', () => {
+    const { state, core } = setupBattle()
+    const t = state.tanks.p2
+    const shot = { hit: { hitX: t.x, hitY: t.y - 10, impactedTerrain: false, hitTank: true, stepsTaken: 1, path: [] }, maxDamage: 20 }
+    const plan = { cmd: fire(), shots: [shot, shot], damageRadius: 40, terrainRadius: 10, directHitMultiplier: 1, bulletType: 'MISSILE_STANDARD' as const }
+    const perShot = Math.max(1, 20 - TANK_REGISTRY.goliath.armor)
+    const { carves, damageByPlayer } = commitFireImpact(state, plan, core)
+    expect(carves).toHaveLength(2)
+    expect(damageByPlayer.p2).toBe(perShot * 2)
+  })
   it('地形被挖後坦克下墜貼地，摔出地圖直接陣亡', () => {
     const { state, core } = setupBattle()
     const t = state.tanks.p2
     core.carveCircle(t.x, t.y + 30, 140)
-    const plan = { cmd: fire(), hit: { hitX: 0, hitY: 0, impactedTerrain: false, hitTank: false, stepsTaken: 1, path: [] }, damageRadius: 0, terrainRadius: 0, maxDamage: 0, directHitMultiplier: 1, bulletType: 'MISSILE_STANDARD' as const }
+    const miss = { hit: { hitX: 0, hitY: 0, impactedTerrain: false, hitTank: false, stepsTaken: 1, path: [] }, maxDamage: 0 }
+    const plan = { cmd: fire(), shots: [miss], damageRadius: 0, terrainRadius: 0, directHitMultiplier: 1, bulletType: 'MISSILE_STANDARD' as const }
     const before = t.y
     commitFireImpact(state, plan, core)
     expect(t.y).toBeGreaterThan(before)
