@@ -4,6 +4,7 @@ import {
   commitFireImpact,
   executeFireAction,
   finalizeTurnAfterHold,
+  forfeitPlayer,
   moveActiveTank,
   prepareFireTrajectory,
 } from '@/features/battle/application/useBattleTurn'
@@ -13,6 +14,7 @@ import {
   battleStateHash,
   buildInterleavedTurnOrder,
 } from '@/features/battle/domain/battleState'
+import { isForgedAction } from '@/features/lobby/infra/messageGuards'
 import { planBotShot } from '@/features/battle/domain/botBrain'
 import { PROJECTILE_REGISTRY } from '@/features/battle/domain/projectileRegistry'
 import { TANK_REGISTRY } from '@/features/battle/domain/tankRegistry'
@@ -224,5 +226,59 @@ describe('註冊表一致性', () => {
     const budget = (id: keyof typeof TANK_REGISTRY) => TANK_REGISTRY[id].maxHp * TANK_REGISTRY[id].damageMultiplier
     const vals = (['aegis', 'goliath', 'zephyr'] as const).map(budget)
     expect(Math.max(...vals) / Math.min(...vals)).toBeLessThan(1.3)
+  })
+})
+
+describe('玩家斷線 (forfeitPlayer)', () => {
+  const trio: RosterSlot[] = [
+    { id: 'a1', name: '', team: 'A', tankId: 'aegis', isHost: true },
+    { id: 'b1', name: '', team: 'B', tankId: 'aegis', isHost: false },
+    { id: 'b2', name: '', team: 'B', tankId: 'aegis', isHost: false },
+  ]
+  it('輪到離線者時直接換下一位，坦克陣亡', () => {
+    const { state } = setupBattle(1024, 'harvest_plains', trio)
+    advanceTurn(state, 0) // 輪到 b1
+    expect(state.activePlayer).toBe('b1')
+    expect(forfeitPlayer(state, 'b1')).toBe(true)
+    expect(state.tanks.b1.hp).toBe(0)
+    expect(state.activePlayer).toBe('b2')
+    expect(state.phase).toBe('AIMING')
+    expect(state.winner).toBeNull()
+  })
+  it('非當前玩家離線：不影響回合，之後會被跳過', () => {
+    const { state } = setupBattle(1024, 'harvest_plains', trio)
+    expect(forfeitPlayer(state, 'b2')).toBe(true)
+    expect(state.activePlayer).toBe('a1')
+    advanceTurn(state, 0)
+    advanceTurn(state, 0)
+    expect(state.activePlayer).toBe('a1')
+    expect(state.turnId).toBe(3)
+  })
+  it('砲彈飛行中離線：不提前換回合，結算後才跳過', () => {
+    const { state } = setupBattle(1024, 'harvest_plains', trio)
+    state.phase = 'FIRING'
+    forfeitPlayer(state, 'a1')
+    expect(state.activePlayer).toBe('a1')
+    expect(state.winner).toBe('B')
+  })
+  it('整隊離線判對手獲勝；已陣亡或已結束不重複處理', () => {
+    const { state } = setupBattle()
+    expect(forfeitPlayer(state, 'p2')).toBe(true)
+    expect(state.phase).toBe('GAME_OVER')
+    expect(state.winner).toBe('A')
+    expect(forfeitPlayer(state, 'p1')).toBe(false)
+    expect(forfeitPlayer(state, 'nobody')).toBe(false)
+  })
+})
+
+describe('遠端動作來源驗證', () => {
+  const fireMsg = (playerId: string) => ({ type: 'ACTION_FIRE', turnId: 1, playerId, angle: 45, power: 60, wind: 0, bulletType: 'MISSILE_STANDARD' }) as const
+  it('自稱別人的開火 / 移動視為偽造', () => {
+    expect(isForgedAction(fireMsg('p1'), 'p2')).toBe(true)
+    expect(isForgedAction({ type: 'ACTION_MOVE', turnId: 1, playerId: 'p1', targetX: 10 }, 'p2')).toBe(true)
+  })
+  it('本人的動作與非動作訊息放行', () => {
+    expect(isForgedAction(fireMsg('p2'), 'p2')).toBe(false)
+    expect(isForgedAction({ type: 'SYNC_HASH', turnId: 1, stateHash: 1 }, 'p2')).toBe(false)
   })
 })

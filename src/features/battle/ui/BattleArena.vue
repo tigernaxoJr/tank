@@ -17,6 +17,7 @@ import { DEFAULT_WORLD_HEIGHT, DEFAULT_WORLD_WIDTH, DeterministicTankCore } from
 import {
   commitFireImpact,
   finalizeTurnAfterHold,
+  forfeitPlayer,
   moveActiveTank,
   prepareFireTrajectory,
   syncAllTanksToTerrain,
@@ -104,6 +105,8 @@ let lastResyncTurn = -1
 // 房主收到請求時若正在播放砲彈，等回合結束再送；客端收到快照時同理
 let resyncOwed = false
 let pendingSnapshot: ResyncStateEvent | null = null
+// 對戰中斷線的玩家（下一局不再帶入）
+const departed = new Set<PlayerId>()
 
 const isBotTurn = computed(
   () => props.mode === 'hotseat' && state.tanks[state.activePlayer]?.isBot === true,
@@ -129,6 +132,7 @@ function resetMatch(
   syncAllTanksToTerrain(state, core)
   syncStatus.value = null
   carveLog = []
+  departed.clear()
   pendingHash = null
   resyncOwed = false
   pendingSnapshot = null
@@ -304,7 +308,13 @@ function handleRemoteMessage(msg: ProtocolMessage): void {
     resetMatch(msg.seed, msg.initialWind, msg.roster, msg.mapId)
     return
   }
+  if (msg.type === 'PLAYER_LEFT') {
+    handlePlayerLeft(msg.playerId)
+    return
+  }
   if (msg.type === 'ACTION_MOVE') {
+    // 只接受當前出手玩家本人的移動；亂序 / 過期的訊息直接丟棄，避免移錯車
+    if (msg.playerId !== state.activePlayer) return
     const tank = state.tanks[msg.playerId]
     if (!tank) return
     const delta = msg.targetX - tank.x
@@ -338,17 +348,25 @@ function handleToggleMute(): void {
   soundController.setMuted(isMuted.value)
 }
 
+/** 對戰中玩家斷線：視為認輸，坦克陣亡；輪到他就直接換下一位（砲彈還在飛則等回合結算自然推進） */
+function handlePlayerLeft(id: PlayerId): void {
+  if (forfeitPlayer(state, id)) departed.add(id)
+}
+
 function handleRequestNewMatch(): void {
   if (props.mode === 'p2p' && !props.isHost) return
+  // 已離線的玩家不帶進下一局；剩下的人不足兩隊就沒有對手可打
+  const roster = props.roster.filter((r) => !departed.has(r.id))
+  if (!roster.some((r) => r.team === 'A') || !roster.some((r) => r.team === 'B')) return
   const newSeed = Math.floor(Math.random() * 90000) + 1000
-  resetMatch(newSeed, 0, props.roster, state.mapId)
+  resetMatch(newSeed, 0, roster, state.mapId)
   if (props.mode === 'p2p') {
     emit('outgoing-message', {
       type: 'START_BATTLE',
       seed: newSeed,
       initialWind: 0,
       mapId: state.mapId,
-      roster: props.roster,
+      roster,
     })
   }
 }

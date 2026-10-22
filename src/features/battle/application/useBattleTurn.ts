@@ -315,3 +315,17 @@ export function moveActiveTank(
   }
   return true
 }
+
+/**
+ * 玩家中途離線視為認輸：坦克陣亡並退出出手順序；若正輪到他且沒有砲彈在飛就直接換下一位
+ * （砲彈在飛時由該回合結算自然推進，advanceTurn 會跳過陣亡者）。已陣亡 / 不存在 / 對局已結束回傳 false。
+ */
+export function forfeitPlayer(state: BattleState, id: PlayerId): boolean {
+  const tank = state.tanks[id]
+  if (!tank || tank.hp <= 0 || state.phase === 'GAME_OVER') return false
+  tank.shield = 0
+  const wasActive = state.activePlayer === id
+  applyDamageAndCheckWinner(state, { [id]: tank.hp })
+  if (wasActive && state.phase === 'AIMING') finalizeTurnAfterHold(state)
+  return true
+}

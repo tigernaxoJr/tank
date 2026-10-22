@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { isForgedAction } from '../infra/messageGuards'
 import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
 import { BOT_LEVEL_SPECS, MAP_LIST, MAP_REGISTRY, renderMapPreview, TANK_LIST, TANK_REGISTRY } from '@/features/battle'
 import TankStatPanel from './TankStatPanel.vue'
@@ -211,6 +212,9 @@ function handleHostReceivePeerMessage(peerSlotId: PlayerId, msg: ProtocolMessage
     return
   }
 
+  // 動作只能由該槽位本人送出，不信任訊息裡自稱的 playerId（防止替別人的坦克開火 / 移動）
+  if (isForgedAction(msg, peerSlotId)) return
+
   if (msg.type === 'ACTION_FIRE' || msg.type === 'ACTION_MOVE' || msg.type === 'SYNC_HASH') {
     transport.broadcast(msg, peerSlotId)
     emit('remote-message', msg)
@@ -290,6 +294,12 @@ async function handleHost(): Promise<void> {
       onPeerDisconnected: (peerSlotId) => {
         session.roster = session.roster.filter((r) => r.id !== peerSlotId)
         broadcastRosterFromHost()
+        if (props.inBattle) {
+          // 對戰中斷線視為認輸：通知所有人（含房主自己的戰場），避免輪到他時全場卡住
+          const left: ProtocolMessage = { type: 'PLAYER_LEFT', playerId: peerSlotId }
+          transport.broadcast(left)
+          emit('remote-message', left)
+        }
       },
       onSignalingChanged: (info) => {
         signalingInfo.value = info

@@ -75,6 +75,12 @@ export interface ResyncStateEvent {
   readonly carves: number[]
 }
 
+/** 對戰中玩家斷線（只由房主廣播）：該玩家視為認輸，坦克陣亡並退出出手順序 */
+export interface PlayerLeftEvent {
+  readonly type: 'PLAYER_LEFT'
+  readonly playerId: PlayerId
+}
+
 export interface PlayerJoinInfoEvent {
   readonly type: 'PLAYER_JOIN_INFO'
   readonly guestName: string
@@ -110,6 +116,7 @@ export type ProtocolMessage =
   | MoveActionCommand
   | SyncHashEvent
   | ResyncRequestEvent
+  | PlayerLeftEvent
   | ResyncStateEvent
   | PlayerJoinInfoEvent
   | UpdatePlayerSetupEvent
