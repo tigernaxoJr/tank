@@ -51,6 +51,12 @@ jobs:
       - name: Install frontend dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Install signaling server dependencies
+        run: npm ci --prefix server
+
+      - name: Run tests (frontend Vitest + signaling server)
+        run: pnpm test
+
       - name: Type-check & Build static site
         run: pnpm run build
 
