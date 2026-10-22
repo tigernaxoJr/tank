@@ -47,6 +47,16 @@ function pct(ratio: number): string {
       </div>
     </div>
 
+    <!-- 防護與地形能力 -->
+    <div class="grid grid-cols-2 gap-x-3 gap-y-0.5 text-[10px] text-teal-800">
+      <span>裝甲 <b class="font-mono text-teal-950">{{ card.armor }}</b></span>
+      <span>護盾 <b class="font-mono text-teal-950">{{ card.shield }}</b></span>
+      <span>爬坡 <b class="font-mono text-teal-950">{{ card.climbPerPx }}</b> px/px</span>
+      <span>耐摔 <b class="font-mono text-teal-950">{{ card.fallSafePx }}</b> px<template v-if="card.resist.fall">（減傷 {{ Math.round(card.resist.fall * 100) }}%）</template></span>
+      <span>風敏感 <b class="font-mono text-teal-950">×{{ card.windSensitivity }}</b></span>
+      <span v-if="card.resist.explosion">爆炸抗性 <b class="font-mono text-teal-950">{{ Math.round(card.resist.explosion * 100) }}%</b></span>
+    </div>
+
     <!-- 兩種專屬砲彈 -->
     <div class="space-y-1.5 border-t border-teal-600/40 pt-2">
       <div
@@ -84,7 +94,9 @@ function pct(ratio: number): string {
             </div>
           </div>
         </div>
-        <div class="mt-0.5 text-[10px] text-teal-700">受風影響 ×{{ shot.windMultiplier }}（數字越大越容易被吹偏）</div>
+        <div class="mt-0.5 text-[10px] text-teal-700">受風影響 ×{{ shot.windMultiplier }}（含坦克風敏感度，越大越容易被吹偏）·
+          <span class="font-bold">{{ shot.magnetRadius > 0 ? `吸附 ${shot.magnetRadius}px` : '不導引·純技術' }}</span>
+        </div>
       </div>
     </div>
   </div>

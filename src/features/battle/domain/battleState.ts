@@ -18,6 +18,8 @@ export interface TankEntity {
   y: number
   hp: number
   maxHp: number
+  shield: number
+  maxShield: number
   angle: number
   power: number
   slopeDeg: number
@@ -88,6 +90,8 @@ export function createInitialBattleState(
       y: 400,
       hp: spec.maxHp,
       maxHp: spec.maxHp,
+      shield: spec.shield,
+      maxShield: spec.shield,
       angle: 45,
       power: 65,
       slopeDeg: 0,
@@ -118,6 +122,8 @@ export function createInitialBattleState(
       y: 400,
       hp: spec.maxHp,
       maxHp: spec.maxHp,
+      shield: spec.shield,
+      maxShield: spec.shield,
       angle: 135,
       power: 65,
       slopeDeg: 0,
@@ -168,9 +174,9 @@ const FALL_SAFE_PX = 30
 const FALL_PX_PER_DAMAGE = 6
 const MAX_FALL_DAMAGE = 30
 
-export function fallDamageFor(dropPx: number): number {
-  if (dropPx <= FALL_SAFE_PX) return 0
-  return Math.min(MAX_FALL_DAMAGE, Math.floor((dropPx - FALL_SAFE_PX) / FALL_PX_PER_DAMAGE))
+export function fallDamageFor(dropPx: number, safePx = FALL_SAFE_PX): number {
+  if (dropPx <= safePx) return 0
+  return Math.min(MAX_FALL_DAMAGE, Math.floor((dropPx - safePx) / FALL_PX_PER_DAMAGE))
 }
 
 export function syncTankToSurface(tank: TankEntity, surfaceY: number, slopeDeg: number): void {
@@ -193,7 +199,7 @@ export function slopeAt(core: TankCorePort, x: number, groundY: number): number 
 }
 
 /**
- * 沿地形逐像素行走：可爬上緩坡、走下台階，但會被陡壁、低矮天花板擋住。
+ * 沿地形逐像素行走：可爬上緩坡、走下台階，但會被陡壁、低矮天花板擋住（可爬高度 climbPerPx 依機種而異）。
  * 前方沒有地面（橋面 / 浮空島邊緣、深淵）或落差超過 FALL_SAFE_PX（懸崖）時：預設停在邊緣（供電腦規劃走位，不會自殺）；
  * allowFall = true（玩家真的走出去）則踏空下墜，回傳 fell = true，由呼叫端判定陣亡。
  */
@@ -203,6 +209,7 @@ export function walkAlongTerrain(
   startGroundY: number,
   deltaX: number,
   allowFall = false,
+  climbPerPx = MAX_CLIMB_PER_PX,
 ): { x: number; groundY: number; fell?: boolean } {
   const dir = Math.sign(deltaX)
   const minX = 30
@@ -212,7 +219,7 @@ export function walkAlongTerrain(
   for (let i = 0; i < Math.abs(Math.round(deltaX)); i++) {
     const nx = x + dir
     if (nx < minX || nx > maxX) break
-    const probe = groundY - MAX_CLIMB_PER_PX
+    const probe = groundY - climbPerPx
     if (core.isSolid(nx, probe)) break
     const ng = core.groundBelow(nx, probe)
     // 前方沒有地面，或落差超過安全高度（懸崖）：踏出去就是墜落
@@ -246,7 +253,9 @@ export function applyDamageAndCheckWinner(
   for (const [pid, dmg] of Object.entries(damageByPlayer)) {
     const tank = state.tanks[pid]
     if (tank && dmg > 0) {
-      tank.hp = Math.max(0, Math.min(tank.maxHp, tank.hp - dmg))
+      const absorbed = Math.min(tank.shield, dmg)
+      tank.shield -= absorbed
+      tank.hp = Math.max(0, Math.min(tank.maxHp, tank.hp - (dmg - absorbed)))
     }
   }
 
@@ -287,4 +296,23 @@ export function advanceTurn(state: BattleState, nextWind: number): void {
   }
 
   state.phase = 'AIMING'
+}
+
+/**
+ * 對戰狀態雜湊（地形雜湊 + 各坦克位置/生命/護盾），供連線同步檢查；
+ * 任何一端的坦克數值與對手不一致都能被偵測。FNV-1a 整數運算，確定性。
+ */
+export function battleStateHash(state: BattleState, terrainHash: number): number {
+  let h = (0x811c9dc5 ^ terrainHash) >>> 0
+  const mix = (v: number) => {
+    h = Math.imul(h ^ (Math.round(v) | 0), 0x01000193) >>> 0
+  }
+  for (const id of Object.keys(state.tanks).sort()) {
+    const t = state.tanks[id]
+    mix(t.x)
+    mix(t.y)
+    mix(t.hp)
+    mix(t.shield)
+  }
+  return h
 }

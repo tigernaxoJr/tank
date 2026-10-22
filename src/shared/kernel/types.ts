@@ -19,7 +19,7 @@ export type MapPresetId =
   | 'floating_isles'
   | 'templar_ruins'
 
-export type BulletType = 'MISSILE_STANDARD' | 'MISSILE_HEAVY' | 'MISSILE_PLASMA'
+export type BulletType = 'MISSILE_STANDARD' | 'MISSILE_HEAVY' | 'MISSILE_PLASMA' | 'MISSILE_RAILGUN'
 
 /** 電腦難度：由弱到強。perfect 為百發百中，hard 為舊版預設（次強） */
 export type BotLevel = 'rookie' | 'weak' | 'normal' | 'hard' | 'perfect'

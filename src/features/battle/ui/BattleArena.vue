@@ -19,7 +19,7 @@ import {
   prepareFireTrajectory,
   syncAllTanksToTerrain,
 } from '../application/useBattleTurn'
-import { createInitialBattleState } from '../domain/battleState'
+import { battleStateHash, createInitialBattleState } from '../domain/battleState'
 import { planBotMove, planBotShot } from '../domain/botBrain'
 import { MAP_REGISTRY, terrainOptionsFor } from '../domain/mapRegistry'
 import { TANK_REGISTRY } from '../domain/tankRegistry'
@@ -200,7 +200,7 @@ function applyFireCommand(cmd: FireActionCommand, isLocal: boolean): void {
         const hashMsg: SyncHashEvent = {
           type: 'SYNC_HASH',
           turnId: state.turnId,
-          stateHash: core.getStateHash(),
+          stateHash: battleStateHash(state, core.getStateHash()),
         }
         emit('outgoing-message', hashMsg)
       }
@@ -227,7 +227,7 @@ function handleRemoteMessage(msg: ProtocolMessage): void {
     return
   }
   if (msg.type === 'SYNC_HASH') {
-    const localHash = core.getStateHash()
+    const localHash = battleStateHash(state, core.getStateHash())
     syncStatus.value = localHash === msg.stateHash ? 'ok' : 'mismatch'
   }
 }

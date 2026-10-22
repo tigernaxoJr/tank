@@ -15,7 +15,7 @@ import {
   type TankEntity,
 } from './battleState'
 import { PROJECTILE_REGISTRY } from './projectileRegistry'
-import { TANK_REGISTRY } from './tankRegistry'
+import { TANK_REGISTRY, effectiveWindMilli } from './tankRegistry'
 
 export interface BotShotPlan {
   readonly targetId: PlayerId
@@ -87,7 +87,7 @@ export function planBotShot(
       startY: bot.y - MUZZLE_RISE,
       vxMilli,
       vyMilli,
-      windMilli: state.wind * proj.windMultiplier,
+      windMilli: effectiveWindMilli(state.wind, proj.windMultiplier, TANK_REGISTRY[bot.tankId] ?? TANK_REGISTRY.aegis),
       gravityMilli: proj.gravityMilli,
       maxSteps: 1200,
       targetX: target.x,
@@ -156,7 +156,7 @@ export function planBotMove(
   try {
     for (const dx of candidates) {
       // 實際模擬沿地形行走（會被陡壁擋住），避免把橋下或島上的位置當成可抵達
-      const dest = walkAlongTerrain(core, origin.x, originGround, dx)
+      const dest = walkAlongTerrain(core, origin.x, originGround, dx, false, (TANK_REGISTRY[bot.tankId] ?? TANK_REGISTRY.aegis).climbPerPx)
       if (dx !== 0 && dest.x === origin.x) continue
       const x = dest.x
       bot.x = x

@@ -11,14 +11,15 @@
  * 數值需與 src/features/battle/domain 的 tankRegistry / projectileRegistry 同步（修改任一邊都要重跑）。
  */
 const SHELLS = {
-  MISSILE_STANDARD: { dmg: 34, r: 40 },
-  MISSILE_HEAVY: { dmg: 22, r: 50 },
-  MISSILE_PLASMA: { dmg: 60, r: 30 },
+  MISSILE_STANDARD: { dmg: 34, r: 40, magnet: 30, direct: 1 },
+  MISSILE_HEAVY: { dmg: 22, r: 50, magnet: 22, direct: 1 },
+  MISSILE_PLASMA: { dmg: 60, r: 30, magnet: 26, direct: 1 },
+  MISSILE_RAILGUN: { dmg: 75, r: 18, magnet: 0, direct: 1 },
 }
 const TANKS = {
-  aegis: { hp: 100, mult: 1.0, bonus: 0, shots: ['MISSILE_STANDARD', 'MISSILE_HEAVY'] },
-  goliath: { hp: 130, mult: 0.82, bonus: 0, shots: ['MISSILE_HEAVY', 'MISSILE_STANDARD'] },
-  zephyr: { hp: 76, mult: 1.33, bonus: 0, shots: ['MISSILE_PLASMA', 'MISSILE_STANDARD'] },
+  aegis: { hp: 100, mult: 1.0, bonus: 0, armor: 0, shield: 0, resist: 0, shots: ['MISSILE_STANDARD', 'MISSILE_HEAVY'] },
+  goliath: { hp: 130, mult: 0.82, bonus: 0, armor: 2, shield: 0, resist: 0, shots: ['MISSILE_HEAVY', 'MISSILE_STANDARD'] },
+  zephyr: { hp: 76, mult: 1.33, bonus: 0, armor: 0, shield: 0, resist: 0, shots: ['MISSILE_PLASMA', 'MISSILE_RAILGUN'] },
 }
 
 function gauss() {
@@ -26,12 +27,18 @@ function gauss() {
   while (!u) u = Math.random()
   return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * Math.random())
 }
-function dmgOf(t, s, sigma) {
+// 進入吸附半徑視為直擊（爆心在坦克中心：全額 × 直擊倍率）；其餘依距離線性衰減。defender 的裝甲 / 爆炸抗性在此結算
+function dmgOf(t, s, sigma, def) {
   const sh = SHELLS[s]
   const r = sh.r + t.bonus
   const d = Math.hypot(gauss() * sigma, gauss() * sigma)
-  if (d >= r) return 0
-  return Math.trunc(((r - d) * Math.round(sh.dmg * t.mult)) / r)
+  const full = Math.round(sh.dmg * t.mult)
+  let raw
+  if (d <= Math.max(22, sh.magnet)) raw = Math.round(full * sh.direct)
+  else if (d >= r) raw = 0
+  else raw = Math.trunc(((r - d) * full) / r)
+  if (raw <= 0) return 0
+  return def ? Math.max(1, Math.round((raw - def.armor) * (1 - def.resist))) : raw
 }
 function expected(t, s, sigma) {
   let a = 0
@@ -57,12 +64,12 @@ for (const sigma of [25, 45, 70]) {
       let wins = 0
       const N = 4000
       for (let i = 0; i < N; i++) {
-        let ha = TANKS[a].hp
-        let hb = TANKS[b].hp
+        let ha = TANKS[a].hp + TANKS[a].shield
+        let hb = TANKS[b].hp + TANKS[b].shield // 護盾與 HP 同為緩衝池，模擬時合併計算
         let aTurn = i % 2 === 0
         for (let turn = 0; turn < 200 && ha > 0 && hb > 0; turn++) {
-          if (aTurn) hb -= dmgOf(TANKS[a], best[a], sigma)
-          else ha -= dmgOf(TANKS[b], best[b], sigma)
+          if (aTurn) hb -= dmgOf(TANKS[a], best[a], sigma, TANKS[b])
+          else ha -= dmgOf(TANKS[b], best[b], sigma, TANKS[a])
           aTurn = !aTurn
         }
         if (hb <= 0 && ha > 0) wins++

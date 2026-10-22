@@ -29,7 +29,7 @@ import {
   PROJECTILE_REGISTRY,
   type ProjectileTrailStyle,
 } from '../domain/projectileRegistry'
-import { TANK_LIST, TANK_REGISTRY } from '../domain/tankRegistry'
+import { TANK_LIST, TANK_REGISTRY, effectiveWindMilli } from '../domain/tankRegistry'
 import { TankFace } from './tankFace'
 
 const TILE = 128
@@ -814,6 +814,12 @@ export class BattleScene extends Phaser.Scene {
       actor.hpBarGraphics.fillRect(barX + 1, barY + 1, Math.round((barW - 2) * hpPct), barH - 2)
     }
 
+    // 護盾條（青色細條，疊在血條上緣）
+    if (tank.maxShield > 0 && tank.shield > 0) {
+      actor.hpBarGraphics.fillStyle(0x22d3ee, 1)
+      actor.hpBarGraphics.fillRect(barX + 1, barY - 4, Math.round((barW - 2) * (tank.shield / tank.maxShield)), 3)
+    }
+
     // 行動回合跳動箭頭
     actor.turnArrow.setVisible(isActive)
     if (isActive) {
@@ -873,7 +879,11 @@ export class BattleScene extends Phaser.Scene {
       startY: activeTank.y - MUZZLE_RISE,
       vxMilli,
       vyMilli,
-      windMilli: this.battleState.wind * projSpec.windMultiplier,
+      windMilli: effectiveWindMilli(
+        this.battleState.wind,
+        projSpec.windMultiplier,
+        TANK_REGISTRY[activeTank.tankId] ?? TANK_REGISTRY.aegis,
+      ),
       gravityMilli: projSpec.gravityMilli,
       maxSteps: AIM_PREVIEW_STEPS,
     })

@@ -31,6 +31,10 @@ export interface ProjectileBlueprint {
   /** 對地形的挖坑半徑 (px)；與 damageRadius 獨立，可做出「只傷人不挖地」或「重挖地輕傷人」的砲彈 */
   readonly terrainRadius: number
   readonly maxDamage: number
+  /** 坦克吸附半徑 (px)：飛行中進入敵我坦克此範圍（需無地形遮擋）會被導引命中；0 = 完全不導引，純靠玩家技術。地形傷害（terrainRadius）越大，導引越少 */
+  readonly magnetRadius: number
+  /** 直接命中坦克的傷害倍率 */
+  readonly directHitMultiplier: number
   /** 砲口初速倍率（重彈 < 1，射程較短）；與重力無關，不破壞物理一致性 */
   readonly speedMultiplier: number
   /** 一般彈請用 STANDARD_GRAVITY_MILLI；僅特殊彈可不同 */
@@ -63,6 +67,8 @@ export const PROJECTILE_REGISTRY: Record<BulletType, ProjectileBlueprint> = {
     damageRadius: 40,
     terrainRadius: 40,
     maxDamage: 34,
+    magnetRadius: 30,
+    directHitMultiplier: 1,
     speedMultiplier: 1,
     gravityMilli: STANDARD_GRAVITY_MILLI,
     windMultiplier: 4,
@@ -86,6 +92,8 @@ export const PROJECTILE_REGISTRY: Record<BulletType, ProjectileBlueprint> = {
     damageRadius: 50,
     terrainRadius: 50,
     maxDamage: 22,
+    magnetRadius: 22,
+    directHitMultiplier: 1,
     speedMultiplier: 0.85,
     gravityMilli: STANDARD_GRAVITY_MILLI,
     windMultiplier: 3,
@@ -109,6 +117,8 @@ export const PROJECTILE_REGISTRY: Record<BulletType, ProjectileBlueprint> = {
     damageRadius: 30,
     terrainRadius: 30,
     maxDamage: 60,
+    magnetRadius: 26,
+    directHitMultiplier: 1,
     speedMultiplier: 1,
     // 特殊彈：能量彈受重力較小，彈道刻意比一般彈平直
     gravityMilli: 145,
@@ -123,6 +133,31 @@ export const PROJECTILE_REGISTRY: Record<BulletType, ProjectileBlueprint> = {
       trailStyle: 'plasma_beam',
       explosionColors: [0xf0f9ff, 0x7dd3fc, 0x38bdf8, 0x818cf8, 0xc084fc],
       cameraShakeIntensity: 0.013,
+    },
+  },
+  MISSILE_RAILGUN: {
+    id: 'MISSILE_RAILGUN',
+    name: '穿甲狙擊彈 (Rail Sniper)',
+    badge: '零導引 · 極高傷害',
+    description: '小範圍、幾乎不挖地形，但完全沒有吸附導引；打得準就是一發重創，考驗落點與風向控制。',
+    damageRadius: 18,
+    terrainRadius: 8,
+    maxDamage: 75,
+    magnetRadius: 0,
+    directHitMultiplier: 1,
+    speedMultiplier: 1,
+    // 特殊彈：高初速、彈道比一般彈平直
+    gravityMilli: 150,
+    windMultiplier: 5,
+    postImpactHoldMs: 850,
+    visual: {
+      coreRadius: 5,
+      coreColor: 0xffffff,
+      glowColor: 0xa3e635,
+      strokeColor: 0x365314,
+      trailStyle: 'plasma_beam',
+      explosionColors: [0xffffff, 0xd9f99d, 0xa3e635, 0x4d7c0f],
+      cameraShakeIntensity: 0.016,
     },
   },
 }
