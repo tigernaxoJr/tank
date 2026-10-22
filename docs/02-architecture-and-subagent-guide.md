@@ -152,6 +152,13 @@ tank/
    * **內嵌式街機儀表板 Overlay**：所有戰鬥資訊與操控（隊伍總血量、風向羅盤、小地圖、2.5D 戰車頭像、仰角微調、彈藥切換、30 格街機蓄力槽與開火鈕）必須作為 `absolute inset-0 pointer-events-none` 圖層直接疊加於 Phaser 遊戲畫布上方（[`BattleHud.vue`](../src/features/battle/ui/BattleHud.vue)），禁止使用傳統 `<input type="range">` 滑桿表單。
 6. **對戰前直覺選車守則 (Direct Match Tank Selection)**：
    * 無論在 **P2P 連線配對區**（進房前與房間候戰室）或 **單機多人熱座 (Hotseat 1v1~5v5)** 的隊伍編制面板中，都必須直接提供 2.5D 戰車型號切換按鈕（`aegis` / `goliath` / `zephyr`），讓每位玩家都能在開戰設定區直覺挑選或更換出戰坦克。
+7. **遊戲大廳美學與介面守則 (Lobby Visual Style: Sky, War, Joy & Zero Form Scroll)**：
+   * **天空、戰爭、歡樂風格**：大廳採「晴空高照 (Sky) × 裝甲軍武 (War) × 街機歡樂 (Joy)」主題，營造明亮、通透、富戰術活力的街機氛圍，絕不使用死黑、陰沉昏暗的沉重配色。
+   * **色彩明度與純淨度**：主色調為晴空湛藍 (Sky / Royal Blue)、陽光金 (Golden Amber)、鮮明暖橘與清亮白。**嚴格禁止使用果青色 (Murky Teal / Cyan-green) 等濁色調**，維持純淨飽滿的視覺能量。
+   * **拒絕網頁表單感與垂直捲動 (Zero Form Scroll)**：
+     - 地圖選擇禁止採用長條下拉或多按鈕垂直列表（杜絕「選個地圖還要往下拉」）。改以「**大廳空域輪播展示卡 (Stage Showcase)**」配合左右箭頭切換，並提供單擊彈出之「**全地圖圖庫 (Stage Select Modal)**」網格選圖。
+     - 坦克選角採用具備 2.5D 懸浮動態的「**戰車機庫展示台 (Tank Hangar Podium)**」，直觀整合耐久、火力、機動儀表與彈藥快速調配。
+     - 大廳背景動態載入當前所選地圖的無縫視差圖層（飄移雲層、遠山、丘陵與天體），使大廳具備與戰場一致的精緻質感與空氣感。
 
 ## 五、 測試策略與一致性驗證 (Testing)
 
@@ -177,3 +184,5 @@ tank/
 | 2026-10-22 | 平衡模擬（確定性版本，σ = 25 / 45 / 70 px，種子 20261022，每組 20000 場） | `node tools/balance/duel_sim.mjs` | ✅ 各配對在 41%~59%；三種精度都選 RAILGUN（疾風），無翻面；連跑兩次輸出逐字相同 | 改為固定種子 PRNG、選彈用期望傷害的確定性積分；未 commit |
 | 2026-10-22 | 平衡模擬（加入 σ = 5 px 近似精準，參考用） | `node tools/balance/duel_sim.mjs` | ✅ 執行成功；σ=25 / 45 / 70 仍在 41%~59%；σ=5 為 0% / 100%（aegis 對所有對手 0%，疾風對 aegis 與 goliath 100%） | 不納入 40%~60% 目標，待決定是否調整數值；未 commit |
 | 2026-10-22 | CI（main，commit `9c5da5b`） | GitHub Actions `Deploy to GitHub Pages` | ✅ 成功（含 `pnpm test`、型別檢查、建置、部署） | run [39736386678](https://github.com/tigernaxoJr/tank/actions/runs/39736386678) |
+| 2026-10-22 | 前端型別檢查 + 建置 | `pnpm run build` | ✅ 通過（`vue-tsc -b && vite build`，零錯誤） | 遊戲大廳美化重構（天空、戰爭、歡樂風格，零表單捲動）；未 commit |
+| 2026-10-22 | 前端 + server 單元測試 | `pnpm test` | ✅ Vitest 59 / 59、server node:test 4 / 4 通過 | 大廳重構與 UI 音效擴充後；未 commit |

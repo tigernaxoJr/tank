@@ -48,11 +48,11 @@ function onOutgoingMessage(msg: ProtocolMessage): void {
 </script>
 
 <template>
-  <main class="mx-auto max-w-6xl space-y-5 p-4 sm:p-6">
+  <main class="mx-auto max-w-7xl w-full space-y-3.5 p-3 sm:p-5">
     <!-- 街機風明亮遊戲橫幅 Header (僅在大廳顯示，對戰時全螢幕不捲動) -->
     <header
       v-if="!inBattle"
-      class="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-sky-400/30 bg-slate-900/80 px-5 py-3.5 shadow-2xl backdrop-blur-md"
+      class="flex flex-wrap items-center justify-between gap-3 rounded-2xl border-2 border-sky-400/40 bg-slate-900/85 px-5 py-3 shadow-[0_8px_32px_rgba(56,189,248,0.2)] backdrop-blur-md"
     >
       <div class="flex items-center gap-3">
         <div class="flex h-12 w-12 items-center justify-center rounded-xl border border-amber-400/60 bg-gradient-to-br from-amber-400 to-orange-500 p-1 shadow-lg shadow-amber-500/20">

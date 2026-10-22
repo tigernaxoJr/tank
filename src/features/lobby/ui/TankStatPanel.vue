@@ -21,7 +21,7 @@ const bars = computed(() => [
     ratio: card.value.outputRatio,
     color: 'from-rose-500 to-orange-300',
   },
-  { key: 'mob', label: '機動', value: `${card.value.moveFuel}`, ratio: card.value.mobilityRatio, color: 'from-sky-500 to-cyan-300' },
+  { key: 'mob', label: '機動', value: `${card.value.moveFuel}`, ratio: card.value.mobilityRatio, color: 'from-sky-500 to-blue-400' },
 ])
 
 function pct(ratio: number): string {

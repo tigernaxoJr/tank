@@ -29,7 +29,10 @@
    - 原則是「血量愈少輸出愈高」，砲彈之間不得有嚴格優劣；調整 `tankRegistry` / `projectileRegistry` 數值後必須執行 `node tools/balance/duel_sim.mjs` 確認各配對勝率在約 40%~60%。詳見 [`docs/06-gameplay-reference-and-physics.md`](./docs/06-gameplay-reference-and-physics.md) §三。
 6. **全畫面街機駕駛艙 HUD 與零捲動守則**：
    - 戰鬥畫面必須以 `100dvh`（`fixed inset-0`）全視窗呈現，所有儀表板與控制項直接疊加在遊戲畫布上（禁止傳統 HTML 表單滑桿與網頁捲動），且對戰設定區必須支援直覺選車。
-7. **Git Commit 鐵律**：
+7. **遊戲大廳美學與零表單捲動守則 (Lobby Visual Style: Sky, War, Joy)**：
+   - 大廳走「天空 (Sky) × 戰爭 (War) × 歡樂 (Joy)」明亮街機風格，主色為湛藍、陽光金、暖橘與亮白，**嚴禁使用果青色 (Murky Teal / Cyan-green) 等濁色調**。
+   - 地圖禁止下拉捲動表單，改以空域輪播卡 + 彈窗圖庫；坦克採 2.5D 機庫展示台；大廳動態載入地圖視差圖層維持遊戲質感。詳見 [`docs/02-architecture-and-subagent-guide.md`](./docs/02-architecture-and-subagent-guide.md)。
+8. **Git Commit 鐵律**：
    - 在使用者給出明確的 commit 指令前，**絕對禁止**自行執行 `git commit`。
 
 ## 3. 工具與依賴自主權 (Tooling Autonomy)

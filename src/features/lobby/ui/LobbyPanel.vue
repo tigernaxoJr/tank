@@ -3,20 +3,21 @@ import { isForgedAction } from '../infra/messageGuards'
 import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
 import {
   BOT_LEVEL_SPECS,
-  MAP_LIST,
   MAP_REGISTRY,
-  renderMapPreview,
   TANK_LIST,
-  TANK_REGISTRY,
   createLoadoutSecret,
-  getTankSpec,
   loadoutRoot,
   sanitizeLoadout,
   tankAt,
   type LoadoutSecret,
+  type MapBlueprint,
 } from '@/features/battle'
-import LoadoutPicker from './LoadoutPicker.vue'
-import TankStatPanel from './TankStatPanel.vue'
+import { soundController } from '@/features/audio'
+import LobbyBackdrop from './LobbyBackdrop.vue'
+import StageShowcase from './StageShowcase.vue'
+import StageSelectModal from './StageSelectModal.vue'
+import TankHangarPodium from './TankHangarPodium.vue'
+import TacticalGuideModal from './TacticalGuideModal.vue'
 import {
   countTeamMembers,
   generateRoomCode,
@@ -72,6 +73,9 @@ const emit = defineEmits<{
 }>()
 
 const gameMode = ref<'p2p' | 'hotseat'>('p2p')
+const showStageModal = ref(false)
+const showGuideModal = ref(false)
+
 const hotseatCountPerTeam = ref(1)
 // 預設陣容依註冊表輪流排（B 隊錯開一台），新增機種自動納入
 const hotseatTeamATanks = reactive<TankArchetypeId[]>(Array.from({ length: 5 }, (_, i) => tankAt(i)))
@@ -84,8 +88,8 @@ const BOT_LEVELS = Object.entries(BOT_LEVEL_SPECS) as [BotLevel, (typeof BOT_LEV
 const hotseatStartLabel = computed(() => {
   const n = hotseatCountPerTeam.value
   if (hotseatBotTeams.A && hotseatBotTeams.B) return `🍿 觀戰 ${n}v${n} 電腦對決`
-  if (hotseatBotTeams.A || hotseatBotTeams.B) return `🚀 開始 ${n}v${n} 挑戰電腦`
-  return `🚀 開始 ${n}v${n} 單機熱座對戰`
+  if (hotseatBotTeams.A || hotseatBotTeams.B) return `🚀 啟動 ${n}v${n} 挑戰電腦`
+  return `🚀 啟動 ${n}v${n} 單機熱座對戰`
 })
 const joinInputCode = ref('')
 const copied = ref(false)
@@ -106,20 +110,16 @@ const session = reactive<RoomSession>({
   errorMessage: undefined,
 })
 
+const currentMapBlueprint = computed<MapBlueprint>(
+  () => MAP_REGISTRY[session.selectedMapId] ?? MAP_REGISTRY.harvest_plains,
+)
+
 // --- 彈藥配置：選擇記在 localStorage；連線對戰只廣播承諾（Merkle 根），原文留在本機直到開火時逐格揭露 ---
 const loadoutPicks = ref<BulletType[]>(loadLoadoutPicks(session.selectedTankId))
 // 單機各隊的配置（同機種共用一份，與連線對戰選的是同一份記憶）
 const loadoutCache = reactive<Record<string, BulletType[]>>({})
 function picksFor(tankId: TankArchetypeId): BulletType[] {
   return (loadoutCache[tankId] ??= loadLoadoutPicks(tankId))
-}
-function onPickHotseatLoadout(tankId: TankArchetypeId, picks: BulletType[]): void {
-  loadoutCache[tankId] = sanitizeLoadout(tankId, picks)
-  saveLoadoutPicks(tankId, loadoutCache[tankId])
-  if (tankId === session.selectedTankId) {
-    loadoutPicks.value = loadoutCache[tankId]
-    refreshCommitment()
-  }
 }
 const localRoot = ref('')
 let localSecret: LoadoutSecret | null = null
@@ -173,7 +173,6 @@ function startHeartbeat(): void {
   stopHeartbeat()
   roomStatus = 'waiting'
   announceRoom()
-  // 伺服器 30 秒沒收到心跳就會清除房間
   heartbeatTimer = setInterval(announceRoom, 10_000)
 }
 
@@ -188,6 +187,7 @@ function formatMapName(mapId: string): string {
 
 async function joinFromList(room: RoomListing): Promise<void> {
   if (room.status !== 'waiting' || room.players >= room.maxPlayers) return
+  soundController.play('ui_click')
   joinInputCode.value = room.code
   await handleJoin()
 }
@@ -251,7 +251,6 @@ function handleHostReceivePeerMessage(peerSlotId: PlayerId, msg: ProtocolMessage
     return
   }
 
-  // 動作只能由該槽位本人送出，不信任訊息裡自稱的 playerId（防止替別人的坦克開火 / 移動）
   if (isForgedAction(msg, peerSlotId)) return
 
   if (msg.type === 'ACTION_FIRE' || msg.type === 'ACTION_MOVE' || msg.type === 'SYNC_HASH') {
@@ -260,7 +259,6 @@ function handleHostReceivePeerMessage(peerSlotId: PlayerId, msg: ProtocolMessage
     return
   }
 
-  // 重新同步請求只給房主處理，不轉發給其他客端
   if (msg.type === 'RESYNC_REQUEST') emit('remote-message', msg)
 }
 
@@ -277,6 +275,7 @@ function handleClientReceiveMessage(msg: ProtocolMessage): void {
     session.roster = msg.roster
     session.selectedMapId = msg.mapId
     session.locked = true
+    soundController.play('ui_start')
     emit('start-game', {
       mode: 'p2p',
       localRole: session.localPlayerId,
@@ -295,6 +294,7 @@ function handleClientReceiveMessage(msg: ProtocolMessage): void {
 }
 
 async function handleHost(): Promise<void> {
+  soundController.play('ui_click')
   const name = session.localPlayerName.trim() || 'Commander'
   session.localPlayerName = name
   const initialCode = generateRoomCode()
@@ -317,6 +317,7 @@ async function handleHost(): Promise<void> {
   try {
     const finalCode = await transport.hostRoomWithRetry(initialCode, {
       onPeerConnected: (peerSlotId) => {
+        soundController.play('ui_ready')
         const team = pickBalancedTeam(session.roster)
         if (!team || session.roster.length >= MAX_TOTAL_PLAYERS) {
           return
@@ -337,7 +338,6 @@ async function handleHost(): Promise<void> {
         session.roster = session.roster.filter((r) => r.id !== peerSlotId)
         broadcastRosterFromHost()
         if (props.inBattle) {
-          // 對戰中斷線視為認輸：通知所有人（含房主自己的戰場），避免輪到他時全場卡住
           const left: ProtocolMessage = { type: 'PLAYER_LEFT', playerId: peerSlotId, takeover: session.disconnectPolicy === 'bot' }
           transport.broadcast(left)
           emit('remote-message', left)
@@ -359,6 +359,7 @@ async function handleHost(): Promise<void> {
 async function handleJoin(): Promise<void> {
   const code = joinInputCode.value.trim().toUpperCase()
   if (code.length !== 6) return
+  soundController.play('ui_click')
 
   const name = session.localPlayerName.trim() || 'Challenger'
   session.localPlayerName = name
@@ -372,6 +373,7 @@ async function handleJoin(): Promise<void> {
     await transport.joinRoom(code, {
       onConnected: () => {
         session.phase = 'connected'
+        soundController.play('ui_ready')
         const joinInfo: PlayerJoinInfoEvent = {
           type: 'PLAYER_JOIN_INFO',
           guestName: session.localPlayerName,
@@ -427,6 +429,7 @@ function selectTankArchetype(tankId: TankArchetypeId): void {
 }
 
 function setHotseatSlotTank(team: TeamId, slotIndex: number, tankId: TankArchetypeId): void {
+  soundController.play('ui_click')
   if (team === 'A') {
     hotseatTeamATanks[slotIndex] = tankId
     if (slotIndex === 0) {
@@ -437,7 +440,6 @@ function setHotseatSlotTank(team: TeamId, slotIndex: number, tankId: TankArchety
   }
 }
 
-/** 重選主彈 / 副彈：存起來、重新承諾，並在連線中把新的承諾告訴房主 */
 function onPickLoadout(picks: BulletType[]): void {
   if (session.locked) return
   loadoutPicks.value = sanitizeLoadout(session.selectedTankId, picks)
@@ -465,6 +467,7 @@ function onPickLoadout(picks: BulletType[]): void {
 
 function handleToggleReady(): void {
   if (session.isHost) return
+  soundController.play('ui_ready')
   const localSlot = session.roster.find((r) => r.id === session.localPlayerId)
   const req: UpdatePlayerSetupEvent = {
     type: 'UPDATE_PLAYER_SETUP',
@@ -487,11 +490,13 @@ function selectMapPreset(mapId: MapPresetId): void {
 
 function selectDisconnectPolicy(policy: DisconnectPolicy): void {
   if (session.locked || (!session.isHost && session.phase === 'connected')) return
+  soundController.play('ui_click')
   session.disconnectPolicy = policy
   if (session.isHost && session.phase === 'connected') broadcastRosterFromHost()
 }
 
 function handleSwitchTeam(targetTeam: TeamId): void {
+  soundController.play('ui_click')
   if (session.isHost) {
     const slot = session.roster.find((r) => r.id === session.localPlayerId)
     if (slot && slot.team !== targetTeam) {
@@ -514,6 +519,7 @@ function handleSwitchTeam(targetTeam: TeamId): void {
 
 function handleStartP2PBattle(): void {
   if (!canStartMatch.value) return
+  soundController.play('ui_start')
   const seed = Math.floor(Math.random() * 90000) + 1000
   pendingSeed.value = seed
   session.locked = true
@@ -544,6 +550,7 @@ function handleStartP2PBattle(): void {
 }
 
 function handleStartHotseatBattle(): void {
+  soundController.play('ui_start')
   const seed = Math.floor(Math.random() * 90000) + 1000
   const n = Math.max(1, Math.min(5, hotseatCountPerTeam.value))
   const roster: RosterSlot[] = []
@@ -570,6 +577,7 @@ function handleStartHotseatBattle(): void {
 }
 
 function handleDisconnect(): void {
+  soundController.play('ui_click')
   stopHeartbeat()
   if (session.isHost && session.roomCode) void directory.remove(session.roomCode)
   transport.disconnect()
@@ -587,6 +595,7 @@ async function copyRoomCode(): Promise<void> {
   try {
     await navigator.clipboard.writeText(session.roomCode)
     copied.value = true
+    soundController.play('ui_click')
     setTimeout(() => {
       copied.value = false
     }, 1800)
@@ -602,6 +611,7 @@ async function copyInviteLink(): Promise<void> {
     url.searchParams.set('room', session.roomCode)
     await navigator.clipboard.writeText(url.toString())
     copiedLink.value = true
+    soundController.play('ui_click')
     setTimeout(() => {
       copiedLink.value = false
     }, 1800)
@@ -624,7 +634,6 @@ defineExpose({
 })
 
 onMounted(() => {
-  // 在大廳閒置畫面每 5 秒自動刷新房間列表（進房、對戰中不輪詢）
   void refreshRoomList()
   roomPollTimer = setInterval(() => {
     const idle = session.phase === 'idle' || session.phase === 'error'
@@ -641,7 +650,6 @@ onMounted(() => {
   }
 })
 
-// 人數 / 地圖變動時立即更新房間列表，不必等下一次心跳
 watch(
   () => [session.roster.length, session.selectedMapId, session.disconnectPolicy],
   () => {
@@ -658,762 +666,587 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <!-- 進入遊戲前的完整首頁大廳：2.5D 戰車格納庫 + 地圖選擇 + P2P 5v5 配對 -->
-  <section v-if="!props.inBattle" class="grid grid-cols-1 gap-6 lg:grid-cols-12">
-    <!-- 左欄：戰車選角格納庫與地圖選擇 (col 5) -->
-    <div class="lg:col-span-5 flex flex-col justify-between rounded-3xl border border-sky-400/20 bg-slate-900/85 p-5 shadow-2xl space-y-5 backdrop-blur-md">
-      <!-- 1. 2.5D 戰車選角格納庫 -->
-      <div class="space-y-3">
-        <div class="flex items-center justify-between">
-          <span class="inline-flex items-center gap-1.5 rounded-full border border-amber-400/50 bg-amber-500/20 px-3 py-0.5 text-xs font-extrabold text-amber-300">
-            🛡️ 空母戰車機庫
-          </span>
-          <span class="text-[11px] text-sky-200/70">點擊選擇你的空降坦克</span>
-        </div>
+  <!-- 大廳動態視差背景：跟隨所選地圖無縫呈現高空浮島、雪原、峽谷或黃沙質感 -->
+  <LobbyBackdrop v-if="!props.inBattle" :map="currentMapBlueprint" />
 
-        <div class="grid grid-cols-3 gap-2.5">
-          <button
-            v-for="tank in TANK_LIST"
-            :key="tank.id"
-            type="button"
-            class="group flex flex-col items-center rounded-2xl border-2 p-2.5 text-center transition cursor-pointer"
-            :class="
-              session.selectedTankId === tank.id
-                ? 'border-amber-400 bg-gradient-to-b from-slate-800 to-amber-950/40 shadow-lg shadow-amber-500/20 scale-[1.02]'
-                : 'border-slate-700/60 bg-slate-800/60 hover:border-sky-400/50 hover:bg-slate-800/90'
-            "
-            @click="selectTankArchetype(tank.id)"
-          >
-            <div class="relative flex h-16 w-full items-center justify-center rounded-xl bg-slate-950/50 border border-slate-700/40">
-              <img
-                :src="tank.getSprites('A').hullUrl"
-                :alt="tank.name"
-                class="h-14 w-auto object-contain drop-shadow-md transition group-hover:scale-110"
-              />
-            </div>
-            <div class="mt-1.5 text-xs font-extrabold text-slate-100">{{ tank.name }}</div>
-            <div class="mt-0.5 text-[10px] font-semibold text-amber-300">
-              HP {{ tank.maxHp }} · 輸出 ×{{ tank.damageMultiplier.toFixed(2) }}
-            </div>
-          </button>
-        </div>
+  <!-- 全圖庫與操作指南彈窗 -->
+  <StageSelectModal
+    :open="showStageModal"
+    :selected-map-id="session.selectedMapId"
+    @select="selectMapPreset"
+    @close="showStageModal = false"
+  />
+  <TacticalGuideModal
+    :open="showGuideModal"
+    @close="showGuideModal = false"
+  />
 
-        <TankStatPanel :tank-id="session.selectedTankId" />
-        <LoadoutPicker :tank-id="session.selectedTankId" :picks="loadoutPicks" :disabled="session.locked" @change="onPickLoadout" />
+  <section v-if="!props.inBattle" class="relative z-10 flex flex-col justify-between space-y-4">
+    <!-- 頂部指揮艦橋導航列 (Arcade Command Bar) -->
+    <header class="flex flex-wrap items-center justify-between gap-3 rounded-2xl border-2 border-sky-400/30 bg-slate-900/90 px-4 py-2.5 shadow-2xl backdrop-blur-md">
+      <!-- 模式切換按鈕組 -->
+      <div class="inline-flex rounded-xl bg-slate-950/80 p-1 border border-slate-700/80 text-xs">
+        <button
+          type="button"
+          class="flex items-center gap-1.5 rounded-lg px-3.5 py-1.5 font-black transition cursor-pointer"
+          :class="
+            gameMode === 'p2p'
+              ? 'bg-gradient-to-r from-amber-400 to-orange-500 text-slate-950 shadow-[0_0_15px_rgba(251,191,36,0.5)]'
+              : 'text-slate-300 hover:text-white'
+          "
+          @click="gameMode = 'p2p'; soundController.play('ui_select')"
+        >
+          <span>🌐</span> 多人連線大廳 (P2P)
+        </button>
+        <button
+          type="button"
+          class="flex items-center gap-1.5 rounded-lg px-3.5 py-1.5 font-black transition cursor-pointer"
+          :class="
+            gameMode === 'hotseat'
+              ? 'bg-gradient-to-r from-amber-400 to-orange-500 text-slate-950 shadow-[0_0_15px_rgba(251,191,36,0.5)]'
+              : 'text-slate-300 hover:text-white'
+          "
+          @click="handleDisconnect(); gameMode = 'hotseat'; soundController.play('ui_select')"
+        >
+          <span>🤖</span> 單機 / 挑戰電腦
+        </button>
       </div>
 
-      <!-- 2. 模組化跨螢幕地圖選擇器 -->
-      <div class="space-y-2.5">
-        <div class="flex items-center justify-between">
-          <span class="text-xs font-extrabold text-amber-400">🗺️ 選擇交戰空域 / 空島</span>
-          <span class="text-[11px] text-sky-200/70">支援滑鼠拖曳與小地圖跳轉</span>
-        </div>
+      <!-- 右側快捷狀態與手冊 -->
+      <div class="flex items-center gap-2 text-xs">
+        <span
+          class="hidden sm:inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-[11px] font-bold"
+          :class="
+            signalingInfo.mode === 'custom'
+              ? 'border-emerald-500/40 bg-emerald-500/20 text-emerald-300'
+              : signalingInfo.mode === 'fallback-public'
+                ? 'border-amber-400/50 bg-amber-500/20 text-amber-300'
+                : 'border-sky-400/40 bg-sky-500/20 text-sky-300'
+          "
+        >
+          📡 {{ signalingInfo.label }}
+        </span>
 
-        <div class="space-y-2">
-          <button
-            v-for="m in MAP_LIST"
-            :key="m.id"
-            type="button"
-            class="flex w-full items-center gap-3 rounded-2xl border-2 p-2.5 text-left transition cursor-pointer"
-            :class="
-              session.selectedMapId === m.id
-                ? 'border-amber-400 bg-slate-800 shadow-md'
-                : 'border-slate-700/60 bg-slate-800/60 hover:border-sky-400/50 hover:bg-slate-800/90'
-            "
-            @click="selectMapPreset(m.id)"
-          >
-            <img
-              :src="renderMapPreview(m)"
-              :alt="m.name"
-              class="h-11 w-20 shrink-0 rounded-xl border border-sky-400/30 object-cover shadow"
-            />
-            <div class="min-w-0 flex-1">
-              <div class="flex items-center justify-between gap-1">
-                <span class="truncate text-xs font-extrabold text-slate-100">{{ m.name }}</span>
-                <span class="shrink-0 rounded bg-amber-400/20 px-1.5 py-0.5 font-mono text-[10px] font-bold text-amber-300 border border-amber-400/30">
-                  {{ m.width }}×{{ m.height }}
-                </span>
-              </div>
-              <p class="mt-0.5 line-clamp-1 text-[11px] text-slate-300">{{ m.description }}</p>
-            </div>
-          </button>
-        </div>
+        <button
+          type="button"
+          class="flex items-center gap-1 rounded-xl border border-sky-400/40 bg-sky-500/20 px-3 py-1.5 font-bold text-sky-200 hover:border-sky-300 hover:bg-sky-400/30 hover:text-white transition cursor-pointer"
+          @click="showGuideModal = true; soundController.play('ui_click')"
+        >
+          <span>📖</span> 作戰指南
+        </button>
+      </div>
+    </header>
+
+    <!-- 核心作戰主控台 (3 欄遊戲專案佈局：戰車機庫、空域展示卡、作戰編制) -->
+    <div class="grid grid-cols-1 gap-4 lg:grid-cols-12">
+      <!-- 欄 1：戰車格納庫展示 (4 欄) -->
+      <div class="lg:col-span-4">
+        <TankHangarPodium
+          :selected-tank-id="session.selectedTankId"
+          :loadout-picks="loadoutPicks"
+          :locked="session.locked"
+          @select-tank="selectTankArchetype"
+          @change-loadout="onPickLoadout"
+        />
       </div>
 
-      <!-- 房間規則：玩家斷線時的處置（只有房主能改，客端唯讀；對戰模式才有意義） -->
-      <div v-if="gameMode === 'p2p'" class="rounded-2xl border border-sky-400/20 bg-slate-800/60 p-3">
-        <div class="mb-2 text-xs font-extrabold text-amber-400">🔌 玩家斷線時</div>
-        <div class="grid grid-cols-2 gap-2">
-          <button
-            v-for="opt in ([['forfeit', '認輸', '坦克陣亡，退出對戰'], ['bot', '電腦接手', '由 CPU（中等）代打']] as const)"
-            :key="opt[0]"
-            type="button"
-            class="rounded-xl border-2 p-2 text-left transition"
-            :class="[
-              session.disconnectPolicy === opt[0] ? 'border-amber-400 bg-slate-800 shadow-md' : 'border-slate-700/60 bg-slate-800/40',
-              session.locked || (!session.isHost && session.phase === 'connected') ? 'cursor-default' : 'cursor-pointer hover:border-amber-400',
-            ]"
-            @click="selectDisconnectPolicy(opt[0])"
-          >
-            <div class="text-xs font-extrabold text-slate-100">{{ opt[1] }}</div>
-            <div class="text-[10px] text-slate-400">{{ opt[2] }}</div>
-          </button>
-        </div>
+      <!-- 欄 2：空域地貌展示卡 (4 欄) — 零表單捲動、遊戲卡片式輪播 -->
+      <div class="lg:col-span-4">
+        <StageShowcase
+          :selected-map-id="session.selectedMapId"
+          :disabled="!session.isHost && session.phase === 'connected'"
+          @select="selectMapPreset"
+          @open-gallery="showStageModal = true; soundController.play('ui_click')"
+        />
       </div>
 
-      <!-- 3. 遊戲快速指南 -->
-      <div class="rounded-2xl border border-sky-400/20 bg-slate-800/60 p-3.5 text-xs space-y-1.5">
-        <div class="font-extrabold text-amber-400">⚡ 30 秒快速上手說明</div>
-        <p class="text-[11px] leading-relaxed text-slate-300">
-          1. 右側輸入暱稱，建立或輸入 <strong>6 碼房號</strong> 配對（支援 1v1 ~ 5v5）。<br />
-          2. 輪到你的回合時，用 <kbd class="rounded bg-amber-400 px-1 font-bold text-slate-950">←/→</kbd> 移動、<kbd class="rounded bg-amber-400 px-1 font-bold text-slate-950">↑/↓</kbd> 調仰角，按住 <kbd class="rounded bg-amber-400 px-1 font-bold text-slate-950">空白鍵</kbd> 蓄力放開即開火！
-        </p>
-      </div>
-    </div>
-
-    <!-- 右欄：填入玩家資訊與 1v1~5v5 房間配對 (col 7) -->
-    <div class="lg:col-span-7 rounded-3xl border border-sky-400/20 bg-slate-900/85 p-6 shadow-2xl space-y-6 backdrop-blur-md">
-      <div class="flex flex-wrap items-center justify-between gap-3 border-b border-slate-700/60 pb-4">
-        <div>
-          <div class="flex flex-wrap items-center gap-2">
-            <h2 class="text-lg font-black text-white">高空連線交鋒大廳 (1v1 ~ 5v5)</h2>
-            <span
-              class="inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-[10px] font-extrabold"
-              :class="
-                signalingInfo.mode === 'custom'
-                  ? 'border-emerald-500/40 bg-emerald-500/20 text-emerald-300'
-                  : signalingInfo.mode === 'fallback-public'
-                    ? 'border-amber-400/50 bg-amber-500/20 text-amber-300'
-                    : 'border-sky-400/40 bg-sky-500/20 text-sky-300'
-              "
-            >
-              📡 {{ signalingInfo.label }}
-            </span>
-          </div>
-          <p class="text-xs text-slate-300">填寫玩家名稱，與好友建立點對點空域連線或單機同樂</p>
-        </div>
-
-        <div class="inline-flex rounded-xl bg-slate-950/60 p-1 border border-slate-700/60 text-xs">
-          <button
-            type="button"
-            class="rounded-lg px-3.5 py-1.5 font-extrabold transition cursor-pointer"
-            :class="
-              gameMode === 'p2p'
-                ? 'bg-amber-400 text-slate-950 shadow'
-                : 'text-slate-400 hover:text-slate-200'
-            "
-            @click="gameMode = 'p2p'"
-          >
-            🌐 多人連線大廳 (P2P)
-          </button>
-          <button
-            type="button"
-            class="rounded-lg px-3.5 py-1.5 font-extrabold transition cursor-pointer"
-            :class="
-              gameMode === 'hotseat'
-                ? 'bg-amber-400 text-slate-950 shadow'
-                : 'text-slate-400 hover:text-slate-200'
-            "
-            @click="handleDisconnect(); gameMode = 'hotseat'"
-          >
-            🖥️ 單機 / 挑戰電腦
-          </button>
-        </div>
-      </div>
-
-      <!-- P2P 連線對戰表單 -->
-      <div v-if="gameMode === 'p2p'" class="space-y-5">
-        <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          <div class="space-y-1.5">
-            <label class="block text-xs font-extrabold text-amber-400">
-              步驟 1：輸入你的玩家暱稱 (Player Name)
-            </label>
+      <!-- 欄 3：作戰編制與對戰大廳 (4 欄) -->
+      <div class="lg:col-span-4 flex flex-col justify-between rounded-3xl border-2 border-sky-400/30 bg-slate-900/90 p-4 shadow-2xl backdrop-blur-md space-y-3">
+        <!-- P2P 模式 -->
+        <div v-if="gameMode === 'p2p'" class="space-y-3">
+          <!-- 玩家名稱輸入 -->
+          <div class="flex items-center justify-between gap-2 border-b border-slate-700/60 pb-2">
+            <span class="text-xs font-black text-amber-300">👤 指揮官代號</span>
             <input
               v-model="session.localPlayerName"
               type="text"
               maxlength="16"
               :disabled="session.phase !== 'idle' && session.phase !== 'error'"
-              placeholder="例如：TankMaster"
-              class="w-full rounded-xl border-2 border-slate-700/60 bg-slate-800/80 px-3.5 py-2.5 text-sm font-bold text-slate-100 placeholder-slate-500 focus:border-amber-300 focus:outline-none disabled:opacity-60"
+              placeholder="Commander"
+              class="rounded-xl border border-slate-700 bg-slate-950 px-2.5 py-1 text-xs font-bold text-amber-300 placeholder-slate-500 focus:border-amber-400 focus:outline-none disabled:opacity-60"
             />
           </div>
 
-          <div class="space-y-1.5">
-            <label class="block text-xs font-extrabold text-amber-400">
-              選擇你的出戰坦克 (進房前後皆可切換)
-            </label>
-            <div class="grid grid-cols-3 gap-1.5">
-              <button
-                v-for="tank in TANK_LIST"
-                :key="tank.id"
-                type="button"
-                class="flex items-center gap-1.5 rounded-xl border-2 px-2 py-1.5 text-left transition cursor-pointer"
-                :class="
-                  session.selectedTankId === tank.id
-                    ? 'border-amber-300 bg-amber-200 text-amber-800 shadow'
-                    : 'border-slate-700/60 bg-slate-800/80 text-slate-300 hover:border-teal-700'
-                "
-                @click="selectTankArchetype(tank.id)"
-              >
-                <img
-                  :src="tank.getSprites('A').hullUrl"
-                  :alt="tank.name"
-                  class="h-7 w-7 shrink-0 object-contain"
-                />
-                <div class="min-w-0">
-                  <div class="truncate text-[11px] font-black text-slate-100">{{ tank.name }}</div>
-                  <div class="text-[9px] text-amber-400">HP {{ tank.maxHp }}</div>
-                </div>
-              </button>
-            </div>
-          </div>
-        </div>
-
-        <div v-if="session.phase === 'idle' || session.phase === 'error'" class="space-y-4">
-          <label class="block text-xs font-extrabold text-amber-400">
-            步驟 2：建立新房間 (最多 10 人)，或輸入朋友的 6 碼房號加入
-          </label>
-
-          <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <div class="flex flex-col justify-between rounded-2xl border-2 border-amber-500/60 bg-slate-800/80 p-4 space-y-3">
-              <div>
-                <div class="text-sm font-extrabold text-amber-400">👑 我是房主 (建立房間)</div>
-                <p class="mt-1 text-xs text-slate-300">
-                  自動避開重複房號，產生專屬 6 碼與邀請連結，最多可容納 10 人分隊。
-                </p>
-                <input
-                  v-model="roomName"
-                  type="text"
-                  maxlength="24"
-                  placeholder="房間名稱（選填，顯示在房間列表）"
-                  class="mt-2 w-full rounded-xl border-2 border-amber-500/60 bg-white px-3 py-2 text-xs font-bold text-slate-100 placeholder-slate-500 focus:border-amber-300 focus:outline-none"
-                />
+          <!-- 閒置狀態：建立房間或輸入房號 -->
+          <div v-if="session.phase === 'idle' || session.phase === 'error'" class="space-y-3">
+            <!-- 建立房間卡 -->
+            <div class="rounded-2xl border-2 border-amber-400/50 bg-slate-800/80 p-3 space-y-2 shadow-md">
+              <div class="flex items-center justify-between text-xs font-black text-amber-300">
+                <span>👑 建立新戰局 (HOST)</span>
+                <span class="text-[10px] text-amber-200/70">最多 10 人 (5v5)</span>
               </div>
+              <input
+                v-model="roomName"
+                type="text"
+                maxlength="24"
+                placeholder="戰局名稱（選填）"
+                class="w-full rounded-xl border border-slate-700 bg-slate-900/90 px-3 py-1.5 text-xs text-white placeholder-slate-400 focus:border-amber-300 focus:outline-none"
+              />
               <button
                 type="button"
-                class="w-full rounded-xl bg-gradient-to-r from-amber-400 to-orange-500 py-3 text-xs font-black text-slate-950 shadow-lg hover:from-amber-300 hover:to-orange-400 transition cursor-pointer"
+                class="w-full rounded-xl bg-gradient-to-r from-amber-400 via-yellow-400 to-orange-500 py-2.5 text-xs font-black text-slate-950 shadow-lg hover:from-amber-300 hover:to-orange-400 transition cursor-pointer"
                 @click="handleHost"
               >
-                ➕ 建立房間取得 6 碼房號
+                ➕ 建立戰局取得 6 碼代碼
               </button>
             </div>
 
-            <div class="flex flex-col justify-between rounded-2xl border-2 border-slate-700/60 bg-slate-800/80 p-4 space-y-3">
-              <div class="space-y-2">
-                <div class="text-sm font-extrabold text-sky-700">🚀 我是隊友/對手 (加入房間)</div>
+            <!-- 輸入房號加入卡 -->
+            <div class="rounded-2xl border-2 border-sky-400/50 bg-slate-800/80 p-3 space-y-2 shadow-md">
+              <div class="text-xs font-black text-sky-200">🚀 加入好友戰局 (JOIN)</div>
+              <div class="flex items-center gap-1.5">
                 <input
                   v-model="joinInputCode"
                   type="text"
                   maxlength="6"
-                  placeholder="輸入 6 碼房號 (如 AB3K9P)"
-                  class="w-full rounded-xl border-2 border-slate-700/60 bg-white px-3 py-2 font-mono text-sm font-black uppercase tracking-widest text-amber-400 placeholder-slate-500 focus:border-amber-300 focus:outline-none"
+                  placeholder="輸入 6 碼房號"
+                  class="flex-1 rounded-xl border border-slate-700 bg-slate-900/90 px-3 py-1.5 font-mono text-xs font-black uppercase tracking-widest text-amber-300 placeholder-slate-400 focus:border-sky-300 focus:outline-none"
                   @keyup.enter="handleJoin"
                 />
-              </div>
-              <button
-                type="button"
-                :disabled="joinInputCode.trim().length !== 6"
-                class="w-full rounded-xl bg-gradient-to-r from-cyan-300 to-sky-400 py-3 text-xs font-black text-slate-950 shadow-lg hover:from-cyan-200 hover:to-sky-300 disabled:opacity-40 disabled:cursor-not-allowed transition cursor-pointer"
-                @click="handleJoin"
-              >
-                🔗 連線加入房間
-              </button>
-            </div>
-          </div>
-
-          <!-- 房間列表：只有連線到自建信令伺服器時才有；否則降級為輸入房號 -->
-          <div class="rounded-2xl border-2 border-slate-700/60 bg-slate-800/80 p-4 space-y-2.5">
-            <div class="flex items-center justify-between gap-2">
-              <div class="text-sm font-extrabold text-sky-700">📋 房間列表</div>
-              <button
-                v-if="directory.available"
-                type="button"
-                :disabled="roomListLoading"
-                class="rounded-lg bg-teal-100 px-2.5 py-1 text-xs font-bold text-slate-100 hover:bg-teal-200 disabled:opacity-50 cursor-pointer"
-                @click="refreshRoomList"
-              >
-                {{ roomListLoading ? '更新中…' : '🔄 重新整理' }}
-              </button>
-            </div>
-
-            <p v-if="!directory.available" class="text-xs text-slate-400">
-              目前使用公共信令伺服器，沒有房間列表功能。請向房主索取 6 碼房號後輸入加入；
-              若要啟用列表，請部署自建信令伺服器並設定 <code class="rounded bg-teal-100 px-1">VITE_PEER_HOST</code>。
-            </p>
-            <p v-else-if="roomListError" class="text-xs text-amber-400">
-              ⚠️ 無法連線到房間目錄（自建信令伺服器可能離線）。仍可輸入房號加入。
-            </p>
-            <p v-else-if="roomListLoaded && roomList.length === 0" class="text-xs text-slate-400">
-              目前沒有房間，建立一間吧！
-            </p>
-
-            <ul v-if="directory.available && roomList.length > 0" class="space-y-1.5">
-              <li
-                v-for="room in roomList"
-                :key="room.code"
-                class="flex items-center gap-2.5 rounded-xl border border-slate-700/60 bg-slate-800/80 px-3 py-2"
-              >
-                <span
-                  class="shrink-0 rounded-full px-2 py-0.5 text-[10px] font-extrabold"
-                  :class="room.status === 'waiting' ? 'bg-emerald-200 text-emerald-700' : 'bg-teal-200 text-slate-300'"
-                >
-                  {{ room.status === 'waiting' ? '等待中' : '遊戲中' }}
-                </span>
-                <div class="min-w-0 flex-1">
-                  <div class="truncate text-xs font-black text-slate-100">{{ room.name }}</div>
-                  <div class="truncate text-[10px] text-slate-300">
-                    房主 {{ room.hostName }} · {{ formatMapName(room.mapId) }}<template v-if="room.disconnectPolicy === 'bot'"> · 斷線由電腦接手</template>
-                  </div>
-                </div>
-                <span class="shrink-0 font-mono text-xs font-bold text-amber-400">
-                  {{ room.players }}/{{ room.maxPlayers }}
-                </span>
                 <button
                   type="button"
-                  :disabled="room.status !== 'waiting' || room.players >= room.maxPlayers"
-                  class="shrink-0 rounded-lg bg-gradient-to-r from-cyan-300 to-sky-400 px-3 py-1 text-xs font-black text-slate-950 hover:from-cyan-200 hover:to-sky-300 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
-                  @click="joinFromList(room)"
+                  :disabled="joinInputCode.trim().length !== 6"
+                  class="rounded-xl bg-gradient-to-r from-sky-400 to-blue-600 px-4 py-1.5 text-xs font-black text-white shadow-md hover:from-sky-300 hover:to-blue-500 disabled:opacity-40 disabled:cursor-not-allowed transition cursor-pointer"
+                  @click="handleJoin"
                 >
-                  加入
+                  連線
                 </button>
-              </li>
-            </ul>
-          </div>
-        </div>
+              </div>
+            </div>
 
-        <div
-          v-else-if="session.phase === 'joining' || session.phase === 'hosting'"
-          class="rounded-2xl border-2 border-slate-700/60 bg-slate-800/70 p-5 text-center space-y-3"
-        >
-          <div class="text-sm font-bold text-slate-300 animate-pulse">
-            🔄 正在建立/連線至房間 {{ session.roomCode }}...
+            <!-- 公共房間目錄雷達 -->
+            <div class="rounded-2xl border border-sky-400/30 bg-slate-800/70 p-3 space-y-2 text-xs shadow-md">
+              <div class="flex items-center justify-between">
+                <span class="font-black text-slate-300">📡 公開戰局雷達</span>
+                <button
+                  v-if="directory.available"
+                  type="button"
+                  :disabled="roomListLoading"
+                  class="rounded-lg bg-slate-800 px-2 py-0.5 text-[10px] font-bold text-slate-300 hover:text-white cursor-pointer"
+                  @click="refreshRoomList"
+                >
+                  {{ roomListLoading ? '更新中…' : '🔄 重新整理' }}
+                </button>
+              </div>
+
+              <div v-if="!directory.available" class="text-[11px] text-slate-400">
+                目前使用公共信令，請直接輸入房號加入。
+              </div>
+              <div v-else-if="roomListLoaded && roomList.length === 0" class="text-[11px] text-slate-400">
+                目前沒有等待中的房間，建立一間吧！
+              </div>
+              <ul v-else-if="roomList.length > 0" class="space-y-1.5 max-h-36 overflow-y-auto pr-1">
+                <li
+                  v-for="room in roomList"
+                  :key="room.code"
+                  class="flex items-center justify-between gap-1.5 rounded-xl border border-slate-700/60 bg-slate-900/80 p-2"
+                >
+                  <div class="min-w-0 flex-1">
+                    <div class="truncate text-xs font-black text-white">{{ room.name }}</div>
+                    <div class="truncate text-[10px] text-slate-400 font-mono">
+                      房主 {{ room.hostName }} · {{ formatMapName(room.mapId) }}
+                    </div>
+                  </div>
+                  <span class="shrink-0 font-mono text-[10px] font-bold text-amber-400">
+                    {{ room.players }}/{{ room.maxPlayers }}
+                  </span>
+                  <button
+                    type="button"
+                    :disabled="room.status !== 'waiting' || room.players >= room.maxPlayers"
+                    class="shrink-0 rounded-lg bg-amber-400 px-2 py-1 text-[10px] font-black text-slate-950 hover:bg-amber-300 disabled:opacity-40 cursor-pointer"
+                    @click="joinFromList(room)"
+                  >
+                    加入
+                  </button>
+                </li>
+              </ul>
+            </div>
           </div>
-          <button
-            type="button"
-            class="rounded-lg border border-slate-700/60 px-4 py-1.5 text-xs text-slate-300 hover:text-slate-100 cursor-pointer"
-            @click="handleDisconnect"
+
+          <!-- 連線中狀態 -->
+          <div
+            v-else-if="session.phase === 'joining' || session.phase === 'hosting'"
+            class="rounded-2xl border-2 border-slate-700 bg-slate-950/70 p-6 text-center space-y-3"
           >
-            取消
-          </button>
-        </div>
-
-        <!-- 已進入房間大廳：顯示房號邀請連結 + 5v5 兩隊編制列表 (含每位玩家的 2.5D 坦克縮圖) -->
-        <div
-          v-else-if="session.phase === 'connected'"
-          class="rounded-2xl border-2 border-emerald-600/60 bg-slate-800/80 p-4 space-y-4"
-        >
-          <div class="flex flex-wrap items-center justify-between gap-2 border-b border-slate-700/60 pb-3">
-            <div class="flex items-center gap-2">
-              <span class="text-xs font-extrabold text-emerald-700">
-                ● 房間大廳 ({{ session.roster.length }} / {{ MAX_TOTAL_PLAYERS }} 人)
-              </span>
-              <span class="rounded-lg bg-white px-2.5 py-0.5 font-mono text-base font-black tracking-widest text-amber-400 border border-amber-500/60">
-                {{ session.roomCode }}
-              </span>
+            <div class="text-xs font-black text-amber-300 animate-pulse">
+              🔄 正在連線至房間 {{ session.roomCode }}...
             </div>
-            <div class="flex items-center gap-1.5">
-              <button
-                type="button"
-                class="rounded-lg bg-teal-100 px-2.5 py-1 text-xs font-bold text-slate-100 hover:bg-teal-200 cursor-pointer"
-                @click="copyRoomCode"
-              >
-                {{ copied ? '✓ 已複製房號' : '複製房號' }}
-              </button>
-              <button
-                type="button"
-                class="rounded-lg bg-amber-400 px-2.5 py-1 text-xs font-extrabold text-slate-950 hover:bg-amber-300 cursor-pointer"
-                @click="copyInviteLink"
-              >
-                {{ copiedLink ? '✓ 已複製連結' : '🔗 複製邀請連結' }}
-              </button>
-            </div>
-          </div>
-
-          <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            <!-- Team A (琥珀隊) -->
-            <div class="rounded-xl border-2 border-amber-500/60 bg-slate-800/80 p-3 space-y-2.5">
-              <div class="flex items-center justify-between">
-                <span class="text-xs font-extrabold text-amber-400">
-                  琥珀隊 Team A ({{ teamARoster.length }}/{{ MAX_PLAYERS_PER_TEAM }})
-                </span>
-                <button
-                  type="button"
-                  :disabled="teamARoster.length >= MAX_PLAYERS_PER_TEAM"
-                  class="rounded-lg bg-amber-400/25 px-2 py-0.5 text-[11px] font-bold text-amber-800 hover:bg-amber-400/40 disabled:opacity-40 cursor-pointer"
-                  @click="handleSwitchTeam('A')"
-                >
-                  加入琥珀隊
-                </button>
-              </div>
-              <ul class="space-y-1.5 text-xs">
-                <li
-                  v-for="member in teamARoster"
-                  :key="member.id"
-                  class="flex items-center justify-between rounded-lg bg-slate-800/80 px-2.5 py-1.5 border border-amber-500/40"
-                >
-                  <div class="flex items-center gap-2">
-                    <img
-                      :src="TANK_REGISTRY[member.tankId]?.getSprites('A').hullUrl"
-                      class="h-7 w-7 object-contain"
-                      alt=""
-                    />
-                    <div>
-                      <div class="font-bold text-slate-100">
-                        {{ member.name }}
-                        <span v-if="member.id === session.localPlayerId" class="text-[10px] text-amber-400">(你)</span>
-                      </div>
-                      <div class="text-[10px] text-amber-400">
-                        {{ TANK_REGISTRY[member.tankId]?.name }}
-                      </div>
-                    </div>
-                  </div>
-                  <span
-                    class="font-mono text-[10px] font-bold"
-                    :class="member.isHost || member.ready ? 'text-emerald-700' : 'text-slate-400'"
-                  >
-                    {{ member.isHost ? '👑 房主' : member.ready ? '✅ 準備完畢' : '⏳ 未準備' }}
-                  </span>
-                </li>
-                <li
-                  v-for="n in MAX_PLAYERS_PER_TEAM - teamARoster.length"
-                  :key="`a-empty-${n}`"
-                  class="rounded-lg border border-dashed border-slate-700/60 px-2.5 py-2 text-center text-[11px] text-slate-500"
-                >
-                  空位
-                </li>
-              </ul>
-            </div>
-
-            <!-- Team B (皇家藍隊) -->
-            <div class="rounded-xl border-2 border-slate-700/60 bg-slate-800/80 p-3 space-y-2.5">
-              <div class="flex items-center justify-between">
-                <span class="text-xs font-extrabold text-sky-700">
-                  皇家藍隊 Team B ({{ teamBRoster.length }}/{{ MAX_PLAYERS_PER_TEAM }})
-                </span>
-                <button
-                  type="button"
-                  :disabled="teamBRoster.length >= MAX_PLAYERS_PER_TEAM"
-                  class="rounded-lg bg-sky-400/25 px-2 py-0.5 text-[11px] font-bold text-slate-300 hover:bg-sky-400/40 disabled:opacity-40 cursor-pointer"
-                  @click="handleSwitchTeam('B')"
-                >
-                  加入皇家藍隊
-                </button>
-              </div>
-              <ul class="space-y-1.5 text-xs">
-                <li
-                  v-for="member in teamBRoster"
-                  :key="member.id"
-                  class="flex items-center justify-between rounded-lg bg-slate-800/80 px-2.5 py-1.5 border border-slate-700/60"
-                >
-                  <div class="flex items-center gap-2">
-                    <img
-                      :src="TANK_REGISTRY[member.tankId]?.getSprites('B').hullUrl"
-                      class="h-7 w-7 object-contain"
-                      alt=""
-                    />
-                    <div>
-                      <div class="font-bold text-slate-100">
-                        {{ member.name }}
-                        <span v-if="member.id === session.localPlayerId" class="text-[10px] text-sky-700">(你)</span>
-                      </div>
-                      <div class="text-[10px] text-sky-700">
-                        {{ TANK_REGISTRY[member.tankId]?.name }}
-                      </div>
-                    </div>
-                  </div>
-                  <span
-                    class="font-mono text-[10px] font-bold"
-                    :class="member.isHost || member.ready ? 'text-emerald-700' : 'text-slate-400'"
-                  >
-                    {{ member.isHost ? '👑 房主' : member.ready ? '✅ 準備完畢' : '⏳ 未準備' }}
-                  </span>
-                </li>
-                <li
-                  v-for="n in MAX_PLAYERS_PER_TEAM - teamBRoster.length"
-                  :key="`b-empty-${n}`"
-                  class="rounded-lg border border-dashed border-slate-700/60 px-2.5 py-2 text-center text-[11px] text-slate-500"
-                >
-                  空位
-                </li>
-              </ul>
-            </div>
-          </div>
-
-          <div class="flex items-center justify-between gap-3 pt-1">
             <button
               type="button"
-              class="rounded-xl border border-slate-700/60 px-4 py-2.5 text-xs font-bold text-slate-300 hover:text-slate-100 cursor-pointer"
+              class="rounded-xl border border-slate-700 px-4 py-1.5 text-xs font-bold text-slate-300 hover:text-white cursor-pointer"
               @click="handleDisconnect"
             >
-              離開房間
+              取消連線
             </button>
+          </div>
 
-            <button
-              v-if="session.isHost"
-              type="button"
-              :disabled="!canStartMatch"
-              class="flex-1 rounded-xl bg-gradient-to-r from-emerald-400 to-green-500 py-3 text-sm font-black text-slate-950 shadow-lg hover:from-emerald-300 hover:to-green-400 disabled:opacity-40 disabled:cursor-not-allowed transition cursor-pointer"
-              @click="handleStartP2PBattle"
-            >
-              {{
-                canStartMatch
-                  ? `🚀 鎖定房間並開戰 (${teamARoster.length}v${teamBRoster.length})`
-                  : !allGuestsReady
-                    ? '等待所有玩家按下「準備完畢」...'
-                    : '等待兩隊至少各 1 名玩家...'
-              }}
-            </button>
-            <button
-              v-else
-              type="button"
-              class="flex-1 rounded-xl py-3 text-sm font-black shadow-lg transition cursor-pointer"
-              :class="
-                localReady
-                  ? 'border-2 border-emerald-400 bg-white text-emerald-700'
-                  : 'bg-gradient-to-r from-emerald-400 to-green-500 text-slate-950 hover:from-emerald-300 hover:to-green-400'
-              "
-              @click="handleToggleReady"
-            >
-              {{ localReady ? '✅ 已準備（點擊取消）' : '準備完畢' }}
-            </button>
+          <!-- 已進入房間大廳 (Ready Room 雙隊編制) -->
+          <div v-else-if="session.phase === 'connected'" class="space-y-3">
+            <div class="flex items-center justify-between border-b border-slate-700/60 pb-2">
+              <div class="flex items-center gap-1.5">
+                <span class="text-xs font-black text-emerald-400">● 戰鬥室</span>
+                <span class="rounded-lg bg-slate-950 px-2.5 py-0.5 font-mono text-sm font-black tracking-widest text-amber-400 border border-amber-400/40">
+                  {{ session.roomCode }}
+                </span>
+              </div>
+              <div class="flex items-center gap-1">
+                <button
+                  type="button"
+                  class="rounded-lg bg-slate-800 px-2 py-1 text-[10px] font-black text-slate-200 hover:text-white cursor-pointer"
+                  @click="copyRoomCode"
+                >
+                  {{ copied ? '✓ 已複製' : '複製代號' }}
+                </button>
+                <button
+                  type="button"
+                  class="rounded-lg bg-amber-400 px-2 py-1 text-[10px] font-black text-slate-950 hover:bg-amber-300 cursor-pointer"
+                  @click="copyInviteLink"
+                >
+                  {{ copiedLink ? '✓ 已複製' : '🔗 邀請' }}
+                </button>
+              </div>
+            </div>
+
+            <!-- 兩隊名冊 (Team A vs Team B) -->
+            <div class="grid grid-cols-2 gap-2 text-xs">
+              <!-- Team A -->
+              <div class="rounded-2xl border-2 border-amber-400/50 bg-slate-800/80 p-2.5 space-y-2 shadow-md">
+                <div class="flex items-center justify-between">
+                  <span class="text-[11px] font-black text-amber-300">
+                    🟠 琥珀隊 ({{ teamARoster.length }}/5)
+                  </span>
+                  <button
+                    type="button"
+                    :disabled="teamARoster.length >= MAX_PLAYERS_PER_TEAM"
+                    class="rounded-lg bg-amber-400 px-2 py-0.5 text-[10px] font-black text-slate-950 hover:bg-amber-300 disabled:opacity-40 cursor-pointer shadow-sm"
+                    @click="handleSwitchTeam('A')"
+                  >
+                    加入
+                  </button>
+                </div>
+                <div class="space-y-1">
+                  <div
+                    v-for="m in teamARoster"
+                    :key="m.id"
+                    class="flex items-center justify-between rounded-xl bg-slate-900/90 px-2.5 py-1.5 border border-amber-400/30"
+                  >
+                    <div class="truncate font-bold text-slate-100 text-[11px]">
+                      {{ m.name }}
+                      <span v-if="m.id === session.localPlayerId" class="text-amber-400">(你)</span>
+                    </div>
+                    <span
+                      class="shrink-0 font-mono text-[10px] font-black"
+                      :class="m.isHost || m.ready ? 'text-emerald-400' : 'text-amber-300/70'"
+                    >
+                      {{ m.isHost ? '👑 房主' : m.ready ? '✅ 準備' : '⏳ 等待' }}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Team B -->
+              <div class="rounded-2xl border-2 border-sky-400/50 bg-slate-800/80 p-2.5 space-y-2 shadow-md">
+                <div class="flex items-center justify-between">
+                  <span class="text-[11px] font-black text-sky-200">
+                    🔵 皇家藍隊 ({{ teamBRoster.length }}/5)
+                  </span>
+                  <button
+                    type="button"
+                    :disabled="teamBRoster.length >= MAX_PLAYERS_PER_TEAM"
+                    class="rounded-lg bg-sky-400 px-2 py-0.5 text-[10px] font-black text-slate-950 hover:bg-sky-300 disabled:opacity-40 cursor-pointer shadow-sm"
+                    @click="handleSwitchTeam('B')"
+                  >
+                    加入
+                  </button>
+                </div>
+                <div class="space-y-1">
+                  <div
+                    v-for="m in teamBRoster"
+                    :key="m.id"
+                    class="flex items-center justify-between rounded-xl bg-slate-900/90 px-2.5 py-1.5 border border-sky-400/30"
+                  >
+                    <div class="truncate font-bold text-slate-100 text-[11px]">
+                      {{ m.name }}
+                      <span v-if="m.id === session.localPlayerId" class="text-sky-300">(你)</span>
+                    </div>
+                    <span
+                      class="shrink-0 font-mono text-[10px] font-black"
+                      :class="m.isHost || m.ready ? 'text-emerald-400' : 'text-sky-200/70'"
+                    >
+                      {{ m.isHost ? '👑 房主' : m.ready ? '✅ 準備' : '⏳ 等待' }}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- 房主設定：斷線處置 -->
+            <div v-if="session.isHost" class="flex items-center justify-between rounded-xl border border-sky-400/30 bg-slate-800/80 px-3 py-2 text-[11px] shadow-sm">
+              <span class="font-black text-slate-200">斷線替補策略:</span>
+              <div class="inline-flex rounded-lg bg-slate-950/80 p-0.5 border border-slate-700">
+                <button
+                  type="button"
+                  class="rounded px-2.5 py-0.5 text-[10px] font-black transition cursor-pointer"
+                  :class="session.disconnectPolicy === 'forfeit' ? 'bg-amber-400 text-slate-950 shadow' : 'text-slate-400 hover:text-white'"
+                  @click="selectDisconnectPolicy('forfeit')"
+                >
+                  認輸陣亡
+                </button>
+                <button
+                  type="button"
+                  class="rounded px-2.5 py-0.5 text-[10px] font-black transition cursor-pointer"
+                  :class="session.disconnectPolicy === 'bot' ? 'bg-amber-400 text-slate-950 shadow' : 'text-slate-400 hover:text-white'"
+                  @click="selectDisconnectPolicy('bot')"
+                >
+                  電腦代打
+                </button>
+              </div>
+            </div>
           </div>
         </div>
 
+        <!-- 單機熱座 / CPU 對抗模式 -->
+        <div v-else class="space-y-3">
+          <div class="flex items-center justify-between border-b border-slate-700/60 pb-2">
+            <span class="text-xs font-black text-amber-300">⚔️ 對戰編制規模</span>
+            <div class="inline-flex gap-1">
+              <button
+                v-for="n in [1, 2, 3, 4, 5]"
+                :key="n"
+                type="button"
+                class="rounded-lg border-2 px-2.5 py-0.5 text-[11px] font-black transition cursor-pointer"
+                :class="
+                  hotseatCountPerTeam === n
+                    ? 'border-amber-400 bg-amber-400 text-slate-950 shadow-md'
+                    : 'border-slate-700 bg-slate-800 text-slate-300 hover:border-amber-400/50'
+                "
+                @click="hotseatCountPerTeam = n; soundController.play('ui_click')"
+              >
+                {{ n }}v{{ n }}
+              </button>
+            </div>
+          </div>
+
+          <!-- 兩隊陣容與電腦操控設定 -->
+          <div class="grid grid-cols-1 gap-2.5 sm:grid-cols-2 text-xs">
+            <!-- Team A -->
+            <div class="rounded-2xl border-2 border-amber-400/50 bg-slate-800/80 p-3 space-y-2.5 shadow-md">
+              <div class="flex items-center justify-between">
+                <span class="text-[11px] font-black text-amber-300">🟠 琥珀隊</span>
+                <div class="inline-flex overflow-hidden rounded-lg border border-amber-500/50 text-[10px] font-black">
+                  <button
+                    type="button"
+                    class="px-2.5 py-0.5 transition cursor-pointer"
+                    :class="!hotseatBotTeams.A ? 'bg-amber-400 text-slate-950' : 'bg-slate-900 text-slate-300 hover:text-white'"
+                    @click="hotseatBotTeams.A = false; soundController.play('ui_click')"
+                  >
+                    👤 玩家
+                  </button>
+                  <button
+                    type="button"
+                    class="px-2.5 py-0.5 transition cursor-pointer"
+                    :class="hotseatBotTeams.A ? 'bg-amber-400 text-slate-950' : 'bg-slate-900 text-slate-300 hover:text-white'"
+                    @click="hotseatBotTeams.A = true; soundController.play('ui_click')"
+                  >
+                    🤖 CPU
+                  </button>
+                </div>
+              </div>
+
+              <!-- 電腦強度選擇 -->
+              <div v-if="hotseatBotTeams.A" class="flex items-center gap-1 pt-1 border-t border-amber-400/20">
+                <span class="shrink-0 text-[10px] font-black text-amber-300">強度:</span>
+                <button
+                  v-for="[level, spec] in BOT_LEVELS"
+                  :key="level"
+                  type="button"
+                  class="flex-1 rounded-md px-1 py-0.5 text-[9px] font-black transition cursor-pointer"
+                  :class="
+                    hotseatBotLevels.A === level
+                      ? 'bg-amber-400 text-slate-950 font-black shadow-sm'
+                      : 'bg-slate-900/80 text-slate-300 hover:text-white'
+                  "
+                  @click="hotseatBotLevels.A = level; soundController.play('ui_click')"
+                >
+                  {{ spec.label }}
+                </button>
+              </div>
+
+              <!-- 出戰坦克輪替 -->
+              <div
+                v-for="idx in hotseatCountPerTeam"
+                :key="`solo-a-${idx}`"
+                class="flex items-center justify-between gap-1 rounded-xl bg-slate-900/90 p-2 border border-amber-400/25"
+              >
+                <span class="text-[11px] font-black text-amber-300">A{{ idx }}</span>
+                <div class="flex gap-1">
+                  <button
+                    v-for="t in TANK_LIST"
+                    :key="t.id"
+                    type="button"
+                    class="rounded-lg px-2 py-0.5 text-[10px] font-black transition cursor-pointer"
+                    :class="
+                      (hotseatTeamATanks[idx - 1] ?? tankAt(idx - 1)) === t.id
+                        ? 'bg-amber-400 text-slate-950 font-black shadow'
+                        : 'bg-slate-800 text-slate-300 hover:text-white hover:bg-slate-700'
+                    "
+                    @click="setHotseatSlotTank('A', idx - 1, t.id)"
+                  >
+                    {{ t.name.split(' ')[0] }}
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <!-- Team B -->
+            <div class="rounded-2xl border-2 border-sky-400/50 bg-slate-800/80 p-3 space-y-2.5 shadow-md">
+              <div class="flex items-center justify-between">
+                <span class="text-[11px] font-black text-sky-200">🔵 皇家藍隊</span>
+                <div class="inline-flex overflow-hidden rounded-lg border border-sky-500/50 text-[10px] font-black">
+                  <button
+                    type="button"
+                    class="px-2.5 py-0.5 transition cursor-pointer"
+                    :class="!hotseatBotTeams.B ? 'bg-sky-400 text-slate-950' : 'bg-slate-900 text-slate-300 hover:text-white'"
+                    @click="hotseatBotTeams.B = false; soundController.play('ui_click')"
+                  >
+                    👤 玩家
+                  </button>
+                  <button
+                    type="button"
+                    class="px-2.5 py-0.5 transition cursor-pointer"
+                    :class="hotseatBotTeams.B ? 'bg-sky-400 text-slate-950' : 'bg-slate-900 text-slate-300 hover:text-white'"
+                    @click="hotseatBotTeams.B = true; soundController.play('ui_click')"
+                  >
+                    🤖 CPU
+                  </button>
+                </div>
+              </div>
+
+              <!-- 電腦強度選擇 -->
+              <div v-if="hotseatBotTeams.B" class="flex items-center gap-1 pt-1 border-t border-sky-400/20">
+                <span class="shrink-0 text-[10px] font-black text-sky-200">強度:</span>
+                <button
+                  v-for="[level, spec] in BOT_LEVELS"
+                  :key="level"
+                  type="button"
+                  class="flex-1 rounded-md px-1 py-0.5 text-[9px] font-black transition cursor-pointer"
+                  :class="
+                    hotseatBotLevels.B === level
+                      ? 'bg-sky-400 text-slate-950 font-black shadow-sm'
+                      : 'bg-slate-900/80 text-slate-300 hover:text-white'
+                  "
+                  @click="hotseatBotLevels.B = level; soundController.play('ui_click')"
+                >
+                  {{ spec.label }}
+                </button>
+              </div>
+
+              <!-- 出戰坦克輪替 -->
+              <div
+                v-for="idx in hotseatCountPerTeam"
+                :key="`solo-b-${idx}`"
+                class="flex items-center justify-between gap-1 rounded-xl bg-slate-900/90 p-2 border border-sky-400/25"
+              >
+                <span class="text-[11px] font-black text-sky-200">B{{ idx }}</span>
+                <div class="flex gap-1">
+                  <button
+                    v-for="t in TANK_LIST"
+                    :key="t.id"
+                    type="button"
+                    class="rounded-lg px-2 py-0.5 text-[10px] font-black transition cursor-pointer"
+                    :class="
+                      (hotseatTeamBTanks[idx - 1] ?? tankAt(idx)) === t.id
+                        ? 'bg-sky-400 text-slate-950 font-black shadow'
+                        : 'bg-slate-800 text-slate-300 hover:text-white hover:bg-slate-700'
+                    "
+                    @click="setHotseatSlotTank('B', idx - 1, t.id)"
+                  >
+                    {{ t.name.split(' ')[0] }}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 錯誤警告條 -->
         <div
           v-if="session.errorMessage"
-          class="flex items-center justify-between rounded-xl border-2 border-rose-500 bg-rose-100 px-4 py-2.5 text-xs font-bold text-rose-800"
+          class="flex items-center justify-between rounded-xl border border-rose-500 bg-rose-500/20 px-3 py-1.5 text-xs text-rose-300"
         >
           <span>⚠️ {{ session.errorMessage }}</span>
           <button
             type="button"
-            class="underline hover:text-slate-100 cursor-pointer"
+            class="text-[10px] underline hover:text-white cursor-pointer"
             @click="session.errorMessage = undefined"
           >
             關閉
           </button>
         </div>
-      </div>
 
-      <!-- 單機雙隊熱座表單 (支援選擇 1v1 ~ 5v5 與每台出戰坦克型號) -->
-      <div v-else class="space-y-4">
-        <div class="space-y-2">
-          <label class="block text-xs font-extrabold text-amber-400">
-            步驟 1：選擇每隊出戰坦克數量 (1v1 至 5v5)
-          </label>
-          <div class="grid grid-cols-5 gap-2">
+        <!-- 底部出擊控制區 (巨大街機發射鈕) -->
+        <div class="pt-2 border-t border-slate-700/60 flex items-center gap-2">
+          <button
+            v-if="session.phase === 'connected'"
+            type="button"
+            class="rounded-xl border border-slate-700 bg-slate-800 px-3 py-2.5 text-xs font-bold text-slate-300 hover:text-white transition cursor-pointer"
+            @click="handleDisconnect"
+          >
+            離開
+          </button>
+
+          <!-- P2P 開戰鈕 -->
+          <template v-if="gameMode === 'p2p' && session.phase === 'connected'">
             <button
-              v-for="n in [1, 2, 3, 4, 5]"
-              :key="n"
+              v-if="session.isHost"
               type="button"
-              class="rounded-xl border-2 py-2 text-xs font-black transition cursor-pointer"
-              :class="
-                hotseatCountPerTeam === n
-                  ? 'border-amber-300 bg-amber-400 text-slate-950 shadow-md'
-                  : 'border-slate-700/60 bg-slate-800/80 text-slate-200 hover:border-teal-700'
-              "
-              @click="hotseatCountPerTeam = n"
+              :disabled="!canStartMatch"
+              class="flex-1 rounded-2xl bg-gradient-to-r from-emerald-400 to-green-500 py-3 text-sm font-black text-slate-950 shadow-[0_0_25px_rgba(52,211,153,0.4)] hover:from-emerald-300 hover:to-green-400 disabled:opacity-40 disabled:cursor-not-allowed transition cursor-pointer"
+              @click="handleStartP2PBattle"
             >
-              {{ n }} vs {{ n }}
+              {{
+                canStartMatch
+                  ? `🚀 鎖定房間並出擊 (${teamARoster.length}v${teamBRoster.length})`
+                  : !allGuestsReady
+                    ? '等待所有玩家按下準備…'
+                    : '等待雙方各至少 1 人…'
+              }}
             </button>
-          </div>
+            <button
+              v-else
+              type="button"
+              class="flex-1 rounded-2xl py-3 text-sm font-black shadow-lg transition cursor-pointer"
+              :class="
+                localReady
+                  ? 'border-2 border-emerald-400 bg-emerald-500/20 text-emerald-300'
+                  : 'bg-gradient-to-r from-emerald-400 to-green-500 text-slate-950 hover:from-emerald-300 hover:to-green-400'
+              "
+              @click="handleToggleReady"
+            >
+              {{ localReady ? '✅ 準備就緒 (點擊取消)' : '⚡ 準備出擊 (READY)' }}
+            </button>
+          </template>
+
+          <!-- 單機開戰鈕 -->
+          <button
+            v-else-if="gameMode === 'hotseat'"
+            type="button"
+            class="w-full rounded-2xl bg-gradient-to-r from-amber-400 via-yellow-400 to-orange-500 py-3.5 text-sm font-black text-slate-950 shadow-[0_0_25px_rgba(251,191,36,0.5)] hover:from-amber-300 hover:to-orange-400 transition cursor-pointer"
+            @click="handleStartHotseatBattle"
+          >
+            {{ hotseatStartLabel }}
+          </button>
         </div>
-
-        <!-- 步驟 2：直接為兩隊每一位玩家挑選 2.5D 坦克 -->
-        <div class="space-y-2">
-          <label class="block text-xs font-extrabold text-amber-400">
-            步驟 2：設定兩隊由玩家或電腦操控，並挑選出戰坦克
-          </label>
-
-          <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            <!-- 琥珀隊 Team A 陣容選車 -->
-            <div class="rounded-2xl border-2 border-amber-500/60 bg-slate-800/80 p-3 space-y-2">
-              <div class="flex items-center justify-between gap-2">
-                <div class="text-xs font-black text-amber-400">
-                  🟠 琥珀隊 Team A ({{ hotseatCountPerTeam }} 台)
-                </div>
-                <div class="inline-flex overflow-hidden rounded-lg border border-amber-500/60 text-[10px] font-extrabold">
-                  <button
-                    type="button"
-                    class="px-2 py-1 transition cursor-pointer"
-                    :class="!hotseatBotTeams.A ? 'bg-amber-400 text-slate-950' : 'bg-white text-slate-300 hover:text-slate-100'"
-                    @click="hotseatBotTeams.A = false"
-                  >
-                    👤 玩家
-                  </button>
-                  <button
-                    type="button"
-                    class="px-2 py-1 transition cursor-pointer"
-                    :class="hotseatBotTeams.A ? 'bg-amber-400 text-slate-950' : 'bg-white text-slate-300 hover:text-slate-100'"
-                    @click="hotseatBotTeams.A = true"
-                  >
-                    🤖 電腦
-                  </button>
-                </div>
-              </div>
-              <div v-if="hotseatBotTeams.A" class="flex items-center gap-1">
-                <span class="shrink-0 text-[10px] font-extrabold text-slate-300">電腦強度</span>
-                <button
-                  v-for="[level, spec] in BOT_LEVELS"
-                  :key="level"
-                  type="button"
-                  class="flex-1 rounded-lg border px-1 py-1 text-[10px] font-extrabold transition cursor-pointer"
-                  :class="
-                    hotseatBotLevels.A === level
-                      ? 'border-amber-500 bg-amber-400 text-slate-950 shadow'
-                      : 'border-slate-700/60 bg-white text-slate-300 hover:border-teal-700'
-                  "
-                  @click="hotseatBotLevels.A = level"
-                >
-                  {{ spec.label }}
-                </button>
-              </div>
-              <div
-                v-for="idx in hotseatCountPerTeam"
-                :key="`a-${idx}`"
-                class="space-y-1"
-              >
-              <div
-                class="flex items-center justify-between gap-2 rounded-xl border border-amber-500/60 bg-slate-800/80 px-2.5 py-1.5"
-              >
-                <div class="flex items-center gap-2 min-w-0">
-                  <img
-                    :src="getTankSpec(hotseatTeamATanks[idx - 1]).getSprites('A').hullUrl"
-                    class="h-8 w-8 shrink-0 object-contain drop-shadow"
-                    alt=""
-                  />
-                  <div class="min-w-0">
-                    <div class="text-xs font-extrabold text-slate-100">{{ hotseatBotTeams.A ? '🤖 CPU' : '琥珀' }} A{{ idx }}</div>
-                    <div class="truncate text-[10px] text-amber-400">
-                      {{ getTankSpec(hotseatTeamATanks[idx - 1]).name }}
-                    </div>
-                  </div>
-                </div>
-
-                <div class="flex items-center gap-1">
-                  <button
-                    v-for="tank in TANK_LIST"
-                    :key="tank.id"
-                    type="button"
-                    class="rounded-lg border px-1.5 py-1 text-[10px] font-extrabold transition cursor-pointer"
-                    :class="
-                      (hotseatTeamATanks[idx - 1] ?? tankAt(idx - 1)) === tank.id
-                        ? 'border-amber-300 bg-amber-400 text-slate-950 shadow'
-                        : 'border-slate-700/60 bg-white text-slate-300 hover:border-amber-300/60'
-                    "
-                    @click="setHotseatSlotTank('A', idx - 1, tank.id)"
-                  >
-                    {{ tank.name.slice(0, 2) }}
-                  </button>
-                </div>
-              </div>
-              <LoadoutPicker
-                v-if="!hotseatBotTeams.A"
-                :tank-id="hotseatTeamATanks[idx - 1] ?? tankAt(idx - 1)"
-                :picks="picksFor(hotseatTeamATanks[idx - 1] ?? tankAt(idx - 1))"
-                @change="(picks) => onPickHotseatLoadout(hotseatTeamATanks[idx - 1] ?? tankAt(idx - 1), picks)"
-              />
-              </div>
-            </div>
-
-            <!-- 皇家藍隊 Team B 陣容選車 -->
-            <div class="rounded-2xl border-2 border-slate-700/60 bg-slate-800/80 p-3 space-y-2">
-              <div class="flex items-center justify-between gap-2">
-                <div class="text-xs font-black text-sky-700">
-                  🔵 皇家藍隊 Team B ({{ hotseatCountPerTeam }} 台)
-                </div>
-                <div class="inline-flex overflow-hidden rounded-lg border border-slate-700/60 text-[10px] font-extrabold">
-                  <button
-                    type="button"
-                    class="px-2 py-1 transition cursor-pointer"
-                    :class="!hotseatBotTeams.B ? 'bg-sky-400 text-slate-950' : 'bg-white text-slate-300 hover:text-slate-100'"
-                    @click="hotseatBotTeams.B = false"
-                  >
-                    👤 玩家
-                  </button>
-                  <button
-                    type="button"
-                    class="px-2 py-1 transition cursor-pointer"
-                    :class="hotseatBotTeams.B ? 'bg-sky-400 text-slate-950' : 'bg-white text-slate-300 hover:text-slate-100'"
-                    @click="hotseatBotTeams.B = true"
-                  >
-                    🤖 電腦
-                  </button>
-                </div>
-              </div>
-              <div v-if="hotseatBotTeams.B" class="flex items-center gap-1">
-                <span class="shrink-0 text-[10px] font-extrabold text-slate-300">電腦強度</span>
-                <button
-                  v-for="[level, spec] in BOT_LEVELS"
-                  :key="level"
-                  type="button"
-                  class="flex-1 rounded-lg border px-1 py-1 text-[10px] font-extrabold transition cursor-pointer"
-                  :class="
-                    hotseatBotLevels.B === level
-                      ? 'border-sky-500 bg-sky-400 text-slate-950 shadow'
-                      : 'border-slate-700/60 bg-white text-slate-300 hover:border-teal-700'
-                  "
-                  @click="hotseatBotLevels.B = level"
-                >
-                  {{ spec.label }}
-                </button>
-              </div>
-              <div
-                v-for="idx in hotseatCountPerTeam"
-                :key="`b-${idx}`"
-                class="space-y-1"
-              >
-              <div
-                class="flex items-center justify-between gap-2 rounded-xl border border-slate-700/60 bg-slate-800/80 px-2.5 py-1.5"
-              >
-                <div class="flex items-center gap-2 min-w-0">
-                  <img
-                    :src="getTankSpec(hotseatTeamBTanks[idx - 1]).getSprites('B').hullUrl"
-                    class="h-8 w-8 shrink-0 object-contain drop-shadow"
-                    alt=""
-                  />
-                  <div class="min-w-0">
-                    <div class="text-xs font-extrabold text-slate-100">{{ hotseatBotTeams.B ? '🤖 CPU' : '皇家藍' }} B{{ idx }}</div>
-                    <div class="truncate text-[10px] text-sky-700">
-                      {{ getTankSpec(hotseatTeamBTanks[idx - 1]).name }}
-                    </div>
-                  </div>
-                </div>
-
-                <div class="flex items-center gap-1">
-                  <button
-                    v-for="tank in TANK_LIST"
-                    :key="tank.id"
-                    type="button"
-                    class="rounded-lg border px-1.5 py-1 text-[10px] font-extrabold transition cursor-pointer"
-                    :class="
-                      (hotseatTeamBTanks[idx - 1] ?? tankAt(idx)) === tank.id
-                        ? 'border-sky-300 bg-sky-400 text-slate-950 shadow'
-                        : 'border-slate-700/60 bg-white text-slate-300 hover:border-slate-700/60'
-                    "
-                    @click="setHotseatSlotTank('B', idx - 1, tank.id)"
-                  >
-                    {{ tank.name.slice(0, 2) }}
-                  </button>
-                </div>
-              </div>
-              <LoadoutPicker
-                v-if="!hotseatBotTeams.B"
-                :tank-id="hotseatTeamBTanks[idx - 1] ?? tankAt(idx)"
-                :picks="picksFor(hotseatTeamBTanks[idx - 1] ?? tankAt(idx))"
-                @change="(picks) => onPickHotseatLoadout(hotseatTeamBTanks[idx - 1] ?? tankAt(idx), picks)"
-              />
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <button
-          type="button"
-          class="w-full rounded-xl bg-gradient-to-r from-amber-400 to-orange-500 py-3.5 text-sm font-black text-slate-950 shadow-xl hover:from-amber-300 hover:to-orange-400 transition cursor-pointer"
-          @click="handleStartHotseatBattle"
-        >
-          {{ hotseatStartLabel }}
-        </button>
       </div>
     </div>
   </section>
