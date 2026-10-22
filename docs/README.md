@@ -7,7 +7,7 @@
 1. **[01-project-proposal.md](./01-project-proposal.md)**  
    專案規劃書：開發策略、技術選型（Rust Wasm + Vue 3 + WebRTC）、免費美術/音效資源與 4 階段開發里程碑。
 2. **[02-architecture-and-subagent-guide.md](./02-architecture-and-subagent-guide.md)**  
-   系統架構與 Subagent 派發規範：VSA 垂直切片隔離、務實 DDD 分層標準（大小模組裁量原則）、目錄結構與低階 Subagent 任務派發模板。
+   系統架構與 Subagent 派發規範：VSA 垂直切片隔離、務實 DDD 分層標準（大小模組裁量原則）、目錄結構、低階 Subagent 任務派發模板、連線協議訊息一覽與測試策略。
 3. **[03-execution-plan.md](./03-execution-plan.md)**  
    執行與派發計畫：將 Phase 1 ~ Phase 4 拆解為鎖定單一檔案/切片的 Work Packages (`WP-1.1` ~ `WP-4.3`)，附帶驗收指令，可直接逐項派發給低階 Subagent 執行。
 4. **[04-art-asset-pipeline.md](./04-art-asset-pipeline.md)**  
@@ -15,7 +15,7 @@
 5. **[05-map-layout-design.md](./05-map-layout-design.md)**  
    地圖版型設計守則：浮空島 / 吊橋 / 雙層薄地 / 階梯台地 / 不可破壞基岩的 `layout` 特徵、多層地形貼地與行走規則，以及參考其他遊戲時的版權守則。
 6. **[06-gameplay-reference-and-physics.md](./06-gameplay-reference-and-physics.md)**  
-   玩法參考（房間準備制、每台車兩種砲彈、回合倒數）與彈道物理守則：一般彈共用重力、固定播放時鐘、版權界線。
+   玩法參考（房間準備制、每台車兩種砲彈、回合倒數）、彈道物理守則（一般彈共用重力、固定播放時鐘、版權界線）、坦克砲彈平衡、同步雜湊與自動重新同步、玩家斷線處置。
 7. **[TODO-peerjs-signaling-server.md](./TODO-peerjs-signaling-server.md)**  
    自建輕量 PeerJS 信令伺服器（`server/` + `docker-compose.yml`）與前端環境變數彈性切換 / 自動 Fallback 規格，以及房間目錄 API（房間列表，僅自建伺服器可用）。
 

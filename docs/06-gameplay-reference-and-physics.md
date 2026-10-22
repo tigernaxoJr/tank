@@ -171,7 +171,9 @@
 - **設計原則：威力越大、導引越少**。吸附把「落點衰減」壓平成全額傷害，所以它等於控制力折價；高單發威力的砲彈吸附半徑要接近 0。
 - 現況：標準彈 30 px、重型彈 22 px、電漿彈 26 px、穿甲狙擊彈 `MISSILE_RAILGUN` 0（不導引，`maxDamage` 75、`damageRadius` 18、`terrainRadius` 8，無精靈圖時畫發光核心）。
   `directHitMultiplier` 目前皆為 1，保留作為日後調整旋鈕。
-- 平衡：吸附會放大高單發砲彈的優勢（原先模擬被電漿彈碾壓），目前數值已用 `duel_sim.mjs` 校正（σ = 45 / 70 px 約 40% ~ 60%，σ = 25 px 疾風略強約 62% ~ 65%）。
+- **直擊吃滿傷害**：吸附 / 碰撞命中時爆心設在車身中心（`tank.y - 10`），`commitFireImpact` 對直擊直接用 `maxDamage × directHitMultiplier`，
+  不再套用「爆心與 `tank.y` 相差 10 px」造成的距離衰減（否則標準彈少約 25%、穿甲狙擊彈少約 56%）。這與 `duel_sim.mjs`「直擊吃滿」的假設一致；有 `battle.test.ts` 回歸測試。
+- 平衡：吸附會放大高單發砲彈的優勢（原先模擬被電漿彈碾壓），目前數值已用 `duel_sim.mjs` 校正（疾風磁軌 80 HP / ×1.15、電漿彈 `maxDamage` 52；多數配對在 40% ~ 60%，疾風在部分瞄準精度仍偶爾到約 62%）。
 
 ### 2. 坦克防護：裝甲 / 護盾 / 抗性
 - `TankBlueprint.armor`（爆炸傷害固定減免，至少仍受 1 點）、`shield`（先於 HP 吸收、不回復，戰場上以青色細條顯示在血條上緣）、`resist: Partial<Record<DamageType, number>>`（0~1 減傷）。
@@ -187,8 +189,12 @@
 - `TankBlueprint.windSensitivity`（神盾 1.0 / 巨像 0.8 / 疾風 1.25）。砲彈所受風力 = 全局風 × 砲彈 `windMultiplier` × 坦克風敏感度，統一經 `effectiveWindMilli()`（四捨五入為整數）。
 - 結算（`prepareFireTrajectory`）、瞄準預覽（`BattleScene`）、電腦試算（`botBrain`）都必須使用同一函式，不可各自乘算。選車面板顯示的「受風影響」已含此係數。
 
-### 5. 連線同步雜湊
+### 5. 連線同步雜湊與自動重新同步
 - `SYNC_HASH` 使用 `battleStateHash(state, terrainHash)`：地形雜湊 + 各坦克 x / y / hp / shield（FNV-1a），任何一端規則或數值不一致都能被偵測。
+- 出手方在回合結算後送 `SYNC_HASH`；接收方**先暫存**，等本機也播完同一回合（`afterTurnSettled`）才比對，避免動畫未結束就誤報不一致。
+- 不一致時以**房主為權威**自動修復：客端送 `RESYNC_REQUEST`（同一回合只送一次），房主回 `RESYNC_STATE`（整個 `BattleState` 的 JSON + 本局所有挖坑紀錄 `[x, y, r]`）；
+  房主自己偵測到不一致則直接推送。客端依 seed 重建地形、重放挖坑、覆寫狀態並重畫。砲彈飛行中的收發都延後到回合結算後。
+  地形只會被 `carveCircle` 改變，所以「挖坑紀錄」足以重建；若日後新增其他改地形的操作，必須一併記入此紀錄。
 
 ## 三之六、連線對戰中玩家斷線（已實作）
 

@@ -73,9 +73,10 @@
 3. 大廳縮圖由 `renderMapPreview` 依版型即時繪製地形剪影，不需要另外準備 thumbnail。
 4. 驗收：5v5 出生點都不在深淵、雙方地形對稱、坦克能在主要地面上左右移動、打穿薄層後會正確下墜。
 
-## 六、已知待辦
+## 六、Rust 核心與 TS 核心的地形一致性（已實作）
 
-- `crates/tank-core`（Rust 版確定性核心）已移植 `layout` / BEDROCK / `groundBelow` / `jitter`，並以 `src/test/parity.test.ts` 產生的黃金檔（`crates/tank-core/tests/fixtures/golden.json`）逐項對照 TS 版。目前執行期仍只使用 TS 版 `DeterministicTankCore`；改了 TS 核心行為後，執行 `UPDATE_GOLDEN=1 npm test` 重新產生黃金檔，再跑 `npm run test:rust` 確認 Rust 跟上。
+- `crates/tank-core`（Rust 版確定性核心）已移植 `layout` / BEDROCK / `groundBelow` / `jitter`，並以黃金檔逐項對照 TS 版；改了 TS 地形生成或行為後的重新產生流程見 [`02` §五](./02-architecture-and-subagent-guide.md)。
+- 目前執行期仍只使用 TS 版 `DeterministicTankCore`；切換到 Wasm 前還需要轉接層（見 `todo.md`）。
 
 ## 參考資料（僅供設計靈感）
 

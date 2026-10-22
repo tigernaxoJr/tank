@@ -133,14 +133,28 @@ tank/
    * **瞄準預覽只畫前段**：預覽彈道固定只模擬前 `AIM_PREVIEW_STEPS = 60` 步，保留判斷落點的技術含量。
    * **蓄力以時間計算**：長按蓄力速度為每秒 80%（`CHARGE_RATE_PER_SEC`），不得依賴 `requestAnimationFrame` 幀數，避免高更新率螢幕蓄力過快。
    * **每位玩家各自記憶**：彈種選擇與「上一發力道」游標以玩家為單位保存，熱座輪流時互不覆蓋。
-   * **電腦對手 (`domain/botBrain.ts`)**：純函數；`planBotShot` 以仰角 × 力道暴力搜尋最接近目標的落點並加入人性化誤差，`planBotMove` 在原地射擊被地形擋住或換位能明顯提高命中時才花燃料移動。Bot 只負責「決定參數」，實際開火仍走一般 `FireActionCommand` 流程。僅限單機模式（`RosterSlot.isBot`），大廳預設「玩家 vs 電腦」，兩隊皆設為電腦即為觀戰模式。
+   * **電腦對手 (`domain/botBrain.ts`)**：純函數；`planBotShot` 以仰角 × 力道暴力搜尋最接近目標的落點並加入人性化誤差，`planBotMove` 在原地射擊被地形擋住或換位能明顯提高命中時才花燃料移動。Bot 只負責「決定參數」，實際開火仍走一般 `FireActionCommand` 流程。單機模式由 `RosterSlot.isBot` 指定（大廳預設「玩家 vs 電腦」，兩隊皆設為電腦即為觀戰模式）；連線對戰中只有「玩家斷線且房間設為電腦接手」才會出現電腦，且 AI 只在房主端運算（`runsBot`），走位與開火以 `ACTION_MOVE` / `ACTION_FIRE` 廣播（見 `06` §三之六）。
    * **平衡基準**：調整 `TankBlueprint` 數值後，以 Bot 對 Bot 在三張地圖、雙方換邊各打一場的對戰矩陣驗證，任一機種組合勝率不應明顯偏離 50%（目前 Aegis vs Goliath 約 23:25）。
 4. **1v1 ~ 5v5 星狀 P2P 與防亂入守則**：
    * 房主採星狀拓撲管理最多 9 條客機連線（上限 10 人），開房遇 `unavailable-id` 自動重試新房號。
    * 房主按下開戰後立即呼叫 `lockRoom()` 切斷公共 PeerJS 信令註冊，杜絕外部陌生人於對戰途中亂入。
+   * **房主權威**：房主轉發客端動作前必須驗證來源（`ACTION_FIRE` / `ACTION_MOVE` 的 `playerId` 須等於送件連線槽位，`isForgedAction`）；`RESYNC_REQUEST` 只給房主處理、不轉發。
+   * **協議訊息一覽**（`shared/kernel/types.ts` 的 `ProtocolMessage`）：大廳類 `PLAYER_JOIN_INFO` / `UPDATE_PLAYER_SETUP` / `LOBBY_ROSTER_UPDATE`（含 `disconnectPolicy`）/ `START_BATTLE`；
+     對戰類 `ACTION_FIRE` / `ACTION_MOVE`（兩端以相同指令各自確定性模擬）、`SYNC_HASH`、`RESYNC_REQUEST` / `RESYNC_STATE`（見 `06` §三之五）、`PLAYER_LEFT`（見 `06` §三之六）。新增訊息時要同步更新此清單。
 5. **全畫面街機駕駛艙 HUD 與零捲動守則 (In-Canvas Arcade HUD & Zero Page Scrolling)**：
    * **禁止外置 HTML 表單與頁面捲動**：進入對戰後（[`BattleArena.vue`](../src/features/battle/ui/BattleArena.vue)），畫面必須以 `fixed inset-0 h-dvh w-screen overflow-hidden` 佔滿整個瀏覽器視窗，**絕對不可出現垂直或水平捲軸**。
    * **Phaser 畫布使用 `Scale.RESIZE`**：畫布等於視窗大小、不裁切；寬度不足 `lg` 時頂部對戰列改為靠左並下移，避免與左上鏡頭列、右上雷達重疊。
    * **內嵌式街機儀表板 Overlay**：所有戰鬥資訊與操控（隊伍總血量、風向羅盤、小地圖、2.5D 戰車頭像、仰角微調、彈藥切換、30 格街機蓄力槽與開火鈕）必須作為 `absolute inset-0 pointer-events-none` 圖層直接疊加於 Phaser 遊戲畫布上方（[`BattleHud.vue`](../src/features/battle/ui/BattleHud.vue)），禁止使用傳統 `<input type="range">` 滑桿表單。
 6. **對戰前直覺選車守則 (Direct Match Tank Selection)**：
    * 無論在 **P2P 連線配對區**（進房前與房間候戰室）或 **單機多人熱座 (Hotseat 1v1~5v5)** 的隊伍編制面板中，都必須直接提供 2.5D 戰車型號切換按鈕（`aegis` / `goliath` / `zephyr`），讓每位玩家都能在開戰設定區直覺挑選或更換出戰坦克。
+
+## 五、 測試策略與一致性驗證 (Testing)
+
+- **前端 / 戰鬥邏輯**：Vitest（`npm test`），測試放在 `src/test/`：確定性核心與 PRNG、風規則、傷害 / 裝甲 / 摔落公式、開火三階段流程、移動與走下高處、斷線處置、動作來源驗證、電腦 AI、註冊表一致性。
+  修 bug 時先補回歸測試（例：直擊吃滿傷害）；測試 helper 在 `src/test/helpers.ts`（`setupBattle` 與 `BattleArena.resetMatch` 同一流程）。
+- **Rust 核心 ↔ TS 核心一致性**：`src/test/parity.test.ts` 用 TS 核心對所有地圖 × 數個 seed 產生黃金檔 `crates/tank-core/tests/fixtures/golden.json`（地形雜湊、地表 / 坡度 / 材質取樣、挖坑後狀態、彈道），
+  Rust 的 `crates/tank-core/tests/parity.rs`（`npm run test:rust`）讀同一份檔案逐項比對。改了 TS 核心行為後：`UPDATE_GOLDEN=1 npm test` 重新產生黃金檔，再跑 `npm run test:rust` 確認 Rust 跟上。
+  Rust 地形參數用 JSON 傳入（`TerrainGrid::reset_terrain(seed, json)`，與 TS `TerrainWaveOptions` 同形）；砲彈 `speedMultiplier`、吸附、風敏感度屬 TS 應用層，不在核心內。
+- **房間目錄伺服器**：`server/roomDirectory.test.mjs`（需先在 `server/` 執行 `npm install`，再 `node --test`）。
+- **平衡**：`node tools/balance/duel_sim.mjs`（見 `06` §三）。
+- 目前執行期仍使用 TS 版核心；Rust/Wasm 版尚未接上轉接層。
