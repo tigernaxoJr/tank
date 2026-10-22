@@ -17,3 +17,6 @@ interface ImportMetaEnv {
 interface ImportMeta {
   readonly env: ImportMetaEnv
 }
+
+/** 建置版本字串（git 短 hash · 建置時間），由 vite.config.ts 注入 */
+declare const __BUILD_ID__: string

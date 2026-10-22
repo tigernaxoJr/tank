@@ -4,9 +4,23 @@ import vue from '@vitejs/plugin-vue'
 import tailwindcss from '@tailwindcss/vite'
 import { VitePWA } from 'vite-plugin-pwa'
 import { fileURLToPath, URL } from 'node:url'
+import { execSync } from 'node:child_process'
+
+// 建置版本：git 短 hash + 建置時間，顯示在大廳角落，用來確認 PWA 有沒有還在吃舊快取
+function buildId(): string {
+  let hash = process.env.GITHUB_SHA?.slice(0, 7) ?? ''
+  try {
+    hash ||= execSync('git rev-parse --short HEAD', { stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim()
+  } catch {
+    // 沒有 git 就只顯示時間
+  }
+  const stamp = new Date().toISOString().slice(5, 16).replace('T', ' ')
+  return `${hash || 'dev'} · ${stamp}Z`
+}
 
 export default defineConfig({
   base: './',
+  define: { __BUILD_ID__: JSON.stringify(buildId()) },
   plugins: [
     vue(),
     tailwindcss(),

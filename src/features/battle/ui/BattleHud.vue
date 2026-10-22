@@ -387,12 +387,12 @@ onUnmounted(() => {
       </div>
 
       <!-- 中間：戰車狀態 + 力道條（直立時獨佔最上面一列） -->
-      <div class="toon-panel pointer-events-auto order-2 mb-1 min-w-0 flex-1 rounded-2xl px-2.5 py-1.5 portrait:order-first portrait:basis-full">
-        <div class="flex items-center gap-2 text-sm leading-tight">
-          <span class="flex h-7 w-8 shrink-0 items-center justify-center rounded-lg border-[2.5px] border-ink" :style="{ background: TEAM_META[panelTeam].color }">
+      <div class="pad-info toon-panel pointer-events-auto order-2 mb-1 min-w-0 flex-1 rounded-2xl px-2.5 py-1.5 portrait:order-first portrait:basis-full">
+        <div class="pad-info-row1 flex items-center gap-2 text-sm leading-tight">
+          <span class="pad-hide-short flex h-7 w-8 shrink-0 items-center justify-center rounded-lg border-[2.5px] border-ink" :style="{ background: TEAM_META[panelTeam].color }">
             <img :src="panelSpriteUrl" alt="" class="h-4 w-auto" :class="panelTeam === 'B' ? '-scale-x-100' : ''" />
           </span>
-          <span class="min-w-0 truncate">{{ panelName }}</span>
+          <span class="pad-hide-short min-w-0 truncate">{{ panelName }}</span>
           <span
             v-for="st in panelStatuses"
             :key="st.spec.id"
@@ -416,7 +416,7 @@ onUnmounted(() => {
             {{ shownMode === 'own' ? '我的' : '回合' }}
           </button>
         </div>
-        <div class="mt-1.5 flex items-center gap-2">
+        <div class="pad-info-row2 mt-1.5 flex items-center gap-2">
           <div
             ref="powerBarRef"
             class="power-track relative h-7 flex-1 touch-none"
@@ -741,8 +741,15 @@ onUnmounted(() => {
   .pad-shot { width: 2rem; height: 2rem; border-width: 2px; box-shadow: 0 2px 0 var(--color-ink); }
   .pad-shot span { width: 1.4rem; height: 1.4rem; }
   .pad-shot img { width: 1rem; height: 1rem; }
-  .pad-root .toon-panel { opacity: 0.88; padding-top: 0.2rem; padding-bottom: 0.2rem; margin-bottom: 0; }
-  .pad-root .power-track { height: 1.25rem; }
+  /* 資訊面板壓成單行：血量 / 燃料小條 + 力道條 + 數值，不再佔兩層高度 */
+  .pad-info { display: flex; align-items: center; gap: 0.4rem; opacity: 0.85; padding: 0.15rem 0.5rem; margin-bottom: 0.1rem; border-radius: 0.9rem; }
+  .pad-info .pad-hide-short { display: none; }
+  .pad-info-row1 { flex-shrink: 0; gap: 0.3rem; }
+  .pad-info-row1 .hp-track { margin-left: 0; width: 2.2rem; height: 0.6rem; }
+  .pad-info-row2 { flex: 1; margin-top: 0; min-width: 0; }
+  .pad-info-row2 > b { width: 2.6rem; font-size: 0.85rem; }
+  .pad-info .power-track { height: 1rem; }
+  .pad-info > div:not(.pad-info-row1):not(.pad-info-row2) { display: none; }
 }
 .hp-track {
   border: 2.5px solid var(--color-ink);

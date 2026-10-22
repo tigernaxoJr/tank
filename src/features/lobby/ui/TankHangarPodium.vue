@@ -76,7 +76,7 @@ function setPaint(team: TeamId): void {
 </script>
 
 <template>
-  <div class="toon-panel relative flex flex-col gap-3 p-3 pt-6 phone:gap-1.5 phone:p-2.5 phone:pt-5">
+  <div class="podium toon-panel relative flex flex-col gap-3 p-3 pt-6 phone:gap-1.5 phone:p-2.5 phone:pt-5">
     <span class="toon-ribbon absolute -top-4 left-4" style="background: var(--color-sun); color: var(--color-ink); text-shadow: none">我的戰車</span>
 
     <!-- 展示台 -->
@@ -123,7 +123,7 @@ function setPaint(team: TeamId): void {
     <div v-if="random" class="flex h-[74px] phone:h-[54px] items-center justify-center rounded-xl border-[3px] border-dashed border-ink/25 px-2 text-center text-sm text-ink-soft">
       耐久、火力、機動與彈藥都等開打揭曉
     </div>
-    <div v-else class="space-y-1.5 px-1 phone:space-y-1">
+    <div v-else class="podium-stats space-y-1.5 px-1 phone:space-y-1">
       <div v-for="s in stats" :key="s.label" class="flex items-center gap-2">
         <span class="w-9 shrink-0 text-sm">{{ s.label }}</span>
         <div class="h-3.5 flex-1 overflow-hidden rounded-full border-[2.5px] border-ink bg-paper">
@@ -213,6 +213,18 @@ function setPaint(team: TeamId): void {
     transform: scale(0.55);
     transform-origin: 50% 100%;
   }
+}
+/* 更矮的手機（約 360px 以下）：展示台與間距再壓縮，免得面板高過畫面出現捲軸 */
+@media (orientation: landscape) and (max-height: 380px) {
+  .podium { gap: 0.2rem; padding-top: 1.1rem; padding-bottom: 0.4rem; }
+  .podium .stage { height: 62px; }
+  .podium .stage-zoom { transform: scale(0.36); }
+  .podium-stats { row-gap: 0; }
+  .podium-stats > * + * { margin-top: 0.15rem; }
+}
+@media (orientation: landscape) and (max-height: 330px) {
+  .podium .stage { height: 50px; }
+  .podium .stage-zoom { transform: scale(0.3); }
 }
 .tank-bob {
   animation: bob 2.8s ease-in-out infinite;

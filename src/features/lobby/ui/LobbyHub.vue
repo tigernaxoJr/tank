@@ -1,11 +1,12 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
-import { MAP_REGISTRY, MapPreview, TANK_LIST, getTankSpec } from '@/features/battle'
+import { MAP_REGISTRY, MapPreview, TANK_LIST } from '@/features/battle'
 import { soundController } from '@/features/audio'
 import type { BulletType, MapPresetId, TankArchetypeId } from '@/shared/kernel/types'
 import type { RoomListing } from '../infra/roomDirectory'
 import type { SignalingEndpointInfo } from '../infra/peerAdapter'
 import TankHangarPodium from './TankHangarPodium.vue'
+import TankPortrait from './TankPortrait.vue'
 import { splitDisplayName } from './displayNames'
 import type { TankChoice } from './tankChoice'
 
@@ -40,6 +41,7 @@ const emit = defineEmits<{
 const playerName = defineModel<string>('playerName', { required: true })
 const joinCode = defineModel<string>('joinCode', { required: true })
 
+const buildId = __BUILD_ID__
 const query = ref('')
 
 // 可加入的排前面，其餘依建立時間（新的在前）
@@ -51,12 +53,13 @@ const rows = computed(() => {
     .sort((a, b) => Number(joinable(b)) - Number(joinable(a)) || a.ageSec - b.ageSec)
 })
 
-const avatarUrl = computed(() => getTankSpec(props.selectedTankId).getSprites('A').hullUrl)
 // 連線對戰插圖的對手：清單裡下一台，塗藍隊色（隨機時固定，免得洩漏抽到的機種）
-const rivalUrl = computed(() => {
+const rivalId = computed(() => {
   const i = props.randomTank ? 0 : TANK_LIST.findIndex((t) => t.id === props.selectedTankId)
-  return TANK_LIST[(i + 1) % TANK_LIST.length].getSprites('B').hullUrl
+  return TANK_LIST[(i + 1) % TANK_LIST.length].id
 })
+/** 大廳插圖立繪：每 rig 單位幾 px（展示台是 1.3） */
+const PORTRAIT_UNIT = 0.9
 
 function mapLabel(mapId: MapPresetId): string {
   const map = MAP_REGISTRY[mapId]
@@ -85,7 +88,7 @@ function tap(fn: () => void): void {
       <div class="toon-panel flex items-center gap-2 rounded-full py-1 pl-1 pr-2 phone:shrink-0 phone:py-0.5">
         <span class="flex h-10 w-10 phone:h-8 phone:w-8 items-center justify-center rounded-full border-[3px] border-ink bg-sky">
           <span v-if="randomTank" class="toon-mystery h-7 text-base">?</span>
-          <img v-else :src="avatarUrl" alt="" class="h-7 w-7 object-contain" />
+          <TankPortrait v-else :tank-id="selectedTankId" team="A" :barrel="false" :unit="0.4" />
         </span>
         <input
           v-model="playerName"
@@ -114,7 +117,7 @@ function tap(fn: () => void): void {
 
     <!-- 手機橫放：戰車、入口、戰局列表三欄並排，一屏放完 -->
     <div class="grid grid-cols-1 gap-5 lg:min-h-0 lg:flex-1 lg:grid-cols-[340px_minmax(0,1fr)] phone:min-h-0 phone:flex-1 phone:grid-cols-[minmax(0,1fr)_minmax(0,2fr)] phone:gap-3">
-      <aside class="min-h-0 pt-4 lg:overflow-y-auto lg:pb-2 phone:overflow-y-auto phone:pb-1">
+      <aside class="min-h-0 pt-4 lg:overflow-y-auto lg:pb-2 phone:overflow-y-auto phone:pb-1 phone:[scrollbar-width:none] phone:[&::-webkit-scrollbar]:hidden">
         <TankHangarPodium
           :selected-tank-id="selectedTankId"
           :random="randomTank"
@@ -137,8 +140,8 @@ function tap(fn: () => void): void {
               :class="directoryAvailable ? 'phone:hidden' : ''"
             >
               <span v-if="randomTank" class="toon-mystery absolute bottom-4 left-[18%] h-12 text-3xl">?</span>
-              <img v-else :src="avatarUrl" alt="" class="absolute bottom-4 left-[16%] h-14" />
-              <img :src="rivalUrl" alt="" class="absolute bottom-4 right-[16%] h-14 -scale-x-100" />
+              <TankPortrait v-else :tank-id="selectedTankId" team="A" :unit="PORTRAIT_UNIT" class="absolute bottom-4 left-[7%]" :style="{ transform: 'scale(0.8)', transformOrigin: '50% 100%' }" />
+              <TankPortrait :tank-id="rivalId" team="B" facing-left :unit="PORTRAIT_UNIT" class="absolute bottom-4 right-[7%]" :style="{ transform: 'scale(0.8)', transformOrigin: '50% 100%' }" />
               <span class="font-num absolute left-1/2 top-1/2 flex h-10 w-10 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border-[3px] border-ink bg-sun text-base font-extrabold shadow-[0_3px_0_var(--color-ink)]">VS</span>
             </div>
             <p class="text-sm text-ink-soft phone:hidden">跟朋友各用一台電腦，用 6 碼房號連線對打</p>
@@ -180,7 +183,7 @@ function tap(fn: () => void): void {
             <span class="toon-ribbon absolute -top-4 left-4" style="background: var(--color-grass); color: var(--color-ink); text-shadow: none">單機練習</span>
             <div class="scene scene--sky relative h-36 phone:h-auto phone:min-h-0 phone:flex-1 overflow-hidden rounded-2xl border-[3px] border-ink">
               <span v-if="randomTank" class="toon-mystery absolute bottom-4 left-1/2 h-12 -translate-x-1/2 text-3xl">?</span>
-              <img v-else :src="avatarUrl" alt="" class="absolute bottom-4 left-1/2 h-14 -translate-x-1/2" />
+              <TankPortrait v-else :tank-id="selectedTankId" team="A" :unit="PORTRAIT_UNIT" class="absolute bottom-4 left-1/2 -translate-x-1/2" />
             </div>
             <p class="text-sm text-ink-soft phone:text-xs">跟電腦對打，或同一台電腦輪流操作；不用連線</p>
             <button type="button" class="toon-btn toon-btn--grass mt-auto w-full py-2.5 text-xl phone:py-1.5 phone:text-lg" @click="tap(() => emit('hotseat'))">
@@ -265,11 +268,14 @@ function tap(fn: () => void): void {
       </div>
     </div>
 
+    <!-- 建置版本（不顯眼）：確認 PWA 是否還在吃舊快取 -->
+    <span class="pointer-events-none absolute bottom-0.5 right-1.5 select-none font-mono text-[9px] text-ink/30">{{ buildId }}</span>
+
     <!-- 連線中遮罩 -->
     <div v-if="connecting" class="absolute inset-0 z-20 flex items-center justify-center bg-ink/40">
       <div class="toon-panel flex flex-col items-center gap-3 px-10 py-6">
         <span v-if="randomTank" class="toon-mystery tank-drive h-12 text-3xl">?</span>
-        <img v-else :src="avatarUrl" alt="" class="tank-drive h-12" />
+        <TankPortrait v-else :tank-id="selectedTankId" team="A" :barrel="false" :unit="PORTRAIT_UNIT" class="tank-drive" />
         <div class="text-xl">{{ connectingCode ? `正在加入 ${connectingCode}` : '正在開房' }}…</div>
         <button type="button" class="toon-btn px-5 py-1" @click="emit('cancel-connect')">取消</button>
       </div>
