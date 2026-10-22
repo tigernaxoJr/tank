@@ -31,7 +31,8 @@
    - 戰鬥畫面必須以 `100dvh`（`fixed inset-0`）全視窗呈現，所有儀表板與控制項直接疊加在遊戲畫布上（禁止傳統 HTML 表單滑桿與網頁捲動），且對戰設定區必須支援直覺選車。
 7. **遊戲大廳美學與零表單捲動守則 (Lobby Visual Style: Sky, War, Joy)**：
    - 大廳走「天空 (Sky) × 戰爭 (War) × 歡樂 (Joy)」明亮街機風格，主色為湛藍、陽光金、暖橘與亮白，**嚴禁使用果青色 (Murky Teal / Cyan-green) 等濁色調**。
-   - 地圖禁止下拉捲動表單，改以空域輪播卡 + 彈窗圖庫；坦克採 2.5D 機庫展示台；大廳動態載入地圖視差圖層維持遊戲質感。詳見 [`docs/02-architecture-and-subagent-guide.md`](./docs/02-architecture-and-subagent-guide.md)。
+   - 大廳 UI 採「卡通粗描邊」視覺系統（深墨色粗外框、平塗色塊、硬陰影，token 與 `.toon-*` 元件類別集中在 `src/style.css`，新元件只能組合它們）。
+   - 地圖禁止下拉捲動表單，改以地圖卡（左右箭頭切換）+ 彈窗圖庫；坦克採「我的戰車卡」2.5D 展示台；大廳動態載入地圖視差圖層維持遊戲質感。詳見 [`docs/02-architecture-and-subagent-guide.md`](./docs/02-architecture-and-subagent-guide.md)。
 8. **Git Commit 鐵律**：
    - 在使用者給出明確的 commit 指令前，**絕對禁止**自行執行 `git commit`。
 

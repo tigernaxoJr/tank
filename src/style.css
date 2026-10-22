@@ -1,1 +1,140 @@
 @import "tailwindcss";
+
+/*
+ * 大廳「卡通粗描邊」設計系統：跟 Q 版坦克美術同一種語言——深墨色外框、平塗色塊、硬陰影。
+ * 顏色只用這裡的 token；新元件請組合 .toon-* 類別，不要另開一套。
+ */
+@theme {
+  --font-toon: "Huninn", "Baloo 2", "Noto Sans TC", "PingFang TC", "Microsoft JhengHei", sans-serif;
+  --font-num: "Baloo 2", "Huninn", ui-rounded, sans-serif;
+
+  --color-ink: #1d2340;
+  --color-ink-soft: #4a5378;
+  --color-cream: #fff8ea;
+  --color-paper: #ffffff;
+  --color-mist: #e8f3ff;
+  --color-sun: #ffc93d;
+  --color-sun-deep: #f29b00;
+  --color-sky: #4cb2ff;
+  --color-sky-deep: #1f7ae0;
+  --color-coral: #ff6b5a;
+  --color-grass: #74d34e;
+  --color-team-a: #ff9a1f;
+  --color-team-b: #3d8bff;
+}
+
+@layer components {
+  /* 面板：奶油底 + 墨線 + 硬陰影 */
+  .toon-panel {
+    background: var(--color-cream);
+    border: 3px solid var(--color-ink);
+    border-radius: 22px;
+    box-shadow: 0 6px 0 var(--color-ink);
+    color: var(--color-ink);
+  }
+
+  /* 面板左上角的標題緞帶 */
+  .toon-ribbon {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.2rem 0.9rem 0.25rem;
+    border: 3px solid var(--color-ink);
+    border-radius: 999px;
+    background: var(--color-sky);
+    color: #fff;
+    font-size: 1.05rem;
+    line-height: 1.2;
+    box-shadow: 0 3px 0 var(--color-ink);
+    text-shadow: 0 2px 0 rgb(29 35 64 / 0.35);
+    white-space: nowrap;
+  }
+
+  /* 按鈕：色塊 + 墨線 + 可按下去的硬陰影 */
+  .toon-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.4rem;
+    border: 3px solid var(--color-ink);
+    border-radius: 16px;
+    background: var(--color-paper);
+    color: var(--color-ink);
+    box-shadow: 0 4px 0 var(--color-ink);
+    transition: transform 0.08s ease, box-shadow 0.08s ease, filter 0.15s ease;
+    cursor: pointer;
+    user-select: none;
+  }
+  .toon-btn:hover:not(:disabled) {
+    filter: brightness(1.06);
+    transform: translateY(-1px);
+    box-shadow: 0 5px 0 var(--color-ink);
+  }
+  .toon-btn:active:not(:disabled) {
+    transform: translateY(4px);
+    box-shadow: 0 0 0 var(--color-ink);
+  }
+  .toon-btn:disabled {
+    cursor: not-allowed;
+    background: #d9dce6;
+    color: #8a90a8;
+  }
+  .toon-btn--sun { background: var(--color-sun); }
+  .toon-btn--sky { background: var(--color-sky); color: #fff; text-shadow: 0 2px 0 rgb(29 35 64 / 0.35); }
+  .toon-btn--coral { background: var(--color-coral); color: #fff; text-shadow: 0 2px 0 rgb(29 35 64 / 0.35); }
+  .toon-btn--grass { background: var(--color-grass); }
+
+  /* 輸入框 */
+  .toon-input {
+    border: 3px solid var(--color-ink);
+    border-radius: 14px;
+    background: var(--color-paper);
+    color: var(--color-ink);
+    padding: 0.35rem 0.75rem;
+    box-shadow: inset 0 3px 0 rgb(29 35 64 / 0.1);
+    outline: none;
+  }
+  .toon-input:focus { border-color: var(--color-sky-deep); }
+  .toon-input::placeholder { color: #a6acc2; }
+
+  /* 小標籤 */
+  .toon-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    padding: 0.05rem 0.55rem;
+    border: 2px solid var(--color-ink);
+    border-radius: 999px;
+    font-size: 0.8rem;
+    line-height: 1.35;
+    white-space: nowrap;
+  }
+
+  /* 分段切換 */
+  .toon-segment {
+    display: grid;
+    grid-auto-flow: column;
+    grid-auto-columns: 1fr;
+    border: 3px solid var(--color-ink);
+    border-radius: 14px;
+    overflow: hidden;
+    background: var(--color-paper);
+  }
+  .toon-segment > button {
+    padding: 0.3rem 0.5rem;
+    cursor: pointer;
+    color: var(--color-ink-soft);
+  }
+  .toon-segment > button + button { border-left: 3px solid var(--color-ink); }
+  .toon-segment > button[aria-pressed="true"] { background: var(--color-sun); color: var(--color-ink); }
+  .toon-segment > button:disabled { cursor: not-allowed; }
+
+  /* 大標題字：白字 + 墨色描邊 + 硬陰影 */
+  .toon-title {
+    color: #fff;
+    -webkit-text-stroke: 6px var(--color-ink);
+    paint-order: stroke fill;
+    text-shadow: 0 4px 0 var(--color-ink);
+    letter-spacing: 0.02em;
+  }
+}

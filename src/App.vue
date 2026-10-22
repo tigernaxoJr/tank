@@ -49,32 +49,7 @@ function onOutgoingMessage(msg: ProtocolMessage): void {
 
 <template>
   <main class="mx-auto max-w-7xl w-full space-y-3.5 p-3 sm:p-5">
-    <!-- 街機風明亮遊戲橫幅 Header (僅在大廳顯示，對戰時全螢幕不捲動) -->
-    <header
-      v-if="!inBattle"
-      class="flex flex-wrap items-center justify-between gap-3 rounded-2xl border-2 border-sky-400/40 bg-slate-900/85 px-5 py-3 shadow-[0_8px_32px_rgba(56,189,248,0.2)] backdrop-blur-md"
-    >
-      <div class="flex items-center gap-3">
-        <div class="flex h-12 w-12 items-center justify-center rounded-xl border border-amber-400/60 bg-gradient-to-br from-amber-400 to-orange-500 p-1 shadow-lg shadow-amber-500/20">
-          <img src="/assets/units/tanks/aegis_a_hull.png" alt="Tank Icon" class="h-full w-full object-contain drop-shadow" />
-        </div>
-        <div>
-          <h1 class="text-2xl font-black tracking-wide text-white drop-shadow">
-            TANK ARTILLERY <span class="rounded-md bg-gradient-to-r from-sky-400 to-blue-500 px-2 py-0.5 text-xs font-black text-slate-950 align-middle shadow">2.5D ARCADE</span>
-          </h1>
-          <p class="text-xs font-medium text-slate-300">
-            高空浮空艦空戰砲決 · 挑戰電腦或 1v1 ~ 5v5 WebRTC 即時連線 · 原創 Q 版美術 + Kenney (CC0)
-          </p>
-        </div>
-      </div>
-      <div class="flex items-center gap-1.5 rounded-xl border border-sky-500/30 bg-slate-800/80 px-3 py-1.5 text-xs text-slate-200">
-        <span>🎮 操作：</span>
-        <kbd class="rounded bg-amber-400 px-1.5 py-0.5 font-mono font-bold text-slate-950">←/→</kbd> 移動 ·
-        <kbd class="rounded bg-amber-400 px-1.5 py-0.5 font-mono font-bold text-slate-950">↑/↓</kbd> 仰角 ·
-        <kbd class="rounded bg-amber-400 px-1.5 py-0.5 font-mono font-bold text-slate-950">空白鍵</kbd> 蓄力開火
-      </div>
-    </header>
-
+    <!-- 大廳本身是全畫面（fixed inset-0），標題與操作說明在 LobbyHub 頂部列 -->
     <LobbyPanel
       ref="lobbyRef"
       :in-battle="inBattle"

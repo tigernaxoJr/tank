@@ -21,3 +21,13 @@ decorations and the moon in `public/assets/maps/` are original to this project. 
 
 The tanks, barrels, projectiles and glow / spark / shockwave particles in `public/assets/units/` are original to this
 project as well, drawn by `tools/assets/paint_units.mjs` (SVG sources in `tools/assets/unit-art/`).
+
+## Fonts
+
+The lobby UI loads these fonts from Google Fonts. Both are released under the
+[SIL Open Font License 1.1](https://openfontlicense.org).
+
+| Font | Author | Used for |
+| :--- | :--- | :--- |
+| Huninn（jf open 粉圓） | justfont | Lobby Chinese text |
+| Baloo 2 | Ek Type | Lobby title, numbers and Latin text |
