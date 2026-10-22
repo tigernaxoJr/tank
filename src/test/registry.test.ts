@@ -12,7 +12,9 @@ describe('註冊表一致性', () => {
     expect(new Set(PROJECTILE_LIST.map((p) => p.sortOrder)).size).toBe(PROJECTILE_LIST.length)
   })
 
-  it('每台坦克的專屬砲彈都已註冊', () => {
+  it('每台坦克至少有一種砲彈、不重複，且都已註冊', () => {
+    for (const t of TANK_LIST) expect(t.shots.length, t.id).toBeGreaterThan(0)
+    for (const t of TANK_LIST) expect(new Set(t.shots).size, t.id).toBe(t.shots.length)
     for (const t of TANK_LIST) for (const s of t.shots) expect(PROJECTILE_REGISTRY[s], `${t.id} → ${s}`).toBeDefined()
   })
 

@@ -50,7 +50,7 @@ export interface TankCard {
   readonly hpRatio: number
   readonly outputRatio: number
   readonly mobilityRatio: number
-  readonly shots: readonly [ShotCard, ShotCard]
+  readonly shots: readonly ShotCard[]
 }
 
 function maxRangePx(bullet: BulletType): number {
@@ -128,6 +128,6 @@ export function buildTankCard(tankId: TankArchetypeId): TankCard {
     hpRatio: tank.maxHp / maxHp,
     outputRatio: tank.damageMultiplier / maxOutput,
     mobilityRatio: tank.moveFuel / maxFuel,
-    shots: [toShot(tank.shots[0]), toShot(tank.shots[1])],
+    shots: tank.shots.map(toShot),
   }
 }

@@ -60,11 +60,14 @@ const FINISHER_HP = 40
 
 function pickBullet(bot: TankEntity, target: TankEntity, random: () => number): BulletType {
   const shots = getTankSpec(bot.tankId).shots
-  // 目標殘血時優先用單發傷害最高的砲彈（不指定特定彈種）；否則在專屬砲彈中隨機
+  // 目標殘血時優先用單發傷害最高的砲彈（不指定特定彈種）；否則在可用砲彈中隨機
   if (target.hp <= FINISHER_HP) {
     return shots.reduce((best, id) => (PROJECTILE_REGISTRY[id].maxDamage > PROJECTILE_REGISTRY[best].maxDamage ? id : best))
   }
-  return shots[random() < 0.55 ? 0 : 1]
+  // 第一種（預設彈）55%，其餘平分剩下的 45%；只抽一次亂數，兩種彈時與舊版序列完全相同
+  const u = random()
+  if (u < 0.55 || shots.length === 1) return shots[0]
+  return shots[1 + Math.min(shots.length - 2, Math.floor(((u - 0.55) / 0.45) * (shots.length - 1)))]
 }
 
 export function planBotShot(

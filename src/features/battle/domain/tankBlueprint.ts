@@ -31,8 +31,8 @@ export interface TankBlueprint {
   /** 挖坑半徑加成 (px)，加在砲彈的 terrainRadius 上 */
   readonly terrainRadiusBonus: number
   readonly damageMultiplier: number
-  /** 這台坦克的兩種專屬砲彈（鍵盤 1 / 2 切換，第一種為預設） */
-  readonly shots: readonly [BulletType, BulletType]
+  /** 這台坦克可用的砲彈（至少 1 種，鍵盤數字鍵 1~9 依序切換，第一種為預設） */
+  readonly shots: readonly BulletType[]
   /** 爬坡能力：每水平移動 1px 最多可爬升的高度 (px)，更陡的牆面會擋住這台坦克 */
   readonly climbPerPx: number
   /** 摔落抗性：下墜超過此高度 (px) 才開始受摔落傷害 */

@@ -57,7 +57,7 @@ function pct(ratio: number): string {
       <span v-if="card.resist.explosion">爆炸抗性 <b class="font-mono text-teal-950">{{ Math.round(card.resist.explosion * 100) }}%</b></span>
     </div>
 
-    <!-- 兩種專屬砲彈 -->
+    <!-- 專屬砲彈 -->
     <div class="space-y-1.5 border-t border-teal-600/40 pt-2">
       <div
         v-for="(shot, idx) in card.shots"

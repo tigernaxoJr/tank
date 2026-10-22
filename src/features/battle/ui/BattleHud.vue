@@ -254,7 +254,7 @@ function handleKeyDown(e: KeyboardEvent): void {
   } else if (e.key === 'ArrowDown') {
     e.preventDefault()
     adjustAngle(-1)
-  } else if (e.key === '1' || e.key === '2') {
+  } else if (/^[1-9]$/.test(e.key)) {
     const shot = activeShots.value[Number(e.key) - 1]
     if (shot) emit('change-bullet', shot.id)
   } else if (e.code === 'Space' || e.key === ' ') {
