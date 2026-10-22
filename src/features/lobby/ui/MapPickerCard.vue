@@ -28,7 +28,7 @@ function step(delta: number): void {
 </script>
 
 <template>
-  <div class="space-y-2">
+  <div class="space-y-2 phone:space-y-1">
     <div class="relative overflow-hidden rounded-2xl border-[3px] border-ink bg-mist">
       <MapPreview :map="map" :width="360" :height="170" class="aspect-[36/17] w-full" />
       <span class="font-num toon-pill absolute left-2 top-2 bg-paper text-xs font-extrabold">
@@ -39,31 +39,31 @@ function step(delta: number): void {
         <button
           type="button"
           aria-label="上一張地圖"
-          class="toon-btn absolute left-2 top-1/2 h-9 w-9 -translate-y-1/2 rounded-full p-0 text-lg"
+          class="toon-btn absolute left-2 top-1/2 h-9 w-9 -translate-y-1/2 rounded-full p-0 text-lg phone:left-1 phone:h-7 phone:w-7"
           @click="step(-1)"
         >‹</button>
         <button
           type="button"
           aria-label="下一張地圖"
-          class="toon-btn absolute right-2 top-1/2 h-9 w-9 -translate-y-1/2 rounded-full p-0 text-lg"
+          class="toon-btn absolute right-2 top-1/2 h-9 w-9 -translate-y-1/2 rounded-full p-0 text-lg phone:right-1 phone:h-7 phone:w-7"
           @click="step(1)"
         >›</button>
       </template>
     </div>
     <div class="flex items-start justify-between gap-2 px-1">
       <div class="min-w-0">
-        <div class="truncate text-xl leading-tight">{{ label.zh }}</div>
-        <div class="font-num truncate text-sm font-bold text-ink-soft">{{ label.en }}</div>
+        <div class="truncate text-xl leading-tight phone:text-base">{{ label.zh }}</div>
+        <div class="font-num truncate text-sm font-bold text-ink-soft phone:hidden">{{ label.en }}</div>
       </div>
       <button
         v-if="editable"
         type="button"
-        class="toon-btn shrink-0 rounded-xl px-2.5 py-1 text-sm"
+        class="toon-btn shrink-0 rounded-xl px-2.5 py-1 text-sm phone:px-2 phone:py-0.5 phone:text-xs"
         @click="soundController.play('ui_click'); emit('open-gallery')"
       >
         全部地圖
       </button>
     </div>
-    <p class="line-clamp-2 px-1 text-sm leading-snug text-ink-soft">{{ map.description }}</p>
+    <p class="line-clamp-2 px-1 text-sm leading-snug text-ink-soft phone:hidden">{{ map.description }}</p>
   </div>
 </template>

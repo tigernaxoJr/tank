@@ -94,27 +94,27 @@ const hint = computed(() => {
 </script>
 
 <template>
-  <div class="flex min-h-full flex-col gap-5 lg:h-full lg:min-h-0">
+  <div class="flex min-h-full flex-col gap-5 lg:h-full lg:min-h-0 phone:h-full phone:min-h-0 phone:gap-1">
     <!-- 頂欄 -->
-    <header class="flex flex-wrap items-center gap-3">
+    <header class="flex flex-wrap items-center gap-3 phone:flex-nowrap phone:gap-2">
       <button
         type="button"
         aria-label="離開房間"
-        class="toon-btn h-11 w-11 rounded-full p-0 text-2xl"
+        class="toon-btn h-11 w-11 rounded-full p-0 text-2xl phone:h-9 phone:w-9 phone:shrink-0"
         @click="soundController.play('ui_click'); emit('leave')"
       >
         ‹
       </button>
-      <div class="mr-auto flex min-w-0 flex-col items-start gap-2.5">
-        <h1 class="toon-title max-w-full truncate px-1 pb-1 text-[1.9rem] leading-tight">{{ roomTitle }}</h1>
-        <span class="toon-pill bg-paper text-sm">
+      <div class="mr-auto flex min-w-0 flex-col items-start gap-2.5 phone:flex-row phone:items-center phone:gap-2">
+        <h1 class="toon-title max-w-full truncate px-1 pb-1 text-[1.9rem] leading-tight phone:min-w-0 phone:text-xl">{{ roomTitle }}</h1>
+        <span class="toon-pill bg-paper text-sm phone:shrink-0 phone:text-xs">
           <span class="h-2.5 w-2.5 rounded-full border-2 border-ink" :class="locked ? 'bg-coral' : 'bg-grass'" />
           {{ locked ? '對戰中' : '等待中' }} · <b class="font-num">{{ roster.length }}/{{ MAX_PLAYERS_PER_TEAM * 2 }}</b>
         </span>
       </div>
-      <div class="toon-panel flex items-center gap-2 rounded-full py-1 pl-4 pr-1">
-        <span class="text-sm text-ink-soft">房號</span>
-        <span class="font-num text-2xl font-extrabold tracking-[0.15em]">{{ roomCode }}</span>
+      <div class="toon-panel flex items-center gap-2 rounded-full py-1 pl-4 pr-1 phone:shrink-0 phone:gap-1.5 phone:py-0.5 phone:pl-3">
+        <span class="text-sm text-ink-soft phone:hidden">房號</span>
+        <span class="font-num text-2xl font-extrabold tracking-[0.15em] phone:text-lg">{{ roomCode }}</span>
         <button type="button" class="toon-btn rounded-full px-3 py-0.5 text-sm" @click="emit('copy-code')">
           {{ copied ? '已複製' : '複製' }}
         </button>
@@ -124,8 +124,9 @@ const hint = computed(() => {
       </div>
     </header>
 
-    <div class="grid grid-cols-1 gap-5 lg:min-h-0 lg:flex-1 lg:grid-cols-[320px_minmax(0,1fr)_300px]">
-      <aside class="min-h-0 pt-4 lg:overflow-y-auto lg:pb-2">
+    <!-- 手機橫放：戰車、隊伍、戰場三欄並排，一屏放完 -->
+    <div class="grid grid-cols-1 gap-5 lg:min-h-0 lg:flex-1 lg:grid-cols-[320px_minmax(0,1fr)_300px] phone:min-h-0 phone:flex-1 phone:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)_minmax(0,1.05fr)] phone:gap-3">
+      <aside class="min-h-0 pt-4 lg:overflow-y-auto lg:pb-2 phone:overflow-y-auto phone:pb-1">
         <TankHangarPodium
           :selected-tank-id="selectedTankId"
           :random="randomTank"
@@ -137,46 +138,51 @@ const hint = computed(() => {
       </aside>
 
       <!-- 席次：兩隊並排，中間 VS -->
-      <section class="toon-panel relative mt-4 flex min-h-0 flex-col p-4 pt-6 lg:mb-2">
+      <section class="toon-panel relative mt-4 flex min-h-0 flex-col p-4 pt-6 lg:mb-2 phone:mb-1 phone:p-2.5 phone:pt-5">
         <span class="toon-ribbon absolute -top-4 left-4">隊伍</span>
-        <div class="relative grid min-h-0 flex-1 grid-cols-2 gap-6">
-          <div v-for="team in TEAMS" :key="team.id" class="flex min-h-0 flex-col gap-2">
+        <div class="relative grid min-h-0 flex-1 grid-cols-2 gap-6 phone:gap-2.5">
+          <div v-for="team in TEAMS" :key="team.id" class="flex min-h-0 flex-col gap-2 phone:gap-1">
             <div class="flex items-center justify-between">
-              <span class="toon-pill px-3 text-base text-white" :style="{ background: team.color, textShadow: '0 2px 0 rgb(29 35 64 / .35)' }">
+              <span class="toon-pill px-3 text-base text-white phone:px-2 phone:text-sm" :style="{ background: team.color, textShadow: '0 2px 0 rgb(29 35 64 / .35)' }">
                 {{ team.label }}
               </span>
-              <span class="font-num text-lg font-extrabold text-ink-soft">{{ countOf(team.id) }}/{{ MAX_PLAYERS_PER_TEAM }}</span>
+              <span class="font-num text-lg font-extrabold text-ink-soft phone:text-sm">{{ countOf(team.id) }}/{{ MAX_PLAYERS_PER_TEAM }}</span>
             </div>
-            <ul class="flex min-h-0 flex-1 flex-col gap-2">
+            <ul class="flex min-h-0 flex-1 flex-col gap-2 phone:gap-1">
               <li v-for="(seat, i) in seatsOf(team.id)" :key="`${team.id}-${i}`" class="flex-1">
                 <div
                   v-if="seat"
-                  class="flex h-full min-h-[60px] flex-col justify-center gap-1 rounded-2xl border-[3px] border-ink bg-paper px-2 py-1"
+                  class="flex h-full min-h-[60px] flex-col justify-center gap-1 rounded-2xl border-[3px] border-ink bg-paper px-2 py-1 phone:min-h-0 phone:flex-row phone:items-center phone:gap-1.5 phone:rounded-xl phone:px-1 phone:py-0.5"
                   :class="seat.id === localPlayerId ? 'seat-me' : ''"
                 >
-                  <span class="flex items-center gap-1.5">
+                  <span class="flex items-center gap-1.5 phone:shrink-0">
                     <span
-                      class="flex h-8 w-10 shrink-0 items-center justify-center rounded-lg border-[2.5px] border-ink"
+                      class="relative flex h-8 w-10 shrink-0 items-center justify-center rounded-lg border-[2.5px] border-ink phone:h-6 phone:w-8"
                       :style="{ background: team.color }"
                       :title="tankLabel(seat)"
                     >
                       <span v-if="seat.randomTank" class="toon-mystery h-6 text-base">?</span>
-                      <img v-else :src="hullUrl(seat)" alt="" class="h-5 w-auto" :class="team.id === 'B' ? '-scale-x-100' : ''" />
+                      <img v-else :src="hullUrl(seat)" alt="" class="h-5 w-auto phone:h-4" :class="team.id === 'B' ? '-scale-x-100' : ''" />
+                      <!-- 手機橫放：狀態標籤收成徽章上的小圓點 -->
+                      <span
+                        class="absolute -right-1.5 -top-1.5 hidden h-3 w-3 rounded-full border-2 border-ink phone:block"
+                        :class="seat.isHost ? 'bg-sun' : seat.ready ? 'bg-grass' : 'bg-mist'"
+                      />
                     </span>
                     <span
-                      class="toon-pill ml-auto shrink-0 px-1.5 text-[11px]"
+                      class="toon-pill ml-auto shrink-0 px-1.5 text-[11px] phone:hidden"
                       :class="seat.isHost ? 'bg-sun' : seat.ready ? 'bg-grass' : 'bg-mist text-ink-soft'"
                     >
                       {{ seat.isHost ? '房主' : seat.ready ? '準備好' : '整備中' }}
                     </span>
                   </span>
-                  <span class="truncate text-base leading-tight">{{ seat.name }}</span>
+                  <span class="truncate text-base leading-tight phone:min-w-0 phone:text-sm" :title="seat.name">{{ seat.name }}</span>
                 </div>
                 <button
                   v-else
                   type="button"
                   :disabled="locked || localTeam === team.id"
-                  class="empty-seat flex h-full min-h-[52px] w-full items-center justify-center rounded-2xl border-[3px] border-dashed text-sm"
+                  class="empty-seat flex h-full min-h-[52px] w-full items-center justify-center rounded-2xl border-[3px] border-dashed text-sm phone:min-h-0 phone:rounded-xl phone:text-xs"
                   :style="{ '--team': team.color }"
                   @click="sitAt(team.id)"
                 >
@@ -186,7 +192,7 @@ const hint = computed(() => {
             </ul>
           </div>
           <span
-            class="font-num pointer-events-none absolute left-1/2 top-1/2 flex h-12 w-12 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border-[3px] border-ink bg-sun text-lg font-extrabold shadow-[0_3px_0_var(--color-ink)]"
+            class="font-num pointer-events-none absolute left-1/2 top-1/2 flex h-12 w-12 phone:h-8 phone:w-8 phone:text-xs -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border-[3px] border-ink bg-sun text-lg font-extrabold shadow-[0_3px_0_var(--color-ink)]"
           >
             VS
           </span>
@@ -194,7 +200,7 @@ const hint = computed(() => {
       </section>
 
       <!-- 戰場與開打 -->
-      <section class="toon-panel relative mt-4 flex flex-col gap-3 p-4 pt-6 lg:mb-2">
+      <section class="toon-panel relative mt-4 flex min-h-0 flex-col gap-3 p-4 pt-6 lg:mb-2 phone:mb-1 phone:gap-2 phone:p-2.5 phone:pt-5">
         <span class="toon-ribbon absolute -top-4 left-4" style="background: var(--color-grass); color: var(--color-ink); text-shadow: none">戰場</span>
         <MapPickerCard
           :map-id="selectedMapId"
@@ -202,20 +208,20 @@ const hint = computed(() => {
           @select="(id) => emit('select-map', id)"
           @open-gallery="emit('open-gallery')"
         />
-        <div class="space-y-1.5">
-          <span class="text-sm">有人斷線時</span>
-          <div class="toon-segment text-sm">
+        <div class="space-y-1.5 phone:flex phone:items-center phone:gap-1.5 phone:space-y-0">
+          <span class="text-sm phone:shrink-0 phone:text-xs"><span class="phone:hidden">有人</span>斷線時</span>
+          <div class="toon-segment text-sm phone:min-w-0 phone:flex-1 phone:whitespace-nowrap phone:text-xs phone:[&>button]:px-1">
             <button type="button" :disabled="!canEditRoom" :aria-pressed="disconnectPolicy === 'forfeit'" @click="setPolicy('forfeit')">算他陣亡</button>
             <button type="button" :disabled="!canEditRoom" :aria-pressed="disconnectPolicy === 'bot'" @click="setPolicy('bot')">電腦接手</button>
           </div>
         </div>
 
-        <div class="mt-auto space-y-2 pt-2">
+        <div class="mt-auto space-y-2 pt-2 phone:space-y-1 phone:pt-0">
           <button
             v-if="isHost"
             type="button"
             :disabled="!canStart"
-            class="toon-btn toon-btn--sun w-full py-3 text-2xl"
+            class="toon-btn toon-btn--sun w-full py-3 text-2xl phone:py-1.5 phone:text-xl"
             @click="emit('start')"
           >
             開打！
@@ -223,13 +229,13 @@ const hint = computed(() => {
           <button
             v-else
             type="button"
-            class="toon-btn w-full py-3 text-2xl"
+            class="toon-btn w-full py-3 text-2xl phone:py-1.5 phone:text-xl"
             :class="localReady ? 'toon-btn--grass' : 'toon-btn--sun'"
             @click="emit('toggle-ready')"
           >
             {{ localReady ? '✓ 準備好了' : '準備' }}
           </button>
-          <p class="text-center text-sm text-ink-soft">{{ hint }}</p>
+          <p class="text-center text-sm text-ink-soft phone:text-xs">{{ hint }}</p>
         </div>
 
         <div

@@ -1,5 +1,8 @@
 @import "tailwindcss";
 
+/* 手機橫放（或很矮的視窗）：大廳改成一屏放完的多欄緊湊版面，不捲動整頁 */
+@custom-variant phone (@media (orientation: landscape) and (max-height: 540px));
+
 /*
  * 大廳「卡通粗描邊」設計系統：跟 Q 版坦克美術同一種語言——深墨色外框、平塗色塊、硬陰影。
  * 顏色只用這裡的 token；新元件請組合 .toon-* 類別，不要另開一套。

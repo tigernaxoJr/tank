@@ -24,48 +24,48 @@ const roomName = defineModel<string>('roomName', { required: true })
   <Teleport to="body">
     <div
       v-if="open"
-      class="fixed inset-0 z-40 flex items-center justify-center bg-ink/50 p-4 font-toon"
+      class="fixed inset-0 z-40 flex items-center justify-center bg-ink/50 p-4 font-toon phone:px-3 phone:pb-2 phone:pt-6"
       @click.self="emit('cancel')"
     >
-      <div class="toon-panel pop relative grid w-full max-w-3xl grid-cols-1 gap-5 p-5 pt-8 md:grid-cols-[1fr_1.1fr]">
+      <div class="toon-panel pop relative grid w-full max-w-3xl grid-cols-1 gap-5 p-5 pt-8 md:grid-cols-[1fr_1.1fr] phone:grid-cols-[1fr_1.1fr] phone:gap-4 phone:p-3 phone:pt-6">
         <span class="toon-ribbon absolute -top-5 left-1/2 -translate-x-1/2 px-6 text-xl" style="background: var(--color-sun); color: var(--color-ink); text-shadow: none">
           開新戰局
         </span>
 
-        <div class="flex flex-col gap-4">
-          <label class="block space-y-1.5">
-            <span class="text-base">房間名稱</span>
+        <div class="flex flex-col gap-4 phone:gap-2.5">
+          <label class="block space-y-1.5 phone:space-y-1">
+            <span class="text-base phone:text-sm">房間名稱</span>
             <input
               v-model="roomName"
               type="text"
               maxlength="24"
               :placeholder="`${captain} 的戰局`"
-              class="toon-input w-full text-lg"
+              class="toon-input w-full text-lg phone:py-1 phone:text-base"
               @keyup.enter="emit('confirm')"
             />
           </label>
 
-          <div class="space-y-1.5">
-            <span class="text-base">有人斷線時</span>
+          <div class="space-y-1.5 phone:space-y-1">
+            <span class="text-base phone:text-sm">有人斷線時</span>
             <div class="toon-segment text-sm">
               <button type="button" :aria-pressed="disconnectPolicy === 'forfeit'" @click="emit('select-policy', 'forfeit')">算他陣亡</button>
               <button type="button" :aria-pressed="disconnectPolicy === 'bot'" @click="emit('select-policy', 'bot')">電腦接手</button>
             </div>
           </div>
 
-          <div class="flex items-center gap-2 rounded-xl bg-mist px-3 py-2 text-sm text-ink-soft">
+          <div class="flex items-center gap-2 rounded-xl bg-mist px-3 py-2 text-sm text-ink-soft phone:py-1 phone:text-xs">
             <span class="font-num text-lg font-extrabold text-ink">5v5</span>
             每隊最多 5 人；開房後把 6 碼房號傳給朋友。
           </div>
 
           <div class="mt-auto flex gap-3">
-            <button type="button" class="toon-btn flex-1 py-2 text-lg" @click="emit('cancel')">取消</button>
-            <button type="button" class="toon-btn toon-btn--sun flex-[2] py-2 text-xl" @click="emit('confirm')">開房！</button>
+            <button type="button" class="toon-btn flex-1 py-2 text-lg phone:py-1.5" @click="emit('cancel')">取消</button>
+            <button type="button" class="toon-btn toon-btn--sun flex-[2] py-2 text-xl phone:py-1.5" @click="emit('confirm')">開房！</button>
           </div>
         </div>
 
-        <div class="space-y-1.5">
-          <span class="text-base">戰場</span>
+        <div class="space-y-1.5 phone:space-y-1">
+          <span class="text-base phone:text-sm">戰場</span>
           <MapPickerCard
             :map-id="mapId"
             editable

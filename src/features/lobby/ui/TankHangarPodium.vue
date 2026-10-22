@@ -86,11 +86,11 @@ function setPaint(team: TeamId): void {
 </script>
 
 <template>
-  <div class="toon-panel relative flex flex-col gap-3 p-3 pt-6">
+  <div class="toon-panel relative flex flex-col gap-3 p-3 pt-6 phone:gap-1.5 phone:p-2.5 phone:pt-5">
     <span class="toon-ribbon absolute -top-4 left-4" style="background: var(--color-sun); color: var(--color-ink); text-shadow: none">我的戰車</span>
 
     <!-- 展示台 -->
-    <div class="stage relative h-40 overflow-hidden rounded-2xl border-[3px] border-ink">
+    <div class="stage relative h-40 overflow-hidden rounded-2xl border-[3px] border-ink phone:h-[84px]">
       <div class="absolute right-2 top-2 flex gap-1.5" title="塗裝預覽">
         <button
           v-for="t in (['A', 'B'] as const)"
@@ -102,29 +102,32 @@ function setPaint(team: TeamId): void {
           @click="setPaint(t)"
         />
       </div>
-      <img :src="turfUrl" alt="" class="absolute bottom-2 left-1/2 h-10 w-52 max-w-none -translate-x-1/2" />
-      <div v-if="!random" class="tank-bob absolute bottom-[38px] left-1/2 h-0 w-0">
-        <!-- rig 原點：車身底線上方 HULL_BASE_Y；整組以 RIG_SCALE 縮放 -->
-        <div class="absolute left-0 top-0 h-0 w-0" :style="{ transform: `scale(${RIG_SCALE})`, transformOrigin: '0 0', marginTop: `${-HULL_BASE_Y * ART_ZOOM * RIG_SCALE}px` }">
-          <img :src="sprites.barrelUrl" alt="" class="rig-barrel absolute max-w-none" :style="barrelStyle" />
-          <img :src="sprites.hullUrl" :alt="spec.name" class="rig-hull absolute max-w-none" :style="hullStyle" />
+      <!-- 手機橫放時展示台變矮，台座與戰車整組縮小 -->
+      <div class="stage-zoom pointer-events-none absolute inset-0">
+        <img :src="turfUrl" alt="" class="absolute bottom-2 left-1/2 h-10 w-52 max-w-none -translate-x-1/2" />
+        <div v-if="!random" class="tank-bob absolute bottom-[38px] left-1/2 h-0 w-0">
+          <!-- rig 原點：車身底線上方 HULL_BASE_Y；整組以 RIG_SCALE 縮放 -->
+          <div class="absolute left-0 top-0 h-0 w-0" :style="{ transform: `scale(${RIG_SCALE})`, transformOrigin: '0 0', marginTop: `${-HULL_BASE_Y * ART_ZOOM * RIG_SCALE}px` }">
+            <img :src="sprites.barrelUrl" alt="" class="rig-barrel absolute max-w-none" :style="barrelStyle" />
+            <img :src="sprites.hullUrl" :alt="spec.name" class="rig-hull absolute max-w-none" :style="hullStyle" />
+          </div>
         </div>
+        <span v-else class="toon-mystery tank-bob absolute bottom-[30px] left-1/2 h-20 text-5xl" aria-label="隨機戰車">?</span>
       </div>
-      <span v-else class="toon-mystery tank-bob absolute bottom-[30px] left-1/2 h-20 text-5xl" aria-label="隨機戰車">?</span>
     </div>
 
     <div class="flex items-center gap-2 px-1">
       <div class="min-w-0 flex-1">
         <div class="flex items-baseline gap-2">
-          <span class="truncate text-2xl leading-none">{{ label.zh }}</span>
-          <span class="font-num shrink-0 text-sm font-extrabold text-ink-soft">{{ label.en }}</span>
+          <span class="truncate text-2xl leading-none phone:text-lg">{{ label.zh }}</span>
+          <span class="font-num shrink-0 text-sm font-extrabold text-ink-soft phone:hidden">{{ label.en }}</span>
         </div>
-        <div class="mt-1 truncate text-sm text-ink-soft">{{ random ? '開打時從所有戰車抽一台' : spec.subtitle }}</div>
+        <div class="mt-1 truncate text-sm text-ink-soft phone:hidden">{{ random ? '開打時從所有戰車抽一台' : spec.subtitle }}</div>
       </div>
       <button
         type="button"
         :disabled="locked"
-        class="toon-btn toon-btn--sun shrink-0 rounded-xl px-3 py-1.5 text-base"
+        class="toon-btn toon-btn--sun shrink-0 rounded-xl px-3 py-1.5 text-base phone:px-2.5 phone:py-0.5 phone:text-sm"
         @click="openTankModal"
       >
         換車
@@ -132,10 +135,10 @@ function setPaint(team: TeamId): void {
     </div>
 
     <!-- 數值（隨機時不透露） -->
-    <div v-if="random" class="flex h-[74px] items-center justify-center rounded-xl border-[3px] border-dashed border-ink/25 px-2 text-center text-sm text-ink-soft">
+    <div v-if="random" class="flex h-[74px] phone:h-[54px] items-center justify-center rounded-xl border-[3px] border-dashed border-ink/25 px-2 text-center text-sm text-ink-soft">
       耐久、火力、機動與彈藥都等開打揭曉
     </div>
-    <div v-else class="space-y-1.5 px-1">
+    <div v-else class="space-y-1.5 px-1 phone:space-y-1">
       <div v-for="s in stats" :key="s.label" class="flex items-center gap-2">
         <span class="w-9 shrink-0 text-sm">{{ s.label }}</span>
         <div class="h-3.5 flex-1 overflow-hidden rounded-full border-[2.5px] border-ink bg-paper">
@@ -144,7 +147,7 @@ function setPaint(team: TeamId): void {
             :style="{ width: `${Math.max(8, Math.round(s.ratio * 100))}%`, background: s.color }"
           />
         </div>
-        <span class="font-num w-16 shrink-0 text-right text-sm font-extrabold">
+        <span class="font-num w-16 shrink-0 text-right text-sm font-extrabold phone:w-14 phone:text-xs">
           {{ s.value }}<span class="ml-0.5 font-toon text-xs font-normal text-ink-soft">{{ s.unit }}</span>
         </span>
       </div>
@@ -155,7 +158,7 @@ function setPaint(team: TeamId): void {
       <div
         v-for="(shot, i) in shots"
         :key="i"
-        class="flex min-w-0 flex-1 items-center gap-1.5 rounded-xl border-[3px] border-ink bg-paper px-1.5 py-1"
+        class="flex min-w-0 flex-1 items-center gap-1.5 rounded-xl border-[3px] border-ink bg-paper px-1.5 py-1 phone:justify-center phone:py-0.5"
         :title="shot?.description"
       >
         <span
@@ -164,7 +167,8 @@ function setPaint(team: TeamId): void {
         >
           <img v-if="shotSprite(shot?.visual.sprite?.key)" :src="shotSprite(shot?.visual.sprite?.key)!" alt="" class="h-5 w-5 object-contain" />
         </span>
-        <span class="min-w-0 leading-tight">
+        <!-- 手機橫放欄位窄，只留彈種圖示（名稱在 title 與換彈視窗裡） -->
+        <span class="min-w-0 leading-tight phone:hidden">
           <span class="block text-[11px] text-ink-soft">{{ i === 0 ? '主彈' : '副彈' }}</span>
           <span class="block truncate text-sm">{{ shot ? splitDisplayName(shot.name).zh : '—' }}</span>
         </span>
@@ -172,7 +176,7 @@ function setPaint(team: TeamId): void {
       <button
         type="button"
         :disabled="locked"
-        class="toon-btn toon-btn--sky shrink-0 rounded-xl px-2.5 py-1.5 text-sm"
+        class="toon-btn toon-btn--sky shrink-0 rounded-xl px-2.5 py-1.5 text-sm phone:px-2 phone:py-1"
         @click="showLoadoutModal = true; soundController.play('ui_click')"
       >
         換彈
@@ -218,6 +222,12 @@ function setPaint(team: TeamId): void {
 <style scoped>
 .stage {
   background: url('@/assets/ui/stage_sky.svg') center bottom / cover no-repeat, #bfe4ff;
+}
+@media (orientation: landscape) and (max-height: 540px) {
+  .stage-zoom {
+    transform: scale(0.55);
+    transform-origin: 50% 100%;
+  }
 }
 .tank-bob {
   animation: bob 2.8s ease-in-out infinite;
