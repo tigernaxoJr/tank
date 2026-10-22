@@ -10,6 +10,7 @@ import { Router } from 'express'
 const ROOM_CODE_RE = /^[A-Z2-9]{6}$/
 const MAP_ID_RE = /^[a-z0-9_]{1,32}$/
 const STATUSES = new Set(['waiting', 'playing'])
+const DISCONNECT_POLICIES = new Set(['forfeit', 'bot'])
 
 export const MAX_PLAYERS_LIMIT = 10
 
@@ -33,6 +34,8 @@ export function validateRoomBody(code, body) {
   if (players < 1 || players > maxPlayers) return { error: 'invalid players' }
   const status = body.status === undefined ? 'waiting' : body.status
   if (!STATUSES.has(status)) return { error: 'invalid status' }
+  const disconnectPolicy = body.disconnectPolicy === undefined ? 'forfeit' : body.disconnectPolicy
+  if (!DISCONNECT_POLICIES.has(disconnectPolicy)) return { error: 'invalid disconnectPolicy' }
   return {
     room: {
       code,
@@ -42,6 +45,7 @@ export function validateRoomBody(code, body) {
       players,
       maxPlayers,
       status,
+      disconnectPolicy,
     },
   }
 }

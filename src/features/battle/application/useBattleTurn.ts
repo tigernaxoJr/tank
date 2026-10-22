@@ -5,7 +5,7 @@
  *   2. `commitFireImpact`: 砲彈實際飛抵落點瞬間，才執行挖坑、扣血、坦克下墜（含摔落/墜入深淵傷害）。
  *   3. `finalizeTurnAfterHold`: 爆炸停留結束後才切換回合與風向。
  */
-import type { BulletType, FireActionCommand, PlayerId } from '@/shared/kernel/types'
+import type { BotLevel, BulletType, FireActionCommand, PlayerId } from '@/shared/kernel/types'
 import {
   DEFAULT_WORLD_HEIGHT,
   DEFAULT_WORLD_WIDTH,
@@ -327,5 +327,18 @@ export function forfeitPlayer(state: BattleState, id: PlayerId): boolean {
   const wasActive = state.activePlayer === id
   applyDamageAndCheckWinner(state, { [id]: tank.hp })
   if (wasActive && state.phase === 'AIMING') finalizeTurnAfterHold(state)
+  return true
+}
+
+/**
+ * 玩家中途離線、房間設定為「電腦接手」：該坦克改由電腦操控（難度預設中等），其餘規則不變。
+ * 實際的瞄準 / 開火由房主端的 AI 算出後以一般動作訊息廣播，所以各端只需切換旗標。
+ */
+export function takeOverWithBot(state: BattleState, id: PlayerId, level: BotLevel = 'normal'): boolean {
+  const tank = state.tanks[id]
+  if (!tank || tank.hp <= 0 || state.phase === 'GAME_OVER' || tank.isBot) return false
+  tank.isBot = true
+  tank.botLevel = level
+  if (!tank.name.startsWith('🤖')) tank.name = `🤖 ${tank.name}`
   return true
 }

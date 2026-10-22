@@ -19,6 +19,7 @@ import {
 import { createRoomDirectory, type RoomListing, type RoomStatus } from '../infra/roomDirectory'
 import type {
   BotLevel,
+  DisconnectPolicy,
   LobbyRosterUpdateEvent,
   MapPresetId,
   PlayerId,
@@ -92,6 +93,7 @@ const session = reactive<RoomSession>({
   localPlayerName: 'Commander',
   selectedTankId: 'aegis',
   selectedMapId: 'harvest_plains',
+  disconnectPolicy: 'forfeit',
   locked: false,
   roster: [],
   errorMessage: undefined,
@@ -130,6 +132,7 @@ function announceRoom(): void {
     players: Math.max(1, session.roster.length),
     maxPlayers: MAX_TOTAL_PLAYERS,
     status: roomStatus,
+    disconnectPolicy: session.disconnectPolicy,
   })
 }
 
@@ -180,6 +183,7 @@ function broadcastRosterFromHost(): void {
       type: 'LOBBY_ROSTER_UPDATE',
       assignedPlayerId: slot.id,
       mapId: session.selectedMapId,
+      disconnectPolicy: session.disconnectPolicy,
       roster: session.roster.map((r) => ({ ...r })),
     }
     transport.sendToPeer(slot.id, msg)
@@ -229,6 +233,7 @@ function handleClientReceiveMessage(msg: ProtocolMessage): void {
   if (msg.type === 'LOBBY_ROSTER_UPDATE') {
     session.localPlayerId = msg.assignedPlayerId
     session.selectedMapId = msg.mapId
+    if (msg.disconnectPolicy) session.disconnectPolicy = msg.disconnectPolicy
     session.roster = msg.roster
     return
   }
@@ -296,7 +301,7 @@ async function handleHost(): Promise<void> {
         broadcastRosterFromHost()
         if (props.inBattle) {
           // 對戰中斷線視為認輸：通知所有人（含房主自己的戰場），避免輪到他時全場卡住
-          const left: ProtocolMessage = { type: 'PLAYER_LEFT', playerId: peerSlotId }
+          const left: ProtocolMessage = { type: 'PLAYER_LEFT', playerId: peerSlotId, takeover: session.disconnectPolicy === 'bot' }
           transport.broadcast(left)
           emit('remote-message', left)
         }
@@ -409,6 +414,12 @@ function selectMapPreset(mapId: MapPresetId): void {
   if (session.isHost && session.phase === 'connected') {
     broadcastRosterFromHost()
   }
+}
+
+function selectDisconnectPolicy(policy: DisconnectPolicy): void {
+  if (session.locked || (!session.isHost && session.phase === 'connected')) return
+  session.disconnectPolicy = policy
+  if (session.isHost && session.phase === 'connected') broadcastRosterFromHost()
 }
 
 function handleSwitchTeam(targetTeam: TeamId): void {
@@ -561,7 +572,7 @@ onMounted(() => {
 
 // 人數 / 地圖變動時立即更新房間列表，不必等下一次心跳
 watch(
-  () => [session.roster.length, session.selectedMapId],
+  () => [session.roster.length, session.selectedMapId, session.disconnectPolicy],
   () => {
     if (heartbeatTimer !== null) announceRoom()
   },
@@ -653,6 +664,27 @@ onUnmounted(() => {
               </div>
               <p class="mt-0.5 line-clamp-1 text-[11px] text-teal-800">{{ m.description }}</p>
             </div>
+          </button>
+        </div>
+      </div>
+
+      <!-- 房間規則：玩家斷線時的處置（只有房主能改，客端唯讀；對戰模式才有意義） -->
+      <div v-if="gameMode === 'p2p'" class="rounded-2xl border-2 border-teal-600/40 bg-white/80 p-3">
+        <div class="mb-2 text-xs font-extrabold text-amber-700">🔌 玩家斷線時</div>
+        <div class="grid grid-cols-2 gap-2">
+          <button
+            v-for="opt in ([['forfeit', '認輸', '坦克陣亡，退出對戰'], ['bot', '電腦接手', '由 CPU（中等）代打']] as const)"
+            :key="opt[0]"
+            type="button"
+            class="rounded-xl border-2 p-2 text-left transition"
+            :class="[
+              session.disconnectPolicy === opt[0] ? 'border-amber-500 bg-white shadow-md' : 'border-teal-600/40 bg-white/60',
+              session.locked || (!session.isHost && session.phase === 'connected') ? 'cursor-default' : 'cursor-pointer hover:border-amber-400',
+            ]"
+            @click="selectDisconnectPolicy(opt[0])"
+          >
+            <div class="text-xs font-extrabold text-teal-950">{{ opt[1] }}</div>
+            <div class="text-[10px] text-teal-800">{{ opt[2] }}</div>
           </button>
         </div>
       </div>
@@ -858,7 +890,7 @@ onUnmounted(() => {
                 <div class="min-w-0 flex-1">
                   <div class="truncate text-xs font-black text-teal-950">{{ room.name }}</div>
                   <div class="truncate text-[10px] text-teal-800">
-                    房主 {{ room.hostName }} · {{ formatMapName(room.mapId) }}
+                    房主 {{ room.hostName }} · {{ formatMapName(room.mapId) }}<template v-if="room.disconnectPolicy === 'bot'"> · 斷線由電腦接手</template>
                   </div>
                 </div>
                 <span class="shrink-0 font-mono text-xs font-bold text-amber-700">

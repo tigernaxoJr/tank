@@ -24,6 +24,9 @@ export type BulletType = 'MISSILE_STANDARD' | 'MISSILE_HEAVY' | 'MISSILE_PLASMA'
 /** 電腦難度：由弱到強。perfect 為百發百中，hard 為舊版預設（次強） */
 export type BotLevel = 'rookie' | 'weak' | 'normal' | 'hard' | 'perfect'
 
+/** 對戰中玩家斷線時的處置（開房時由房主決定）：認輸（坦克陣亡）或由電腦接手 */
+export type DisconnectPolicy = 'forfeit' | 'bot'
+
 export interface RosterSlot {
   readonly id: PlayerId
   name: string
@@ -75,10 +78,12 @@ export interface ResyncStateEvent {
   readonly carves: number[]
 }
 
-/** 對戰中玩家斷線（只由房主廣播）：該玩家視為認輸，坦克陣亡並退出出手順序 */
+/** 對戰中玩家斷線（只由房主廣播）：依房間設定認輸（坦克陣亡並退出出手順序）或交給電腦接手 */
 export interface PlayerLeftEvent {
   readonly type: 'PLAYER_LEFT'
   readonly playerId: PlayerId
+  /** true = 由房主端的電腦接手該坦克；false = 認輸陣亡。由房主依房間設定決定，客端照辦 */
+  readonly takeover: boolean
 }
 
 export interface PlayerJoinInfoEvent {
@@ -100,6 +105,7 @@ export interface LobbyRosterUpdateEvent {
   readonly type: 'LOBBY_ROSTER_UPDATE'
   readonly assignedPlayerId: PlayerId
   readonly mapId: MapPresetId
+  readonly disconnectPolicy?: DisconnectPolicy
   readonly roster: RosterSlot[]
 }
 

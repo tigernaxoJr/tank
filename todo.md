@@ -11,8 +11,7 @@
 ## 一、缺少的程式碼與 bug
 
 - [ ] **CI 沒跑前端測試**：`.github/workflows/deploy.yml` 只跑 `cargo test` 與建置，沒有 `npm test`（Vitest）；建置 Wasm 時也尚未驗證新加的 serde 依賴能通過。
-- [ ] 對戰中斷線改為「視為認輸」（`PLAYER_LEFT`，房主廣播）、房主端對動作訊息驗證來源（`messageGuards.ts`），**尚待兩個瀏覽器實機驗證**；斷線後「交給電腦接手」是否要做待討論（遊戲設計，定案後再寫進 `docs/`）。
-- [ ] 連線同步修復已實作（`RESYNC_REQUEST` / `RESYNC_STATE`，見 `BattleArena.vue`），**尚待兩個瀏覽器實機驗證**：人為製造不一致後，客端應自動被房主快照拉回。
+- [ ] 對戰中斷線處置（認輸 / 電腦接手，開房時設定，見 `docs/06` §三之六）與房主端動作來源驗證已實作，**尚待兩個瀏覽器實機驗證**（含電腦接手時走位與開火是否在各端一致）。- [ ] 連線同步修復已實作（`RESYNC_REQUEST` / `RESYNC_STATE`，見 `BattleArena.vue`），**尚待兩個瀏覽器實機驗證**：人為製造不一致後，客端應自動被房主快照拉回。
 - [ ] Rust 核心地形 / 彈道已與 TS 版對齊（黃金檔測試通過）；砲彈 `speedMultiplier`、吸附、風敏感度屬 TS 應用層，不在核心。尚缺：`wasm32-unknown-unknown` 目標與 `wasm-pack` 本機未安裝，Wasm 建置尚未驗證；TS 端也還沒有載入 Wasm 的轉接層（執行期仍用 TS 核心）。
 - [ ] 自動化測試已建立（Vitest，`src/test/`：確定性核心、風規則、傷害與回合結算、開火流程、電腦 AI、註冊表檢查）。尚缺：`server/` 測試沒接進 `npm test`（需先在 `server/` 執行 `npm install`）、`BattleArena` 的同步修復流程、Phaser 場景。
 - [ ] 實機驗證 P2P 房間「準備完畢」流程與房間列表跨網域（需兩個瀏覽器連線；目前只做了程式與型別檢查）。

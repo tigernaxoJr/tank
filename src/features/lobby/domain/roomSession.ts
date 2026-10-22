@@ -2,7 +2,7 @@
  * Lobby Slice - Domain Model
  * 定義 P2P 房間連線狀態機、10 人分隊編制 (最多 5v5) 與房號產生規則。
  */
-import type { MapPresetId, PlayerId, RosterSlot, TankArchetypeId, TeamId } from '@/shared/kernel/types'
+import type { DisconnectPolicy, MapPresetId, PlayerId, RosterSlot, TankArchetypeId, TeamId } from '@/shared/kernel/types'
 
 export type ConnectionPhase = 'idle' | 'hosting' | 'joining' | 'connected' | 'error'
 
@@ -17,6 +17,8 @@ export interface RoomSession {
   localPlayerName: string
   selectedTankId: TankArchetypeId
   selectedMapId: MapPresetId
+  /** 對戰中玩家斷線時的處置；房主設定，開戰後鎖定 */
+  disconnectPolicy: DisconnectPolicy
   locked: boolean
   roster: RosterSlot[]
   errorMessage?: string

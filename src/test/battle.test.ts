@@ -7,6 +7,7 @@ import {
   forfeitPlayer,
   moveActiveTank,
   prepareFireTrajectory,
+  takeOverWithBot,
 } from '@/features/battle/application/useBattleTurn'
 import {
   advanceTurn,
@@ -268,6 +269,32 @@ describe('玩家斷線 (forfeitPlayer)', () => {
     expect(state.winner).toBe('A')
     expect(forfeitPlayer(state, 'p1')).toBe(false)
     expect(forfeitPlayer(state, 'nobody')).toBe(false)
+  })
+})
+
+describe('玩家斷線 · 電腦接手 (takeOverWithBot)', () => {
+  it('坦克改由電腦操控、保留血量與位置，不會陣亡或換回合', () => {
+    const { state } = setupBattle()
+    const t = state.tanks.p1
+    const { x, hp } = t
+    expect(takeOverWithBot(state, 'p1')).toBe(true)
+    expect(t.isBot).toBe(true)
+    expect(t.botLevel).toBe('normal')
+    expect(t.name.startsWith('🤖')).toBe(true)
+    expect([t.x, t.hp, state.activePlayer, state.phase]).toEqual([x, hp, 'p1', 'AIMING'])
+  })
+  it('重複接手 / 已陣亡 / 對局結束 / 不存在都不處理', () => {
+    const { state } = setupBattle()
+    expect(takeOverWithBot(state, 'p1')).toBe(true)
+    expect(takeOverWithBot(state, 'p1')).toBe(false)
+    state.tanks.p2.hp = 0
+    expect(takeOverWithBot(state, 'p2')).toBe(false)
+    expect(takeOverWithBot(state, 'nobody')).toBe(false)
+  })
+  it('接手後電腦算得出射擊計畫', () => {
+    const { state, core } = setupBattle()
+    takeOverWithBot(state, 'p1')
+    expect(planBotShot(state, core, 'p1', () => 0.5)).not.toBeNull()
   })
 })
 

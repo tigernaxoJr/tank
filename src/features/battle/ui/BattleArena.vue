@@ -21,6 +21,7 @@ import {
   moveActiveTank,
   prepareFireTrajectory,
   syncAllTanksToTerrain,
+  takeOverWithBot,
 } from '../application/useBattleTurn'
 import { battleStateHash, createInitialBattleState } from '../domain/battleState'
 import { planBotMove, planBotShot } from '../domain/botBrain'
@@ -108,9 +109,10 @@ let pendingSnapshot: ResyncStateEvent | null = null
 // 對戰中斷線的玩家（下一局不再帶入）
 const departed = new Set<PlayerId>()
 
-const isBotTurn = computed(
-  () => props.mode === 'hotseat' && state.tanks[state.activePlayer]?.isBot === true,
-)
+// 輪到電腦控制的坦克（單機電腦對手，或對戰中被電腦接手的離線玩家）
+const isBotTurn = computed(() => state.tanks[state.activePlayer]?.isBot === true)
+// 實際算電腦決策的只有一台：單機的本機、連線對戰的房主（其他端只收動作訊息，維持確定性）
+const runsBot = computed(() => isBotTurn.value && (props.mode === 'hotseat' || props.isHost))
 
 const canControl = computed(() => {
   if (state.phase !== 'AIMING' || isBotTurn.value) return false
@@ -309,7 +311,7 @@ function handleRemoteMessage(msg: ProtocolMessage): void {
     return
   }
   if (msg.type === 'PLAYER_LEFT') {
-    handlePlayerLeft(msg.playerId)
+    handlePlayerLeft(msg.playerId, msg.takeover)
     return
   }
   if (msg.type === 'ACTION_MOVE') {
@@ -348,9 +350,10 @@ function handleToggleMute(): void {
   soundController.setMuted(isMuted.value)
 }
 
-/** 對戰中玩家斷線：視為認輸，坦克陣亡；輪到他就直接換下一位（砲彈還在飛則等回合結算自然推進） */
-function handlePlayerLeft(id: PlayerId): void {
-  if (forfeitPlayer(state, id)) departed.add(id)
+/** 對戰中玩家斷線：依房間設定認輸（坦克陣亡，輪到他就直接換下一位）或交給電腦接手 */
+function handlePlayerLeft(id: PlayerId, takeover: boolean): void {
+  const done = takeover ? takeOverWithBot(state, id) : forfeitPlayer(state, id)
+  if (done) departed.add(id)
 }
 
 function handleRequestNewMatch(): void {
@@ -389,6 +392,7 @@ function runBotTurn(): void {
   if (!tank) return
 
   // 先移動（每幀 3px，與玩家按方向鍵相同走 moveActiveTank，燃料規則一致），到位後再瞄準
+  const startX = tank.x
   const targetX = tank.x + planBotMove(state, core, botId)
   const walk = () => {
     if (state.turnId !== turnId || state.phase !== 'AIMING') return
@@ -401,6 +405,11 @@ function runBotTurn(): void {
       }
     }
     botFrame = null
+    // 連線對戰：把電腦走位一次性廣播，其他端用同一套 moveActiveTank 重播，位置才會一致
+    if (props.mode === 'p2p' && tank.x !== startX) {
+      const msg: MoveActionCommand = { type: 'ACTION_MOVE', turnId, playerId: botId, targetX: tank.x }
+      emit('outgoing-message', msg)
+    }
     aimAndFireBot(botId, turnId)
   }
   botFrame = requestAnimationFrame(walk)
@@ -451,7 +460,7 @@ function aimAndFireBot(botId: PlayerId, turnId: number): void {
 
 function scheduleBotTurn(): void {
   cancelBotTurn()
-  if (state.phase !== 'AIMING' || !isBotTurn.value) return
+  if (state.phase !== 'AIMING' || !runsBot.value) return
   // 等鏡頭移交到 Bot 坦克後再開始瞄準
   botTimer = setTimeout(() => {
     botTimer = null
@@ -459,7 +468,7 @@ function scheduleBotTurn(): void {
   }, 1100)
 }
 
-watch(() => [state.turnId, state.phase, isBotTurn.value], scheduleBotTurn, { immediate: true })
+watch(() => [state.turnId, state.phase, runsBot.value], scheduleBotTurn, { immediate: true })
 
 onUnmounted(() => {
   cancelBotTurn()
