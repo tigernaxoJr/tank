@@ -35,7 +35,8 @@ export {
   type MapThemeId,
   type MapTheme,
 } from './domain/mapRegistry'
-export { renderMapPreview } from './ui/mapPreview'
+export { default as MapPreview } from './ui/MapPreview.vue'
+export { loadMapPreview } from './ui/mapPreview'
 export {
   PROJECTILE_REGISTRY,
   PROJECTILE_LIST,

@@ -6,7 +6,7 @@
 import { onMounted, onUnmounted } from 'vue'
 import {
   MAP_LIST,
-  renderMapPreview,
+  MapPreview,
   type MapBlueprint,
 } from '@/features/battle'
 import { soundController } from '@/features/audio'
@@ -78,10 +78,11 @@ onUnmounted(() => {
             @click="onSelect(m)"
           >
             <div class="relative overflow-hidden rounded-[13px] border-b-[3px] border-ink bg-mist">
-              <img
-                :src="renderMapPreview(m, 280, 140)"
-                :alt="m.name"
-                class="aspect-[5/2] w-full object-cover transition-transform duration-300 group-hover:scale-105"
+              <MapPreview
+                :map="m"
+                :width="280"
+                :height="112"
+                class="aspect-[5/2] w-full transition-transform duration-300 group-hover:scale-105"
               />
               <span class="font-num toon-pill absolute left-2 top-2 bg-paper text-xs font-extrabold">{{ i + 1 }}</span>
               <span class="toon-pill absolute right-2 top-2 bg-paper text-xs">風 ≤ <b class="font-num">{{ m.maxWind }}</b></span>

@@ -27,6 +27,8 @@ export const SEATS_PER_TEAM = 5
 export function useLocalSkirmish(
   picksFor: (tankId: TankArchetypeId) => BulletType[],
   onSelectPrimaryTank: (choice: TankChoice) => void,
+  /** 大廳設定的玩家名稱：A1（我的戰車）出戰時用這個名字 */
+  localName: () => string = () => '',
 ) {
   // 預設陣容依註冊表輪流排（B 隊錯開一台），新增機種自動納入；每席也可以選「隨機」，開打時才抽。
   // 預設 1v1：A1 是玩家自己（我的戰車），B1 是中等電腦，其餘空位
@@ -73,6 +75,13 @@ export function useLocalSkirmish(
     if (team === 'A' && slotIndex === 0) onSelectPrimaryTank(choice)
   }
 
+  /** A1 用大廳名稱；其餘玩家席以隊名 + 席位稱呼 */
+  function playerName(team: TeamId, index: number, label: string): string {
+    const own = localName().trim()
+    if (team === 'A' && index === 0 && own) return own
+    return `${team === 'A' ? '橘隊' : '藍隊'} ${label}`
+  }
+
   function buildHotseatRoster(): RosterSlot[] {
     const roster: RosterSlot[] = []
     for (const team of ['A', 'B'] as const) {
@@ -83,7 +92,7 @@ export function useLocalSkirmish(
         const label = `${team}${i + 1}`
         roster.push({
           id: `${team.toLowerCase()}${i + 1}`,
-          name: isBot ? `🤖 CPU ${label}` : team === 'A' ? `琥珀 ${label}` : `皇家藍 ${label}`,
+          name: isBot ? `🤖 CPU ${label}` : playerName(team, i, label),
           team,
           tankId,
           isHost: team === 'A' && i === 0,

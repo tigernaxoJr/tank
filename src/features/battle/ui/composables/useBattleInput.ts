@@ -82,13 +82,16 @@ export function useBattleInput(ctx: BattleInputContext) {
     ctx.onUpdateAim(tank.angle, newPower)
   }
 
-  /** 力道條：按下即設定，按住拖曳可連續微調 */
+  /** 力道條：按下即設定，按住拖曳可連續微調（只跟著按下的那一根手指，雙手操作互不干擾） */
   function onPointerDownPowerGauge(e: PointerEvent): void {
     if (ctx.controlsDisabled.value || isCharging.value) return
     e.preventDefault()
     setPowerFromPointer(e.clientX)
-    const onMoveEv = (ev: PointerEvent) => setPowerFromPointer(ev.clientX)
-    const onUp = () => {
+    const onMoveEv = (ev: PointerEvent) => {
+      if (ev.pointerId === e.pointerId) setPowerFromPointer(ev.clientX)
+    }
+    const onUp = (ev: PointerEvent) => {
+      if (ev.pointerId !== e.pointerId) return
       window.removeEventListener('pointermove', onMoveEv)
       window.removeEventListener('pointerup', onUp)
       window.removeEventListener('pointercancel', onUp)
@@ -120,7 +123,9 @@ export function useBattleInput(ctx: BattleInputContext) {
         action()
       }, intervalMs)
     }, 260)
-    const onUp = () => {
+    // 只有按下的那根手指放開才停（手機上另一隻手指放開不影響）
+    const onUp = (ev: PointerEvent) => {
+      if (ev.pointerId !== e.pointerId) return
       window.removeEventListener('pointerup', onUp)
       window.removeEventListener('pointercancel', onUp)
       stopRepeat()
@@ -186,7 +191,9 @@ export function useBattleInput(ctx: BattleInputContext) {
     e.preventDefault()
     startCharging(e.timeStamp)
 
+    // 只認按下發射鈕的那根手指：雙手操作時，另一隻手放開方向鍵不會提早開火
     const onPointerUp = (ev: PointerEvent) => {
+      if (ev.pointerId !== e.pointerId) return
       window.removeEventListener('pointerup', onPointerUp)
       window.removeEventListener('pointercancel', onPointerUp)
       stopChargingAndFire(ev.timeStamp)

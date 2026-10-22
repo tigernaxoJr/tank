@@ -9,6 +9,8 @@
  * - 頂部中央：兩隊血量記分板 + 回合倒數圓章，下掛「誰的回合」與風向牌。
  * - 底部中央：精簡駕駛艙（戰車、移動、仰角、彈種、發射 / 跳過，第二列為整排力道條）；移動與仰角按住可連續作用，力道條可拖曳。
  * - 駕駛艙可切換顯示「我的坦克」（預設）或「回合坦克」。
+ * - 手機 / 觸控（pointer: coarse）或寬度 < 768px：底部改成手把式版面——左手方向鍵（左右移動、上下仰角），
+ *   右手彈種與大顆發射鈕，中間是戰車狀態與力道條；直立時狀態列獨佔一列。
  */
 import { computed, onUnmounted, ref, watch } from 'vue'
 import type { BattleState } from '../domain/battleState'
@@ -178,6 +180,13 @@ function shotSprite(key: string | undefined): string | null {
 }
 const hexColor = (n: number) => `#${n.toString(16).padStart(6, '0')}`
 
+// --- 觸控 / 窄螢幕改用手把式版面 ---
+const touchQuery = typeof window !== 'undefined' && window.matchMedia ? window.matchMedia('(pointer: coarse), (max-width: 767px)') : null
+const touchLayout = ref(touchQuery?.matches ?? false)
+const onTouchQuery = (e: MediaQueryListEvent) => (touchLayout.value = e.matches)
+touchQuery?.addEventListener('change', onTouchQuery)
+onUnmounted(() => touchQuery?.removeEventListener('change', onTouchQuery))
+
 // --- 換人時的出擊橫幅 ---
 const banner = ref<{ key: number; text: string; team: TeamId } | null>(null)
 let bannerTimer: ReturnType<typeof setTimeout> | null = null
@@ -227,7 +236,7 @@ onUnmounted(() => {
     </div>
 
     <!-- 頂部中央：記分板 + 回合圓章 -->
-    <div class="absolute left-1/2 top-3 flex -translate-x-1/2 flex-col items-center">
+    <div class="absolute left-1/2 top-3 flex -translate-x-1/2 flex-col items-center max-sm:top-16">
       <div class="toon-panel flex items-center gap-2 rounded-full py-1.5 pl-2 pr-2 sm:gap-3">
         <template v-for="team in (['A', 'B'] as TeamId[])" :key="team">
           <div class="flex items-center gap-2" :class="team === 'B' ? 'order-3 flex-row-reverse' : 'order-1'">
@@ -331,9 +340,143 @@ onUnmounted(() => {
       </div>
     </div>
 
+    <!-- 手機 / 觸控：手把式版面 -->
+    <div
+      v-if="state.phase !== 'GAME_OVER' && touchLayout"
+      class="pad-root absolute inset-x-0 bottom-0 flex flex-wrap items-end justify-between gap-x-3 gap-y-2 px-3"
+    >
+      <!-- 左手：方向鍵（左右移動、上下仰角），中央顯示仰角 -->
+      <div class="dpad pointer-events-auto order-1 grid shrink-0 grid-cols-3 grid-rows-3 gap-0.5">
+        <button
+          type="button"
+          aria-label="抬高砲管"
+          :disabled="controlsDisabled"
+          class="toon-btn pad-key col-start-2 row-start-1 p-0"
+          @pointerdown="holdAngle($event, 1)"
+          @contextmenu.prevent
+        >
+          <svg viewBox="0 0 24 24" class="h-6 w-6" fill="none" stroke="currentColor" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"><path d="m5 15 7-7 7 7" /></svg>
+        </button>
+        <button
+          v-for="dir in ([-1, 1] as const)"
+          :key="dir"
+          type="button"
+          :aria-label="dir < 0 ? '往左移動' : '往右移動'"
+          :disabled="controlsDisabled"
+          class="toon-btn toon-btn--sky pad-key row-start-2 p-0"
+          :class="dir < 0 ? 'col-start-1' : 'col-start-3'"
+          @pointerdown="holdMove($event, dir)"
+          @contextmenu.prevent
+        >
+          <svg viewBox="0 0 24 24" class="h-6 w-6" :class="dir > 0 ? 'scale-x-[-1]' : ''" fill="none" stroke="currentColor" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5 8 12l7 7" /></svg>
+        </button>
+        <div class="col-start-2 row-start-2 flex flex-col items-center justify-center rounded-full border-[3px] border-ink bg-paper leading-none">
+          <b class="font-num text-base">{{ elevation }}°</b>
+          <svg viewBox="0 0 12 12" class="h-3 w-3" :class="facingLeft ? 'scale-x-[-1]' : ''"><path d="M2 2l6 4-6 4z" fill="var(--color-ink)" /></svg>
+        </div>
+        <button
+          type="button"
+          aria-label="壓低砲管"
+          :disabled="controlsDisabled"
+          class="toon-btn pad-key col-start-2 row-start-3 p-0"
+          @pointerdown="holdAngle($event, -1)"
+          @contextmenu.prevent
+        >
+          <svg viewBox="0 0 24 24" class="h-6 w-6 rotate-180" fill="none" stroke="currentColor" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"><path d="m5 15 7-7 7 7" /></svg>
+        </button>
+      </div>
+
+      <!-- 中間：戰車狀態 + 力道條（直立時獨佔最上面一列） -->
+      <div class="toon-panel pointer-events-auto order-2 mb-1 min-w-0 flex-1 rounded-2xl px-2.5 py-1.5 portrait:order-first portrait:basis-full">
+        <div class="flex items-center gap-2 text-sm leading-tight">
+          <span class="flex h-7 w-8 shrink-0 items-center justify-center rounded-lg border-[2.5px] border-ink" :style="{ background: TEAM_META[panelTeam].color }">
+            <img :src="panelSpriteUrl" alt="" class="h-4 w-auto" :class="panelTeam === 'B' ? '-scale-x-100' : ''" />
+          </span>
+          <span class="min-w-0 truncate">{{ panelName }}</span>
+          <span
+            v-for="st in panelStatuses"
+            :key="st.spec.id"
+            class="toon-pill shrink-0 px-1 text-[11px] leading-tight text-white"
+            :style="{ background: st.spec.color }"
+            :title="st.spec.description"
+          >{{ st.spec.icon }}<b class="font-num">{{ Math.max(1, st.turnsLeft) }}</b></span>
+          <div class="hp-track ml-auto h-3 w-14 shrink-0" title="血量">
+            <div class="h-full rounded-full bg-grass" :style="{ width: `${hpPercent}%` }" />
+          </div>
+          <div class="hp-track h-3 w-10 shrink-0" title="燃料">
+            <div class="h-full rounded-full bg-sun" :style="{ width: `${fuelPercent}%` }" />
+          </div>
+          <button
+            v-if="hasOwnTank"
+            type="button"
+            class="toon-pill shrink-0 bg-paper px-1.5 text-[11px]"
+            :title="shownMode === 'own' ? '改成跟著回合坦克' : '改成顯示我的坦克'"
+            @click="emit('set-panel-mode', shownMode === 'own' ? 'active' : 'own')"
+          >
+            {{ shownMode === 'own' ? '我的' : '回合' }}
+          </button>
+        </div>
+        <div class="mt-1.5 flex items-center gap-2">
+          <div
+            ref="powerBarRef"
+            class="power-track relative h-7 flex-1 touch-none"
+            @pointerdown="onPointerDownPowerGauge"
+          >
+            <div class="power-fill absolute inset-y-0 left-0" :class="isCharging ? 'is-charging' : ''" :style="{ width: `${power}%`, backgroundSize: `${10000 / Math.max(1, power)}% 100%` }" />
+            <div
+              v-if="lastFiredPower !== null"
+              class="pointer-events-none absolute -inset-y-1.5 z-10 w-[3px] -translate-x-1/2 rounded bg-ink"
+              :style="{ left: `${lastFiredPower}%` }"
+            />
+          </div>
+          <b class="font-num w-14 shrink-0 text-right text-lg leading-none" :class="isCharging ? 'text-coral' : ''">{{ power.toFixed(1) }}</b>
+        </div>
+        <div v-if="panelIsWaiting" class="mt-1 text-center text-xs text-ink-soft">等待 {{ activeName }}</div>
+      </div>
+
+      <!-- 右手：彈種、跳過與發射鈕 -->
+      <div class="pointer-events-auto order-3 flex shrink-0 items-end gap-2">
+        <div class="flex flex-col items-center gap-1.5">
+          <button
+            v-for="proj in activeShots ?? []"
+            :key="proj.id"
+            type="button"
+            :disabled="controlsDisabled"
+            :aria-pressed="bulletType === proj.id"
+            :aria-label="proj.name"
+            class="pad-shot"
+            @click="emit('change-bullet', proj.id)"
+          >
+            <span class="flex h-8 w-8 items-center justify-center rounded-full border-2 border-ink" :style="{ background: hexColor(proj.visual.glowColor) }">
+              <img v-if="shotSprite(proj.visual.sprite?.key)" :src="shotSprite(proj.visual.sprite?.key)!" alt="" class="h-5 w-5 object-contain" />
+            </span>
+          </button>
+          <button
+            type="button"
+            :disabled="controlsDisabled"
+            class="toon-btn h-8 rounded-full px-2.5 text-xs"
+            @click="emit('pass')"
+          >
+            跳過
+          </button>
+        </div>
+        <button
+          type="button"
+          :disabled="controlsDisabled"
+          class="toon-btn fire-btn pad-fire touch-none flex-col gap-0 rounded-full p-0 leading-none"
+          :class="isCharging ? 'toon-btn--coral is-charging' : 'toon-btn--sun'"
+          @pointerdown="onPointerDownCharge"
+          @contextmenu.prevent
+        >
+          <span class="text-xl">{{ isCharging ? '放開！' : '發射' }}</span>
+          <span class="mt-1 text-[11px]">{{ controlsDisabled ? '等待中' : isCharging ? '' : '按住蓄力' }}</span>
+        </button>
+      </div>
+    </div>
+
     <!-- 底部駕駛艙 -->
     <div
-      v-if="state.phase !== 'GAME_OVER'"
+      v-if="state.phase !== 'GAME_OVER' && !touchLayout"
       class="pointer-events-auto absolute bottom-3 left-1/2 w-[min(1180px,calc(100%-24px))] -translate-x-1/2"
     >
       <div class="toon-panel toon-panel--plate relative px-3 pb-2.5 pt-5 md:px-4">
@@ -547,6 +690,49 @@ onUnmounted(() => {
 </template>
 
 <style scoped>
+.pad-root {
+  padding-bottom: max(0.75rem, env(safe-area-inset-bottom));
+  padding-left: max(0.75rem, env(safe-area-inset-left));
+  padding-right: max(0.75rem, env(safe-area-inset-right));
+}
+.pad-root button {
+  touch-action: none;
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+.dpad {
+  width: 9rem;
+  height: 9rem;
+}
+.pad-key {
+  border-radius: 14px;
+}
+.pad-shot {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 3rem;
+  height: 3rem;
+  border: 3px solid var(--color-ink);
+  border-radius: 999px;
+  background: var(--color-paper);
+  box-shadow: 0 3px 0 var(--color-ink);
+}
+.pad-shot[aria-pressed='true'] {
+  background: var(--color-sun);
+  box-shadow: 0 0 0 3px var(--color-paper), 0 3px 0 3px var(--color-ink);
+}
+.pad-shot:disabled:not([aria-pressed='true']) { opacity: 0.6; }
+.pad-fire {
+  width: 5.75rem;
+  height: 5.75rem;
+}
+@media (max-height: 420px) {
+  .dpad { width: 7.75rem; height: 7.75rem; }
+  .pad-fire { width: 5rem; height: 5rem; }
+  .pad-shot { width: 2.6rem; height: 2.6rem; }
+}
 .hp-track {
   border: 2.5px solid var(--color-ink);
   border-radius: 999px;

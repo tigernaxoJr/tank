@@ -41,6 +41,15 @@ describe('單機練習席位', () => {
     expect(buildInterleavedTurnOrder(roster)).toEqual(['a1', 'b1', 'a3', 'b2', 'b4', 'b5'])
   })
 
+  it('A1 用大廳設定的名字，其餘玩家席用隊名', () => {
+    const s = useLocalSkirmish(() => [], () => {}, () => '  小明 ')
+    s.setSeatControl('B', 0, 'player')
+    s.setSeatControl('A', 1, 'bot')
+    expect(s.buildHotseatRoster().map((r) => r.name)).toEqual(['小明', '🤖 CPU A2', '藍隊 B1'])
+    // 沒填名字就用隊名
+    expect(setup().buildHotseatRoster()[0].name).toBe('橘隊 A1')
+  })
+
   it('A1（我的戰車）與每隊最後一台不能改成空位', () => {
     const s = setup()
     s.setSeatControl('A', 0, 'empty')

@@ -94,7 +94,7 @@ const hint = computed(() => {
 </script>
 
 <template>
-  <div class="flex h-full min-h-0 flex-col gap-5">
+  <div class="flex min-h-full flex-col gap-5 lg:h-full lg:min-h-0">
     <!-- 頂欄 -->
     <header class="flex flex-wrap items-center gap-3">
       <button
@@ -124,7 +124,7 @@ const hint = computed(() => {
       </div>
     </header>
 
-    <div class="grid min-h-0 flex-1 grid-cols-1 gap-5 lg:grid-cols-[320px_minmax(0,1fr)_300px]">
+    <div class="grid grid-cols-1 gap-5 lg:min-h-0 lg:flex-1 lg:grid-cols-[320px_minmax(0,1fr)_300px]">
       <aside class="min-h-0 pt-4 lg:overflow-y-auto lg:pb-2">
         <TankHangarPodium
           :selected-tank-id="selectedTankId"

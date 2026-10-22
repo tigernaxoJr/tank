@@ -95,8 +95,8 @@ export function syncAllTanksToTerrain(state: BattleState, core: TankCorePort): v
  * 第一階段：計算確定性彈道並將狀態切為 'FIRING'，此時尚未挖坑或扣血（等待砲彈飛抵目標）
  */
 /** 砲彈吸附（放大判定）：吸附半徑與直擊倍率由各砲彈 blueprint 決定；此為坦克本體碰撞半徑與直擊判定半徑 */
-const TANK_HIT_RADIUS_PX = 18
-const DIRECT_HIT_RADIUS_PX = 26
+const TANK_HIT_RADIUS_PX = 22
+const DIRECT_HIT_RADIUS_PX = 30
 
 /** 兩點間是否沒有地形遮擋（每 3px 取樣，略過終點附近 8px 以免誤判坦克所貼的地面） */
 function hasClearLine(core: TankCorePort, x0: number, y0: number, x1: number, y1: number): boolean {

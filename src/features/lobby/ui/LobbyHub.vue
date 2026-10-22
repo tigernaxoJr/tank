@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
-import { MAP_REGISTRY, TANK_LIST, getTankSpec, renderMapPreview } from '@/features/battle'
+import { MAP_REGISTRY, MapPreview, TANK_LIST, getTankSpec } from '@/features/battle'
 import { soundController } from '@/features/audio'
 import type { BulletType, MapPresetId, TankArchetypeId } from '@/shared/kernel/types'
 import type { RoomListing } from '../infra/roomDirectory'
@@ -58,18 +58,6 @@ const rivalUrl = computed(() => {
   return TANK_LIST[(i + 1) % TANK_LIST.length].getSprites('B').hullUrl
 })
 
-const previewCache = new Map<string, string>()
-function mapThumb(mapId: MapPresetId): string {
-  const map = MAP_REGISTRY[mapId]
-  if (!map) return ''
-  let url = previewCache.get(mapId)
-  if (!url) {
-    url = renderMapPreview(map, 200, 110)
-    previewCache.set(mapId, url)
-  }
-  return url
-}
-
 function mapLabel(mapId: MapPresetId): string {
   const map = MAP_REGISTRY[mapId]
   return map ? splitDisplayName(map.name).zh : mapId
@@ -86,7 +74,7 @@ function tap(fn: () => void): void {
 </script>
 
 <template>
-  <div class="relative flex h-full min-h-0 flex-col gap-5">
+  <div class="relative flex min-h-full flex-col gap-5 lg:h-full lg:min-h-0">
     <!-- 頂欄：標題字 + 玩家牌 -->
     <header class="flex flex-wrap items-center gap-3">
       <div class="mr-auto flex flex-col items-start gap-3">
@@ -124,7 +112,7 @@ function tap(fn: () => void): void {
       </button>
     </header>
 
-    <div class="grid min-h-0 flex-1 grid-cols-1 gap-5 lg:grid-cols-[340px_minmax(0,1fr)]">
+    <div class="grid grid-cols-1 gap-5 lg:min-h-0 lg:flex-1 lg:grid-cols-[340px_minmax(0,1fr)]">
       <aside class="min-h-0 pt-4 lg:overflow-y-auto lg:pb-2">
         <TankHangarPodium
           :selected-tank-id="selectedTankId"
@@ -230,7 +218,13 @@ function tap(fn: () => void): void {
                 class="room-card group flex items-stretch gap-3 rounded-2xl border-[3px] border-ink bg-paper p-2 text-left"
                 @click="emit('join-room', room)"
               >
-                <img :src="mapThumb(room.mapId)" alt="" class="h-[72px] w-[124px] shrink-0 rounded-xl border-[3px] border-ink object-cover" />
+                <MapPreview
+                  v-if="MAP_REGISTRY[room.mapId]"
+                  :map="MAP_REGISTRY[room.mapId]"
+                  :width="124"
+                  :height="72"
+                  class="h-[72px] w-[124px] shrink-0 rounded-xl border-[3px] border-ink"
+                />
                 <span class="flex min-w-0 flex-1 flex-col">
                   <span class="flex items-center gap-1.5">
                     <span class="font-num shrink-0 rounded-md bg-ink px-1.5 text-xs font-bold tracking-wider text-sun">{{ room.code }}</span>

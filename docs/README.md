@@ -26,4 +26,4 @@
 後續新增文件請統一放至此 `docs/` 目錄，並採 **`<兩位數序號>-<kebab-case-主題>.md`** 命名（例如：`03-p2p-protocol-spec.md`、`04-art-and-audio-pipeline.md`），以維持閱讀順序與擴充性。
 
 ## 技術棧
-技術棧清單維護於根目錄 [`AGENTS.md`](../AGENTS.md) 第 5 節（Vue 3 + TS、Vite、Tailwind 4、Phaser 3、PeerJS、`@noble/hashes`、Rust/WASM、Vitest 等）；變動時須同步更新。
+技術棧清單維護於根目錄 [`AGENTS.md`](../AGENTS.md) 第 5 節（Vue 3 + TS、Vite、Tailwind 4、`vite-plugin-pwa`、Phaser 3、PeerJS、`@noble/hashes`、Rust/WASM、Vitest 等）；變動時須同步更新。

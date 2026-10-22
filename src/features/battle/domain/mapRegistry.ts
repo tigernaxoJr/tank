@@ -13,7 +13,7 @@
  *   prop<N>.png                         地表裝飾，爆炸會摧毀或使其下墜
  *   bedrock.png                         128×128 不可破壞基岩紋理
  *   hang<N>.png                         懸掛在浮島 / 橋面底下的樹根、藤蔓、冰柱、鎖鏈、瀑布
- * 大廳縮圖改用依版型即時繪製的地形剪影預覽（renderMapPreview）。
+ * 大廳縮圖與戰鬥雷達由 ui/mapPreview.ts 依版型即時繪製（主題天空、視差山丘、地表紋理與墨線）。
  */
 import type { MapPresetId } from '@/shared/kernel/types'
 import type { TerrainFeature, TerrainWaveOptions } from '@/shared/wasm'

@@ -62,6 +62,7 @@
 | 建置工具 | Vite 6 |
 | 套件管理 | pnpm 10（`packageManager` 欄位鎖定版本，`pnpm-lock.yaml` 須提交；`server/` 目前仍為 npm） |
 | 樣式 | Tailwind CSS 4 (`@tailwindcss/vite`) |
+| PWA | `vite-plugin-pwa`（Workbox service worker 預先快取、manifest 橫向全螢幕）+ `workbox-window`；圖示與 iOS 橫向啟動畫面由 `tools/assets/paint_pwa.mjs` 繪製到 `public/icons/` |
 | 遊戲引擎／渲染 | Phaser 3（2.5D 戰鬥場景、鏡頭、特效） |
 | 測試 | Vitest（`pnpm test`，測試在 `src/test/`；Rust 核心用 `pnpm run test:rust`） |
 | 連線 | PeerJS (WebRTC P2P) + 輕量信令伺服器 (`server/`, Node.js)；`@noble/hashes`（SHA-256，連線對戰的彈藥承諾 / 揭露） |

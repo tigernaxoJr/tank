@@ -70,7 +70,7 @@
 1. 在 `MapPresetId`（`src/shared/kernel/types.ts`）加入新 id。
 2. 在 [`mapRegistry.ts`](../src/features/battle/domain/mapRegistry.ts) 新增 `MapBlueprint`：`theme` 指向 `THEME_REGISTRY` 中的主題；
    需要全新美術時在 `tools/assets/paint_map_themes.mjs` 新增主題並執行 `pnpm run paint:maps`。
-3. 大廳縮圖由 `renderMapPreview` 依版型即時繪製地形剪影，不需要另外準備 thumbnail。
+3. 大廳縮圖由 `loadMapPreview`（`MapPreview.vue`）依版型即時繪製（主題天空、視差山丘、地表紋理、墨線與出生點旗），不需要另外準備 thumbnail。
 4. 驗收：5v5 出生點都不在深淵、雙方地形對稱、坦克能在主要地面上左右移動、打穿薄層後會正確下墜。
 
 ## 六、Rust 核心與 TS 核心的地形一致性（已實作）

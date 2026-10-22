@@ -127,7 +127,7 @@ const {
   setSeatLevel,
   setHotseatSlotTank,
   buildHotseatRoster,
-} = useLocalSkirmish(picksFor, (choice) => selectTankArchetype(choice))
+} = useLocalSkirmish(picksFor, (choice) => selectTankArchetype(choice), () => session.localPlayerName)
 
 /** 單機練習：正在幫哪一席選車（彈窗） */
 const slotPicker = ref<{ team: TeamId; index: number } | null>(null)
@@ -763,7 +763,7 @@ onUnmounted(() => {
     />
 
     <!-- 單機練習：同機輪流或讓電腦接手任一隊 -->
-    <div v-else class="flex h-full min-h-0 flex-col gap-5">
+    <div v-else class="flex min-h-full flex-col gap-5 lg:h-full lg:min-h-0">
       <header class="flex items-center gap-3">
         <button
           type="button"
@@ -779,7 +779,8 @@ onUnmounted(() => {
         </div>
       </header>
 
-      <div class="grid min-h-0 flex-1 grid-cols-1 gap-5 lg:grid-cols-[320px_minmax(0,1fr)_300px]">
+      <!-- 窄螢幕（手機）改成整頁往下捲，三塊依序排；寬螢幕才鎖在一個畫面內 -->
+      <div class="grid grid-cols-1 gap-5 lg:min-h-0 lg:flex-1 lg:grid-cols-[320px_minmax(0,1fr)_300px]">
         <aside class="min-h-0 pt-4 lg:overflow-y-auto lg:pb-2">
           <TankHangarPodium
             :selected-tank-id="session.selectedTankId"

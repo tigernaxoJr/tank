@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import { MAP_LIST, renderMapPreview } from '@/features/battle'
+import { MAP_LIST, MapPreview } from '@/features/battle'
 import { soundController } from '@/features/audio'
 import type { MapPresetId } from '@/shared/kernel/types'
 import { splitDisplayName } from './displayNames'
@@ -30,7 +30,7 @@ function step(delta: number): void {
 <template>
   <div class="space-y-2">
     <div class="relative overflow-hidden rounded-2xl border-[3px] border-ink bg-mist">
-      <img :src="renderMapPreview(map, 360, 170)" :alt="map.name" class="aspect-[36/17] w-full object-cover" />
+      <MapPreview :map="map" :width="360" :height="170" class="aspect-[36/17] w-full" />
       <span class="font-num toon-pill absolute left-2 top-2 bg-paper text-xs font-extrabold">
         {{ index + 1 }} / {{ MAP_LIST.length }}
       </span>

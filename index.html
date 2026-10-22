@@ -2,14 +2,65 @@
 <html lang="zh-Hant">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <title>Tank Artillery Web</title>
+    <!-- PWA：圖示與 iOS 啟動畫面由 tools/assets/paint_pwa.mjs 產生（只有橫向，遊戲固定橫著玩） -->
+    <meta name="theme-color" content="#4cb2ff" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="空域砲決" />
+    <link rel="icon" type="image/svg+xml" href="./icons/favicon.svg" />
+    <link rel="apple-touch-icon" href="./icons/apple-touch-icon.png" />
+    <link rel="apple-touch-startup-image" href="./icons/splash-1334x750.png" media="(device-width: 375px) and (device-height: 667px) and (-webkit-device-pixel-ratio: 2) and (orientation: landscape)" />
+    <link rel="apple-touch-startup-image" href="./icons/splash-2532x1170.png" media="(device-width: 390px) and (device-height: 844px) and (-webkit-device-pixel-ratio: 3) and (orientation: landscape)" />
+    <link rel="apple-touch-startup-image" href="./icons/splash-2556x1179.png" media="(device-width: 393px) and (device-height: 852px) and (-webkit-device-pixel-ratio: 3) and (orientation: landscape)" />
+    <link rel="apple-touch-startup-image" href="./icons/splash-2796x1290.png" media="(device-width: 430px) and (device-height: 932px) and (-webkit-device-pixel-ratio: 3) and (orientation: landscape)" />
+    <link rel="apple-touch-startup-image" href="./icons/splash-2388x1668.png" media="(device-width: 834px) and (device-height: 1194px) and (-webkit-device-pixel-ratio: 2) and (orientation: landscape)" />
+    <link rel="apple-touch-startup-image" href="./icons/splash-2732x2048.png" media="(device-width: 1024px) and (device-height: 1366px) and (-webkit-device-pixel-ratio: 2) and (orientation: landscape)" />
+    <style>
+      /* 開啟畫面：Vue 掛載前就顯示，main.ts 掛載完成後淡出移除 */
+      #boot-splash {
+        position: fixed; inset: 0; z-index: 100; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2.5vh;
+        background: linear-gradient(#4cb2ff, #bfe4ff); color: #1d2340; font-family: 'Baloo 2', 'Huninn', system-ui, sans-serif;
+        transition: opacity 0.35s ease;
+      }
+      #boot-splash img { width: min(38vh, 40vw); height: auto; animation: boot-bob 1.2s ease-in-out infinite alternate; }
+      #boot-splash b { font-size: min(7vh, 8vw); font-weight: 800; letter-spacing: 0.04em; color: #fff; -webkit-text-stroke: 0.12em #1d2340; paint-order: stroke; line-height: 1; }
+      #boot-splash i { display: block; width: min(40vh, 50vw); height: 14px; border: 3px solid #1d2340; border-radius: 999px; background: #fff; overflow: hidden; }
+      #boot-splash i::after { content: ''; display: block; width: 40%; height: 100%; border-radius: 999px; background: #ffc93d; animation: boot-load 1s ease-in-out infinite alternate; }
+      #boot-splash.is-done { opacity: 0; pointer-events: none; }
+      @keyframes boot-bob { from { transform: translateY(0) rotate(-2deg); } to { transform: translateY(-1.5vh) rotate(2deg); } }
+      @keyframes boot-load { from { margin-left: 0; } to { margin-left: 60%; } }
+      /* 手機直拿：遊戲只支援橫向，蓋上「請轉橫」提示 */
+      #rotate-hint {
+        position: fixed; inset: 0; z-index: 200; display: none; flex-direction: column; align-items: center; justify-content: center; gap: 1.5rem;
+        background: linear-gradient(#4cb2ff, #bfe4ff); color: #1d2340; font-family: 'Huninn', system-ui, sans-serif; font-size: 1.25rem; text-align: center; padding: 2rem;
+      }
+      #rotate-hint svg { width: 7rem; height: 7rem; animation: rotate-phone 1.6s ease-in-out infinite; }
+      @keyframes rotate-phone { 0%, 25% { transform: rotate(0); } 60%, 100% { transform: rotate(-90deg); } }
+      @media (orientation: portrait) and (pointer: coarse) and (max-width: 900px) {
+        #rotate-hint { display: flex; }
+      }
+    </style>
     <!-- 大廳字型：jf open 粉圓 (Huninn) + Baloo 2，皆為 SIL OFL -->
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@600;700;800&family=Huninn&display=swap" rel="stylesheet" />
   </head>
   <body class="min-h-screen bg-gradient-to-b from-slate-950 via-sky-950 to-slate-900 text-slate-100 antialiased selection:bg-amber-400 selection:text-slate-950">
+    <div id="boot-splash" aria-hidden="true">
+      <img src="./icons/icon-512.png" alt="" />
+      <b>TANK ARTILLERY</b>
+      <i></i>
+    </div>
+    <div id="rotate-hint" role="alert">
+      <svg viewBox="0 0 64 64" fill="none" stroke="#1d2340" stroke-width="4" stroke-linejoin="round">
+        <rect x="18" y="6" width="28" height="52" rx="6" fill="#fff" />
+        <circle cx="32" cy="50" r="2.5" fill="#1d2340" stroke="none" />
+      </svg>
+      <div>請把手機轉成橫向<br /><small style="color:#4a5378">空域砲決只支援橫著玩</small></div>
+    </div>
     <div id="app"></div>
     <script type="module" src="/src/main.ts"></script>
   </body>
