@@ -6,7 +6,7 @@
  *   DELETE {base}/{code}   → 移除
  * 目錄是「加分功能」：任何錯誤都只回傳空清單或靜默失敗，不能影響開房 / 進房 / 對戰。
  */
-import type { MapPresetId } from '@/shared/kernel/types'
+import type { DisconnectPolicy, MapPresetId } from '@/shared/kernel/types'
 import { getPeerConfig } from './peerAdapter'
 
 export type RoomStatus = 'waiting' | 'playing'
@@ -19,6 +19,7 @@ export interface RoomListing {
   players: number
   maxPlayers: number
   status: RoomStatus
+  disconnectPolicy?: DisconnectPolicy
   ageSec: number
 }
 

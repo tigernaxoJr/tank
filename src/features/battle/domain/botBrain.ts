@@ -9,13 +9,15 @@ import {
   groundUnderTank,
   launchVelocity,
   MUZZLE_RISE,
+  quantizePower,
   TANK_GROUND_OFFSET,
   walkAlongTerrain,
   type BattleState,
   type TankEntity,
 } from './battleState'
 import { PROJECTILE_REGISTRY } from './projectileRegistry'
-import { TANK_REGISTRY } from './tankRegistry'
+import { availableShots } from './loadout'
+import { effectiveWindMilli, getTankSpec } from './tankRegistry'
 
 export interface BotShotPlan {
   readonly targetId: PlayerId
@@ -54,11 +56,19 @@ function pickTarget(state: BattleState, bot: TankEntity): TankEntity | null {
   })
 }
 
+/** 殘血門檻：目標血量不高於此值時，電腦改用單發傷害最高的砲彈補刀 */
+const FINISHER_HP = 40
+
 function pickBullet(bot: TankEntity, target: TankEntity, random: () => number): BulletType {
-  const shots = (TANK_REGISTRY[bot.tankId] ?? TANK_REGISTRY.aegis).shots
-  // 目標殘血時優先用電漿這類高速彈；否則在兩種專屬砲彈中隨機
-  if (target.hp <= 40 && shots.includes('MISSILE_PLASMA')) return 'MISSILE_PLASMA'
-  return shots[random() < 0.55 ? 0 : 1]
+  const shots = availableShots(bot)
+  // 目標殘血時優先用單發傷害最高的砲彈（不指定特定彈種）；否則在可用砲彈中隨機
+  if (target.hp <= FINISHER_HP) {
+    return shots.reduce((best, id) => (PROJECTILE_REGISTRY[id].maxDamage > PROJECTILE_REGISTRY[best].maxDamage ? id : best))
+  }
+  // 第一種（預設彈）55%，其餘平分剩下的 45%；只抽一次亂數，兩種彈時與舊版序列完全相同
+  const u = random()
+  if (u < 0.55 || shots.length === 1) return shots[0]
+  return shots[1 + Math.min(shots.length - 2, Math.floor(((u - 0.55) / 0.45) * (shots.length - 1)))]
 }
 
 export function planBotShot(
@@ -75,7 +85,7 @@ export function planBotShot(
   const bulletType = pickBullet(bot, target, random)
   const proj = PROJECTILE_REGISTRY[bulletType]
   // 避免炸到自己只需要看傷害範圍
-  const blast = proj.damageRadius + (TANK_REGISTRY[bot.tankId] ?? TANK_REGISTRY.aegis).damageRadiusBonus
+  const blast = proj.damageRadius + getTankSpec(bot.tankId).damageRadiusBonus
   const facingRight = target.x >= bot.x
 
   type Aim = { angle: number; power: number; score: number }
@@ -87,7 +97,7 @@ export function planBotShot(
       startY: bot.y - MUZZLE_RISE,
       vxMilli,
       vyMilli,
-      windMilli: state.wind * proj.windMultiplier,
+      windMilli: effectiveWindMilli(state.wind, proj.windMultiplier, getTankSpec(bot.tankId)),
       gravityMilli: proj.gravityMilli,
       maxSteps: 1200,
       targetX: target.x,
@@ -111,11 +121,11 @@ export function planBotShot(
   }
   const level = BOT_LEVEL_SPECS[bot.botLevel ?? 'hard']
   if (found.best && level.refine) {
-    // 粗搜格點解析度有限；變態等級在最佳解附近以 1° / 1 力道再搜一次
+    // 粗搜格點解析度有限；變態等級在最佳解附近細化：角度 1°（人類最小單位），力道 ±1 以 0.01 為步長
     const { angle: a0, power: p0 } = found.best
     for (let da = -4; da <= 4; da++) {
-      for (let dp = -3; dp <= 3; dp++) {
-        const power = p0 + dp
+      for (let dp = -100; dp <= 100; dp++) {
+        const power = quantizePower(p0 + dp * 0.01)
         if (power >= 10 && power <= 100) consider(a0 + da, power)
       }
     }
@@ -127,7 +137,7 @@ export function planBotShot(
   return {
     targetId: target.id,
     angle: Math.max(15, Math.min(165, aim.angle + jitter(level.angle))),
-    power: Math.max(10, Math.min(100, aim.power + jitter(level.power))),
+    power: quantizePower(Math.max(10, Math.min(100, aim.power + jitter(level.power)))),
     bulletType,
     score: aim.score,
   }
@@ -156,7 +166,7 @@ export function planBotMove(
   try {
     for (const dx of candidates) {
       // 實際模擬沿地形行走（會被陡壁擋住），避免把橋下或島上的位置當成可抵達
-      const dest = walkAlongTerrain(core, origin.x, originGround, dx)
+      const dest = walkAlongTerrain(core, origin.x, originGround, dx, false, getTankSpec(bot.tankId).climbPerPx)
       if (dx !== 0 && dest.x === origin.x) continue
       const x = dest.x
       bot.x = x

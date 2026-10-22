@@ -517,6 +517,10 @@ export class DeterministicTankCore implements TankCorePort {
     return Math.trunc(((blastRadius - dist) * maxDamage) / blastRadius)
   }
 
+  stateHash(): number {
+    return this.getStateHash()
+  }
+
   getStateHash(): number {
     let hash = 0x811c9dc5
     for (let i = 0; i < this.mask.length; i++) {
@@ -526,3 +530,6 @@ export class DeterministicTankCore implements TankCorePort {
     return hash >>> 0
   }
 }
+
+export * from './adapter'
+

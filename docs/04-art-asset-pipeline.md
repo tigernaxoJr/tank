@@ -82,7 +82,7 @@ scripts/vectorize.sh big_1024.png out.svg -s 150 -c 24 # 大圖降低放大倍�
 ## 五、原創地圖主題：`tools/assets/paint_map_themes.mjs`
 
 ```bash
-npm run paint:maps   # node tools/assets/paint_map_themes.mjs
+pnpm run paint:maps   # node tools/assets/paint_map_themes.mjs
 ```
 
 * **流程**：程式以種子 PRNG 產生 SVG（`tools/assets/map-art/<theme>/*.svg`）→ `@resvg/resvg-js` 點陣化到 `public/assets/maps/<theme>/*.png` → SVGO 壓縮 SVG 原始檔、ImageMagick `mogrify -strip` 去除 PNG metadata（兩者不在 PATH 時自動略過）。輸出固定，重跑結果逐位元組相同。
@@ -99,7 +99,7 @@ npm run paint:maps   # node tools/assets/paint_map_themes.mjs
 ## 六、坦克與砲彈美術：`tools/assets/paint_units.mjs`
 
 ```bash
-npm run paint:units   # node tools/assets/paint_units.mjs
+pnpm run paint:units   # node tools/assets/paint_units.mjs
 ```
 
 ### 風格：Q 版玩具砲兵（致敬經典回合制砲兵遊戲的「可愛坦克」氛圍，造型全部原創）

@@ -5,7 +5,7 @@
  */
 import type { BulletType, TankArchetypeId } from '@/shared/kernel/types'
 import { PROJECTILE_REGISTRY } from './projectileRegistry'
-import { TANK_LIST, TANK_REGISTRY } from './tankRegistry'
+import { TANK_LIST, TANK_REGISTRY, getTankSpec, type DamageType } from './tankRegistry'
 
 /** 與 launchVelocity 相同的初速係數（power 100 → 16.5 px/step） */
 const SPEED_PER_POWER_PX = 0.165
@@ -23,7 +23,10 @@ export interface ShotCard {
   /** 理想條件（45°、滿力道、無風平地）的射程 px */
   readonly maxRangePx: number
   /** 風阻倍率，數字越大越容易被風吹偏 */
+  /** 實際受風倍率 = 砲彈風係數 × 坦克風敏感度 */
   readonly windMultiplier: number
+  /** 吸附半徑 px；0 = 不導引（純技術彈） */
+  readonly magnetRadius: number
   /** 0~1：相對於所有坦克 / 砲彈的最大值，供長條圖使用 */
   readonly damageRatio: number
   readonly damageRadiusRatio: number
@@ -37,10 +40,17 @@ export interface TankCard {
   readonly maxHp: number
   readonly damageMultiplier: number
   readonly moveFuel: number
+  readonly armor: number
+  readonly shield: number
+  readonly climbPerPx: number
+  readonly fallSafePx: number
+  /** 各抗性（0~1）已啟用的項目，供面板一行顯示 */
+  readonly resist: Partial<Record<DamageType, number>>
+  readonly windSensitivity: number
   readonly hpRatio: number
   readonly outputRatio: number
   readonly mobilityRatio: number
-  readonly shots: readonly [ShotCard, ShotCard]
+  readonly shots: readonly ShotCard[]
 }
 
 function maxRangePx(bullet: BulletType): number {
@@ -62,7 +72,7 @@ function rawShot(tankId: TankArchetypeId, bullet: BulletType) {
 }
 
 export function buildTankCard(tankId: TankArchetypeId): TankCard {
-  const tank = TANK_REGISTRY[tankId] ?? TANK_REGISTRY.aegis
+  const tank = getTankSpec(tankId)
 
   let maxHp = 1
   let maxOutput = 1
@@ -94,7 +104,8 @@ export function buildTankCard(tankId: TankArchetypeId): TankCard {
       damageRadius: s.damageRadius,
       terrainRadius: s.terrainRadius,
       maxRangePx: s.range,
-      windMultiplier: s.proj.windMultiplier,
+      windMultiplier: Math.round(s.proj.windMultiplier * tank.windSensitivity * 100) / 100,
+      magnetRadius: s.proj.magnetRadius,
       damageRatio: s.damage / maxDamage,
       damageRadiusRatio: s.damageRadius / maxDamageRadius,
       terrainRadiusRatio: s.terrainRadius / maxTerrainRadius,
@@ -108,9 +119,15 @@ export function buildTankCard(tankId: TankArchetypeId): TankCard {
     maxHp: tank.maxHp,
     damageMultiplier: tank.damageMultiplier,
     moveFuel: tank.moveFuel,
+    armor: tank.armor,
+    shield: tank.shield,
+    climbPerPx: tank.climbPerPx,
+    fallSafePx: tank.fallSafePx,
+    resist: tank.resist,
+    windSensitivity: tank.windSensitivity,
     hpRatio: tank.maxHp / maxHp,
     outputRatio: tank.damageMultiplier / maxOutput,
     mobilityRatio: tank.moveFuel / maxFuel,
-    shots: [toShot(tank.shots[0]), toShot(tank.shots[1])],
+    shots: tank.shots.map(toShot),
   }
 }

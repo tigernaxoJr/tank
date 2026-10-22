@@ -7,6 +7,9 @@ const body = { name: '測試房', hostName: 'Ann', mapId: 'emerald_valley', play
 test('validateRoomBody rejects bad input and cleans text', () => {
   assert.ok(validateRoomBody('abc', body).error)
   assert.ok(validateRoomBody('ABC234', { ...body, mapId: '../x' }).error)
+  assert.equal(validateRoomBody('ABC234', body).room.disconnectPolicy, 'forfeit')
+  assert.equal(validateRoomBody('ABC234', { ...body, disconnectPolicy: 'bot' }).room.disconnectPolicy, 'bot')
+  assert.ok(validateRoomBody('ABC234', { ...body, disconnectPolicy: 'x' }).error)
   assert.ok(validateRoomBody('ABC234', { ...body, players: 11 }).error)
   assert.ok(validateRoomBody('ABC234', { ...body, status: 'hacked' }).error)
   const ok = validateRoomBody('ABC234', { ...body, name: '<b>hi</b>\n' })

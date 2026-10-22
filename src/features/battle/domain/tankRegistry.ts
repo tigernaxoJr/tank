@@ -1,112 +1,44 @@
 /**
  * Tank Registry (模組化坦克基底引擎)
- * 日後要新增或修改任何坦克機種，只需在 TANK_REGISTRY 新增一筆設定，並在
- * tools/assets/paint_units.mjs 的 TANKS 畫好原創車身/砲管後執行 `npm run paint:units`（美術風格見 docs/04 §六），
- * 物理引擎、大廳選角與 Phaser 渲染器皆自動從此註冊表驅動。
+ * 每台坦克一個檔：新增機種只要在 `tanks/` 新增 `<id>.ts`（default export `defineTank({...})`），
+ * 並在 tools/assets/paint_units.mjs 的 TANKS 畫好原創車身/砲管後執行 `pnpm run paint:units`（美術風格見 docs/04 §六），
+ * 本檔以 import.meta.glob 自動收集，物理引擎、大廳選角與 Phaser 渲染器皆從這裡驅動，不必改其他程式。
  * 平衡原則：血量愈少輸出愈高（maxHp × damageMultiplier 約略相等，機動力另外補償低血量），
  * 修改數值後請用 tools/balance/duel_sim.mjs 重新模擬對轟勝率（見 docs/06-gameplay-reference-and-physics.md）。
  * 琥珀隊 (A) 使用琥珀橘塗裝、皇家藍隊 (B) 使用皇家藍塗裝。
  */
-import type { BulletType, TankArchetypeId, TeamId } from '@/shared/kernel/types'
+import type { TankArchetypeId } from '@/shared/kernel/types'
+import type { DamageType, TankBlueprint } from './tankBlueprint'
 
-/** 表情臉部位置（rig 區域座標，以面向右為準；面向左時自動鏡像） */
-export interface FaceSpec {
-  readonly x: number
-  readonly y: number
-  /** 兩眼中心距離 */
-  readonly eyeGap: number
-  /** 眼睛半高 */
-  readonly eyeSize: number
+export type { DamageType, FaceSpec, TankBlueprint } from './tankBlueprint'
+
+const modules = import.meta.glob<{ default: TankBlueprint }>('./tanks/*.ts', { eager: true })
+
+export const TANK_LIST: TankBlueprint[] = Object.values(modules)
+  .map((m) => m.default)
+  .sort((a, b) => a.sortOrder - b.sortOrder)
+
+export const TANK_REGISTRY: Record<TankArchetypeId, TankBlueprint> = Object.fromEntries(TANK_LIST.map((t) => [t.id, t]))
+
+
+/** 查機種；id 不認得時退回清單第一台（不把任何特定機種寫死成預設） */
+export function getTankSpec(id: TankArchetypeId | undefined): TankBlueprint {
+  return (id && TANK_REGISTRY[id]) || TANK_LIST[0]
 }
 
-export interface TankBlueprint {
-  readonly id: TankArchetypeId
-  readonly name: string
-  readonly subtitle: string
-  readonly description: string
-  readonly maxHp: number
-  readonly moveFuel: number
-  /** 傷害範圍加成 (px)，加在砲彈的 damageRadius 上 */
-  readonly damageRadiusBonus: number
-  /** 挖坑半徑加成 (px)，加在砲彈的 terrainRadius 上 */
-  readonly terrainRadiusBonus: number
-  readonly damageMultiplier: number
-  /** 這台坦克的兩種專屬砲彈（鍵盤 1 / 2 切換，第一種為預設） */
-  readonly shots: readonly [BulletType, BulletType]
-  /** 精靈圖（以 2.5 倍繪製）的顯示縮放與砲塔轉軸（相對於坦克容器原點，原點約在車身中心上方） */
-  readonly sprite: {
-    readonly scale: number
-    readonly pivotX: number
-    readonly pivotY: number
-    readonly face: FaceSpec
-  }
-  getSprites(team: TeamId): {
-    readonly hullUrl: string
-    readonly barrelUrl: string
-  }
+/** 依序輪流取機種 id（預設陣容用），新增機種自動納入輪替 */
+export function tankAt(index: number): TankArchetypeId {
+  return TANK_LIST[index % TANK_LIST.length].id
 }
 
-export const TANK_REGISTRY: Record<TankArchetypeId, TankBlueprint> = {
-  aegis: {
-    id: 'aegis',
-    name: '神盾騎士 Aegis',
-    subtitle: '均衡泛用型裝甲戰車',
-    description: '圓豆形車身配頭盔式砲塔與精準加農砲，適合各種地形全距離拋物線作戰。',
-    maxHp: 100,
-    moveFuel: 280,
-    damageRadiusBonus: 0,
-    terrainRadiusBonus: 0,
-    damageMultiplier: 1.0,
-    shots: ['MISSILE_STANDARD', 'MISSILE_HEAVY'],
-    sprite: { scale: 0.4, pivotX: 1, pivotY: -31, face: { x: 10, y: -13, eyeGap: 15, eyeSize: 6 } },
-    getSprites(team: TeamId) {
-      const t = team === 'A' ? 'a' : 'b'
-      return {
-        hullUrl: `./assets/units/tanks/aegis_${t}_hull.png`,
-        barrelUrl: `./assets/units/tanks/aegis_${t}_barrel.png`,
-      }
-    },
-  },
-  goliath: {
-    id: 'goliath',
-    name: '巨像重砲 Goliath',
-    subtitle: '重裝破甲巨獸',
-    description: '厚重圓頂裝甲，全場最高血量，但單發輸出最低、移動燃料最少，適合穩紮穩打。',
-    maxHp: 130,
-    moveFuel: 200,
-    damageRadiusBonus: 0,
-    terrainRadiusBonus: 0,
-    damageMultiplier: 0.82,
-    shots: ['MISSILE_HEAVY', 'MISSILE_STANDARD'],
-    sprite: { scale: 0.4, pivotX: 13, pivotY: -28, face: { x: 7, y: -17, eyeGap: 17, eyeSize: 7 } },
-    getSprites(team: TeamId) {
-      const t = team === 'A' ? 'a' : 'b'
-      return {
-        hullUrl: `./assets/units/tanks/goliath_${t}_hull.png`,
-        barrelUrl: `./assets/units/tanks/goliath_${t}_barrel.png`,
-      }
-    },
-  },
-  zephyr: {
-    id: 'zephyr',
-    name: '疾風磁軌 Zephyr',
-    subtitle: '高機動突擊戰車',
-    description: '低矮水滴形輕量底盤配磁軌砲，全場最高機動與輸出，但血量最低，吃兩三發就倒，擅長游擊搶先手。',
-    maxHp: 76,
-    moveFuel: 360,
-    damageRadiusBonus: 0,
-    terrainRadiusBonus: 0,
-    damageMultiplier: 1.33,
-    shots: ['MISSILE_PLASMA', 'MISSILE_STANDARD'],
-    sprite: { scale: 0.4, pivotX: -4, pivotY: -25, face: { x: 8, y: -9, eyeGap: 14, eyeSize: 5.2 } },
-    getSprites(team: TeamId) {
-      const t = team === 'A' ? 'a' : 'b'
-      return {
-        hullUrl: `./assets/units/tanks/zephyr_${t}_hull.png`,
-        barrelUrl: `./assets/units/tanks/zephyr_${t}_barrel.png`,
-      }
-    },
-  },
+/** 套用裝甲與抗性後的實際傷害（整數，確定性）。其他傷害類型日後直接呼叫即可 */
+export function mitigateDamage(spec: TankBlueprint, type: DamageType, raw: number): number {
+  if (raw <= 0) return 0
+  const flat = type === 'explosion' ? spec.armor : 0
+  return Math.max(1, Math.round((raw - flat) * (1 - (spec.resist[type] ?? 0))))
 }
 
-export const TANK_LIST: TankBlueprint[] = Object.values(TANK_REGISTRY)
+/** 砲彈實際承受的風力（千分位整數）：全局風 × 砲彈風係數 × 發射坦克的風敏感度。預覽、結算、CPU 皆須經此函式以維持一致 */
+export function effectiveWindMilli(wind: number, projectileWindMultiplier: number, spec: TankBlueprint): number {
+  return Math.round(wind * projectileWindMultiplier * spec.windSensitivity)
+}

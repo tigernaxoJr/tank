@@ -4,7 +4,6 @@ dist/
 .vite/
 *.local
 *.tsbuildinfo
-pnpm-lock.yaml
 
 # Rust / Wasm
 target/
@@ -16,3 +15,6 @@ src/shared/wasm/pkg/
 .idea/
 .DS_Store
 *.swp
+
+# Claude Code local settings
+.claude/

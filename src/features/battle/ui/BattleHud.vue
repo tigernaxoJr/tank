@@ -8,15 +8,17 @@
  * - 頂部中央：雙陣營總血條、風向羅盤與回合橫幅。
  * - 底部中央：街機裝甲儀表板（當前 2.5D 戰車頭像、半圓角度扇形錶、MOVE 燃料錶、刻度式 POWER 蓄力槽、彈種圖示與 FIRE 巨型發射鈕）。
  */
-import { computed, reactive, ref, onMounted, onUnmounted } from 'vue'
+import { computed } from 'vue'
 import type { BattleState } from '../domain/battleState'
 import { PROJECTILE_REGISTRY } from '../domain/projectileRegistry'
-import { TANK_REGISTRY } from '../domain/tankRegistry'
+import { TANK_LIST, getTankSpec } from '../domain/tankRegistry'
 import type { BulletType } from '@/shared/kernel/types'
 
 interface Props {
   state: BattleState
   bulletType: BulletType
+  /** 出手坦克的主彈、副彈；連線對戰中對手尚未揭露時為 null（顯示「？」） */
+  shots: readonly BulletType[] | null
   canControl: boolean
   isBotTurn?: boolean
   isMuted: boolean
@@ -33,6 +35,7 @@ const emit = defineEmits<{
   (e: 'update-aim', angle: number, power: number): void
   (e: 'change-bullet', bullet: BulletType): void
   (e: 'fire'): void
+  (e: 'pass'): void
   (e: 'reset-match'): void
   (e: 'toggle-mute'): void
   (e: 'leave-game'): void
@@ -40,15 +43,15 @@ const emit = defineEmits<{
 
 const activeTank = computed(() => props.state.tanks[props.state.activePlayer])
 const activeTankSpec = computed(() =>
-  activeTank.value ? TANK_REGISTRY[activeTank.value.tankId] ?? TANK_REGISTRY.aegis : TANK_REGISTRY.aegis,
+  activeTank.value ? getTankSpec(activeTank.value.tankId) : TANK_LIST[0],
 )
 const activeSpriteUrl = computed(() => {
-  if (!activeTank.value) return TANK_REGISTRY.aegis.getSprites('A').hullUrl
+  if (!activeTank.value) return TANK_LIST[0].getSprites('A').hullUrl
   return activeTankSpec.value.getSprites(activeTank.value.team).hullUrl
 })
 
-/** 目前出手坦克的兩種專屬砲彈 */
-const activeShots = computed(() => activeTankSpec.value.shots.map((id) => PROJECTILE_REGISTRY[id]))
+/** 目前出手坦克可用的砲彈（主彈、副彈）；未揭露時為 null */
+const activeShots = computed(() => props.shots?.map((id) => PROJECTILE_REGISTRY[id]) ?? null)
 
 const teamATanks = computed(() =>
   Object.values(props.state.tanks).filter((t) => t.team === 'A'),
@@ -111,179 +114,32 @@ const dialNeedle = computed(() => dialPoint(activeTank.value?.angle ?? 45, DIAL_
 const dialTicks = [15, 45, 75, 105, 135, 165].map((deg) => ({ deg, a: dialPoint(deg, DIAL_R - 2), b: dialPoint(deg, DIAL_R + 3) }))
 const POWER_SEGMENTS = 20
 
-// --- 街機刻度式 POWER 蓄力槽點擊設定與空白鍵長按震盪蓄力 ---
-const powerBarRef = ref<HTMLDivElement | null>(null)
+import { useBattleInput } from './composables/useBattleInput'
+
+// --- 街機刻度式 POWER 蓄力槽點擊設定、鍵盤操作與空白鍵長按震盪蓄力 ---
+const {
+  powerBarRef,
+  lastFiredPowerByPlayer,
+  isCharging,
+  facingLeft,
+  elevation,
+  adjustAngle,
+  handleMove: onMove,
+  onClickPowerGauge,
+  onPointerDownCharge,
+} = useBattleInput({
+  activeTank,
+  controlsDisabled,
+  activeShots,
+  onMove: (deltaX) => emit('move', deltaX),
+  onUpdateAim: (angle, power) => emit('update-aim', angle, power),
+  onChangeBullet: (bullet) => emit('change-bullet', bullet),
+  onFire: () => emit('fire'),
+  onPass: () => emit('pass'),
+})
+
 // 每位玩家各自的「上一發力道」游標（熱座輪流時互不干擾）
-const lastFiredPowerByPlayer = reactive<Record<string, number>>({})
 const lastFiredPower = computed(() => lastFiredPowerByPlayer[props.state.activePlayer] ?? null)
-
-function onClickPowerGauge(e: MouseEvent): void {
-  if (controlsDisabled.value || !powerBarRef.value || !activeTank.value) return
-  const rect = powerBarRef.value.getBoundingClientRect()
-  const ratio = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width))
-  const newPower = Math.max(10, Math.min(100, Math.round(ratio * 100)))
-  emit('update-aim', activeTank.value.angle, newPower)
-}
-
-/** 砲口朝左（angle > 90）；仰角 = 與水平的夾角，不分左右 */
-const facingLeft = computed(() => (activeTank.value?.angle ?? 45) > 90)
-const elevation = computed(() => {
-  const a = activeTank.value?.angle ?? 45
-  return a > 90 ? 180 - a : a
-})
-
-/** delta 為仰角變化（+ 抬高、- 壓低），朝左時換算成相反方向的角度變化 */
-function adjustAngle(delta: number): void {
-  if (controlsDisabled.value || !activeTank.value) return
-  const signed = facingLeft.value ? -delta : delta
-  const nextAngle = Math.max(15, Math.min(165, activeTank.value.angle + signed))
-  emit('update-aim', nextAngle, activeTank.value.power)
-}
-
-/** 轉向：保持仰角、左右鏡射（不耗燃料），之後可朝另一側開火 */
-function turnToward(dir: 1 | -1): void {
-  if (controlsDisabled.value || !activeTank.value) return
-  const wantLeft = dir < 0
-  if (wantLeft !== facingLeft.value) emit('update-aim', 180 - activeTank.value.angle, activeTank.value.power)
-}
-
-function onMove(deltaX: number): void {
-  if (controlsDisabled.value || !activeTank.value) return
-  // 按下方向鍵 / 移動鈕時，車頭先轉向該側（沒燃料也能轉向）
-  turnToward(deltaX < 0 ? -1 : 1)
-  if (activeTank.value.moveFuel <= 0) return
-  emit('move', deltaX)
-}
-
-const isCharging = ref(false)
-/** 蓄力速度（力道 % / 秒），以時間計算，不受螢幕更新率影響 */
-const CHARGE_RATE_PER_SEC = 80
-/** 每次蓄力都從最小力道重新開始，到頂後反向回落（來回震盪） */
-const CHARGE_START_POWER = 10
-let chargeDirection = 1
-let animFrameId: number | null = null
-let currentChargingPower = 0
-let lastChargeTs: number | null = null
-
-function startCharging(): void {
-  if (controlsDisabled.value || isCharging.value || !activeTank.value) return
-  isCharging.value = true
-  chargeDirection = 1
-  currentChargingPower = CHARGE_START_POWER
-  lastChargeTs = null
-  emit('update-aim', activeTank.value.angle, CHARGE_START_POWER)
-
-  const loop = (ts: number) => {
-    if (!isCharging.value || !activeTank.value) return
-    const dt = lastChargeTs === null ? 0 : Math.min(0.05, (ts - lastChargeTs) / 1000)
-    lastChargeTs = ts
-    currentChargingPower += chargeDirection * CHARGE_RATE_PER_SEC * dt
-    if (currentChargingPower >= 100) {
-      currentChargingPower = 100
-      chargeDirection = -1
-    } else if (currentChargingPower <= 10) {
-      currentChargingPower = 10
-      chargeDirection = 1
-    }
-    emit('update-aim', activeTank.value.angle, Math.round(currentChargingPower))
-    animFrameId = requestAnimationFrame(loop)
-  }
-  animFrameId = requestAnimationFrame(loop)
-}
-
-function stopChargingAndFire(): void {
-  if (!isCharging.value) return
-  isCharging.value = false
-  if (animFrameId !== null) {
-    cancelAnimationFrame(animFrameId)
-    animFrameId = null
-  }
-  if (!controlsDisabled.value && activeTank.value) {
-    // 以放開瞬間的精確力道開火：先同步寫回，再射擊，避免與畫面上最後一格不一致
-    emit('update-aim', activeTank.value.angle, Math.round(currentChargingPower))
-    lastFiredPowerByPlayer[activeTank.value.id] = Math.round(currentChargingPower)
-    emit('fire')
-  }
-}
-
-function cancelCharging(): void {
-  if (isCharging.value) {
-    isCharging.value = false
-    if (animFrameId !== null) {
-      cancelAnimationFrame(animFrameId)
-      animFrameId = null
-    }
-  }
-}
-
-function onPointerDownCharge(e: PointerEvent): void {
-  if (controlsDisabled.value) return
-  e.preventDefault()
-  startCharging()
-
-  const onPointerUp = () => {
-    window.removeEventListener('pointerup', onPointerUp)
-    window.removeEventListener('pointercancel', onPointerUp)
-    stopChargingAndFire()
-  }
-
-  window.addEventListener('pointerup', onPointerUp)
-  window.addEventListener('pointercancel', onPointerUp)
-}
-
-function isInputFocused(): boolean {
-  const activeEl = document.activeElement
-  if (!activeEl) return false
-  const tag = activeEl.tagName.toLowerCase()
-  return tag === 'input' || tag === 'textarea' || tag === 'select' || (activeEl as HTMLElement).isContentEditable
-}
-
-function handleKeyDown(e: KeyboardEvent): void {
-  if (isInputFocused()) return
-  if (!props.canControl || props.state.phase !== 'AIMING') return
-
-  if (e.key === 'ArrowLeft') {
-    e.preventDefault()
-    onMove(-6)
-  } else if (e.key === 'ArrowRight') {
-    e.preventDefault()
-    onMove(6)
-  } else if (e.key === 'ArrowUp') {
-    e.preventDefault()
-    adjustAngle(1)
-  } else if (e.key === 'ArrowDown') {
-    e.preventDefault()
-    adjustAngle(-1)
-  } else if (e.key === '1' || e.key === '2') {
-    const shot = activeShots.value[Number(e.key) - 1]
-    if (shot) emit('change-bullet', shot.id)
-  } else if (e.code === 'Space' || e.key === ' ') {
-    e.preventDefault()
-    if (e.repeat) return
-    startCharging()
-  }
-}
-
-function handleKeyUp(e: KeyboardEvent): void {
-  if (isInputFocused()) return
-  if (e.code === 'Space' || e.key === ' ') {
-    e.preventDefault()
-    stopChargingAndFire()
-  }
-}
-
-onMounted(() => {
-  window.addEventListener('keydown', handleKeyDown)
-  window.addEventListener('keyup', handleKeyUp)
-  window.addEventListener('blur', cancelCharging)
-})
-
-onUnmounted(() => {
-  window.removeEventListener('keydown', handleKeyDown)
-  window.removeEventListener('keyup', handleKeyUp)
-  window.removeEventListener('blur', cancelCharging)
-  cancelCharging()
-})
 </script>
 
 <template>
@@ -311,7 +167,8 @@ onUnmounted(() => {
             <span
               v-if="turnSecondsLeft != null && state.phase === 'AIMING'"
               class="rounded-full border-2 px-2 py-0.5 font-mono text-[11px] font-black"
-              :class="turnSecondsLeft <= 5 ? 'animate-pulse border-rose-500 bg-rose-500 text-white' : 'border-emerald-500/60 bg-emerald-100 text-emerald-800'"
+              :class="turnSecondsLeft <= 3 ? 'animate-pulse border-rose-500 bg-rose-500 text-white' : 'border-emerald-500/60 bg-emerald-100 text-emerald-800'"
+              :title="turnSecondsLeft <= 3 ? '時間快到了！時間歸零將自動 PASS' : '回合剩餘時間（預設 10 秒）'"
             >
               ⏱ {{ String(turnSecondsLeft).padStart(2, '0') }}
             </span>
@@ -459,8 +316,11 @@ onUnmounted(() => {
         <div class="col-span-7 space-y-2 sm:col-span-4 lg:col-span-4">
           <div class="flex items-center justify-between gap-2">
             <div class="flex items-center gap-1.5">
+              <span v-if="!activeShots" class="rounded-xl border-2 border-dashed border-teal-600/30 px-2.5 py-1 text-[11px] font-extrabold text-teal-700" title="對手的彈藥在開火前不會揭露">
+                ？ ？
+              </span>
               <button
-                v-for="(proj, shotIdx) in activeShots"
+                v-for="(proj, shotIdx) in activeShots ?? []"
                 :key="proj.id"
                 type="button"
                 :disabled="controlsDisabled"
@@ -472,7 +332,7 @@ onUnmounted(() => {
                 {{ shotIdx + 1 }}. {{ proj.name.split(' ')[0] }}
               </button>
             </div>
-            <span class="font-mono text-sm font-black text-orange-600">{{ activeTank?.power ?? 65 }}<span class="text-[10px]">%</span></span>
+            <span class="font-mono text-sm font-black text-orange-600">{{ (activeTank?.power ?? 65).toFixed(2) }}<span class="text-[10px]">%</span></span>
           </div>
 
           <div
@@ -496,20 +356,30 @@ onUnmounted(() => {
           </div>
         </div>
 
-        <!-- 4. FIRE -->
-        <div class="col-span-12 flex items-center lg:col-span-2">
+        <!-- 4. FIRE & PASS -->
+        <div class="col-span-12 flex items-center gap-2 lg:col-span-2">
           <button
             type="button"
             :disabled="controlsDisabled"
             :class="[
-              'w-full cursor-pointer touch-none select-none rounded-2xl border-[3px] border-white px-3 py-2.5 text-center font-black tracking-wider shadow-[0_6px_0_rgba(194,65,12,0.55),0_10px_20px_rgba(8,60,80,0.3)] transition active:translate-y-1 active:shadow-[0_2px_0_rgba(194,65,12,0.55)]',
+              'flex-1 cursor-pointer touch-none select-none rounded-2xl border-[3px] border-white px-2.5 py-2.5 text-center font-black tracking-wider shadow-[0_6px_0_rgba(194,65,12,0.55),0_10px_20px_rgba(8,60,80,0.3)] transition active:translate-y-1 active:shadow-[0_2px_0_rgba(194,65,12,0.55)]',
               isCharging ? 'scale-95 animate-pulse bg-gradient-to-b from-rose-400 to-orange-600 text-white' : 'bg-gradient-to-b from-amber-300 via-amber-400 to-orange-500 text-slate-950 hover:brightness-110',
               controlsDisabled && 'cursor-not-allowed opacity-40',
             ]"
             @pointerdown="onPointerDownCharge"
           >
-            <div class="text-base leading-tight">{{ isCharging ? `⚡ ${activeTank?.power}%` : '🔥 FIRE' }}</div>
-            <div class="text-[10px] font-bold opacity-75">{{ isCharging ? '放開開火' : '按住蓄力 · Space' }}</div>
+            <div class="text-base leading-tight">{{ isCharging ? `⚡ ${(activeTank?.power ?? 0).toFixed(2)}%` : '🔥 FIRE' }}</div>
+            <div class="text-[10px] font-bold opacity-75">{{ isCharging ? '放開開火' : 'Space' }}</div>
+          </button>
+          <button
+            type="button"
+            :disabled="controlsDisabled"
+            class="flex flex-col items-center justify-center shrink-0 rounded-2xl border-[3px] border-white bg-gradient-to-b from-slate-100 to-slate-200 px-3 py-2 font-black text-slate-700 shadow-[0_4px_0_rgba(100,116,139,0.45)] transition hover:bg-slate-50 active:translate-y-1 active:shadow-none disabled:opacity-40 cursor-pointer"
+            title="跳過本回合（快捷鍵 P）"
+            @click="emit('pass')"
+          >
+            <div class="text-base leading-tight">⏭</div>
+            <div class="text-[10px] font-extrabold text-slate-600">PASS · P</div>
           </button>
         </div>
       </div>

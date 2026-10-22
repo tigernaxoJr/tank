@@ -27,11 +27,15 @@ import {
   MIN_FLIGHT_MS,
   PLAYBACK_MS_PER_STEP,
   PROJECTILE_LIST,
-  PROJECTILE_REGISTRY,
-  type ProjectileTrailStyle,
+  getProjectileSpec,
+  type ProjectileBlueprint,
+  type GlowKey,
+  type ProjectileFx,
 } from '../domain/projectileRegistry'
-import { TANK_LIST, TANK_REGISTRY } from '../domain/tankRegistry'
+import { TANK_LIST, effectiveWindMilli, getTankSpec } from '../domain/tankRegistry'
 import { TankFace } from './tankFace'
+import { BattleCameraManager } from './systems/BattleCameraManager'
+import { ProjectileFxSystem } from './systems/ProjectileFxSystem'
 
 const TILE = 128
 const KENNEY = './assets/kenney'
@@ -78,14 +82,20 @@ interface PropActor {
   hanging?: boolean
 }
 
-export interface ProjectileFlightOptions {
-  shooterId: string
+/** 一顆彈丸的飛行路徑與落點 */
+export interface ProjectileFlight {
   path: { x: number; y: number }[]
-  bulletType: BulletType
   explosionX: number
   explosionY: number
   /** 爆炸視覺半徑 (px)，取傷害範圍與挖坑半徑較大者 */
   explosionRadius: number
+}
+
+export interface ProjectileFlightOptions {
+  shooterId: string
+  /** 一次開火的所有彈丸（單發 = 1 顆）；同時起飛，全部落地後才結算，鏡頭跟隨第一顆 */
+  flights: ProjectileFlight[]
+  bulletType: BulletType
   onArriveImpact: () => void
   onSequenceComplete: () => void
 }
@@ -115,14 +125,10 @@ export class BattleScene extends Phaser.Scene {
   private originalDepth = new Uint16Array(0)
 
   private isCreated = false
-  private isDragging = false
-  private dragStartX = 0
-  private dragStartY = 0
-  private camStartX = 0
-  private camStartY = 0
-  private manualCamera = false
+  private cameraManager!: BattleCameraManager
+  private fxSystem!: ProjectileFxSystem
   private flyingProjectile: Phaser.GameObjects.Container | null = null
-  private selectedBulletType: BulletType = 'MISSILE_STANDARD'
+  private selectedBulletType: BulletType = PROJECTILE_LIST[0].id
   /** 最近一發砲彈的射手，受擊時讓射手做出得意（或誤傷隊友時尷尬）的反應 */
   private lastShooterId: string | null = null
   /** 上一幀的「回合鍵」，變化時讓新的行動坦克做出輪到自己的反應 */
@@ -230,50 +236,39 @@ export class BattleScene extends Phaser.Scene {
     this.aimGraphics = this.add.graphics().setDepth(15)
     this.isCreated = true
 
+    const mapSpec = MAP_REGISTRY[this.battleState.mapId] ?? MAP_REGISTRY.harvest_plains
+    this.cameraManager = new BattleCameraManager({
+      scene: this,
+      worldWidth: this.core.width,
+      worldHeight: this.core.height,
+      backgroundColor: mapSpec.sky.top,
+      onCameraMoved: this.onCameraMoved,
+    })
+    this.fxSystem = new ProjectileFxSystem(
+      this,
+      () => MAP_REGISTRY[this.battleState?.mapId] ?? MAP_REGISTRY.harvest_plains,
+    )
+
     this.rebuildBackdropAndTerrain()
     this.syncTanksVisuals(0, true)
     this.focusActiveTank(true)
-
-    // 滑鼠按住拖曳平移全場鏡頭
-    this.input.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
-      this.isDragging = true
-      this.manualCamera = true
-      this.dragStartX = pointer.x
-      this.dragStartY = pointer.y
-      this.camStartX = this.cameras.main.scrollX
-      this.camStartY = this.cameras.main.scrollY
-    })
-
-    this.input.on('pointermove', (pointer: Phaser.Input.Pointer) => {
-      if (!this.isDragging) return
-      const dx = (pointer.x - this.dragStartX) * 1.35
-      const dy = (pointer.y - this.dragStartY) * 1.35
-      this.cameras.main.scrollX = this.camStartX - dx
-      this.cameras.main.scrollY = this.camStartY - dy
-    })
-
-    this.input.on('pointerup', () => {
-      this.isDragging = false
-    })
   }
 
   update(time: number, delta: number): void {
     if (!this.battleState || !this.core) return
-
     const cam = this.cameras.main
+
     if (this.flyingProjectile) {
       // 投籃節奏鏡頭平滑追隨飛行中的砲彈
-      const targetX = this.flyingProjectile.x - cam.width / 2
-      const targetY = this.flyingProjectile.y - cam.height * 0.5
-      cam.scrollX += (targetX - cam.scrollX) * 0.22
-      cam.scrollY += (targetY - cam.scrollY) * 0.22
-    } else if (!this.manualCamera && this.battleState.phase === 'AIMING') {
+      this.cameraManager.followTarget(this.flyingProjectile.x, this.flyingProjectile.y, 0.22)
+    } else if (!this.cameraManager.manualCamera && this.battleState.phase === 'AIMING') {
       const active = this.battleState.tanks[this.battleState.activePlayer]
       if (active) {
         const targetX = active.x - cam.width / 2
         const targetY = active.y - cam.height * 0.58
         cam.scrollX += (targetX - cam.scrollX) * 0.1
         cam.scrollY += (targetY - cam.scrollY) * 0.1
+        this.cameraManager.notifyMoved()
       }
     }
 
@@ -679,7 +674,7 @@ export class BattleScene extends Phaser.Scene {
 
     for (const tank of Object.values(this.battleState.tanks)) {
       let actor = this.tankActors.get(tank.id)
-      const spec = TANK_REGISTRY[tank.tankId] ?? TANK_REGISTRY.aegis
+      const spec = getTankSpec(tank.tankId)
 
       if (!actor) {
         const container = this.add.container(tank.x, tank.y).setDepth(10)
@@ -734,7 +729,7 @@ export class BattleScene extends Phaser.Scene {
   }
 
   private updateSingleTankActor(actor: TankVisualActor, tank: TankEntity, time: number, snap: boolean): void {
-    const spec = TANK_REGISTRY[tank.tankId] ?? TANK_REGISTRY.aegis
+    const spec = getTankSpec(tank.tankId)
     const { container, rig, hull, barrel } = actor
 
     // 地形被挖空時平滑下墜，而不是瞬移
@@ -815,6 +810,12 @@ export class BattleScene extends Phaser.Scene {
       actor.hpBarGraphics.fillRect(barX + 1, barY + 1, Math.round((barW - 2) * hpPct), barH - 2)
     }
 
+    // 護盾條（青色細條，疊在血條上緣）
+    if (tank.maxShield > 0 && tank.shield > 0) {
+      actor.hpBarGraphics.fillStyle(0x22d3ee, 1)
+      actor.hpBarGraphics.fillRect(barX + 1, barY - 4, Math.round((barW - 2) * (tank.shield / tank.maxShield)), 3)
+    }
+
     // 行動回合跳動箭頭
     actor.turnArrow.setVisible(isActive)
     if (isActive) {
@@ -866,7 +867,7 @@ export class BattleScene extends Phaser.Scene {
     if (!activeTank || activeTank.hp <= 0) return
 
     const projSpec =
-      PROJECTILE_REGISTRY[this.selectedBulletType] ?? PROJECTILE_REGISTRY.MISSILE_STANDARD
+      getProjectileSpec(this.selectedBulletType)
     const { vxMilli, vyMilli } = launchVelocity(activeTank.angle, activeTank.power, projSpec.speedMultiplier)
 
     const preview = this.core.simulateShot({
@@ -874,7 +875,11 @@ export class BattleScene extends Phaser.Scene {
       startY: activeTank.y - MUZZLE_RISE,
       vxMilli,
       vyMilli,
-      windMilli: this.battleState.wind * projSpec.windMultiplier,
+      windMilli: effectiveWindMilli(
+        this.battleState.wind,
+        projSpec.windMultiplier,
+        getTankSpec(activeTank.tankId),
+      ),
       gravityMilli: projSpec.gravityMilli,
       maxSteps: AIM_PREVIEW_STEPS,
     })
@@ -891,43 +896,41 @@ export class BattleScene extends Phaser.Scene {
   }
 
   private spawnPuff(x: number, y: number, scale: number, key: 'fx_puff' | 'fx_smoke', depth = 19): void {
-    const s = this.add.sprite(x, y, key).setScale(scale).setDepth(depth).setAlpha(0.85)
-    s.play(key)
-    this.tweens.add({ targets: s, y: y - 18, alpha: 0, scale: scale * 1.35, duration: 700 })
-    s.once(Phaser.Animations.Events.ANIMATION_COMPLETE, () => s.destroy())
+    this.fxSystem?.spawnPuff(x, y, scale, key, depth)
   }
 
   /**
    * 播放模組化砲彈的「投籃節奏」拋物線飛行演出：
    * - 依 `ProjectileBlueprint` 決定飛行時間 (`minFlightMs` ~ `maxFlightMs`，約 1.6s ~ 3.3s)
-   * - 飛行途中即時噴發專屬尾焰與煙霧粒子 (`flame_smoke` / `heavy_fireball` / `plasma_beam`)
+   * - 飛行途中即時噴發專屬尾焰與煙霧粒子（參數見 `ProjectileFx`）
    * - 飛抵終點時觸發 `onArriveImpact`（挖坑與扣血），接著停留 `postImpactHoldMs` 讓玩家看清爆炸結果後再呼叫 `onSequenceComplete` 切換回合
    */
   playProjectileFlight(options: ProjectileFlightOptions): void {
-    const { shooterId, path, bulletType, explosionX, explosionY, explosionRadius, onArriveImpact, onSequenceComplete } =
-      options
-    const projSpec = PROJECTILE_REGISTRY[bulletType] ?? PROJECTILE_REGISTRY.MISSILE_STANDARD
+    const { shooterId, flights, bulletType, onArriveImpact, onSequenceComplete } = options
+    const projSpec = getProjectileSpec(bulletType)
+    const showExplosions = (): void => {
+      for (const f of flights) this.triggerExplosionVisual(f.explosionX, f.explosionY, f.explosionRadius, bulletType)
+    }
 
-    if (!this.scene.isActive() || path.length < 2) {
+    if (!this.scene.isActive() || flights.length === 0 || flights.some((f) => f.path.length < 2)) {
       onArriveImpact()
-      this.triggerExplosionVisual(explosionX, explosionY, explosionRadius, bulletType)
+      showExplosions()
       setTimeout(() => onSequenceComplete(), projSpec.postImpactHoldMs)
       return
     }
 
-    this.manualCamera = false
+    if (this.cameraManager) this.cameraManager.manualCamera = false
     if (this.flyingProjectile) {
       this.flyingProjectile.destroy()
       this.flyingProjectile = null
     }
 
     // 砲口閃光 (Kenney Flash 序列) + 砲管後座
-    const muzzle = this.muzzleWorldPoint(shooterId) ?? path[0]
+    const muzzle = this.muzzleWorldPoint(shooterId) ?? flights[0].path[0]
     const flash = this.add.sprite(muzzle.x, muzzle.y, 'fx_flash').setScale(0.32).setDepth(24)
     flash.play('fx_flash')
     flash.once(Phaser.Animations.Events.ANIMATION_COMPLETE, () => flash.destroy())
-    const isPlasma = projSpec.visual.trailStyle === 'plasma_beam'
-    this.flashGlow(muzzle.x, muzzle.y, isPlasma ? 'fx_glow_plasma' : 'fx_glow_fire', 0.9, 220)
+    this.flashGlow(muzzle.x, muzzle.y, projSpec.visual.fx.glow, 0.9, 220)
     const shooterActor = this.tankActors.get(shooterId)
     this.lastShooterId = shooterId
     if (shooterActor) {
@@ -935,6 +938,34 @@ export class BattleScene extends Phaser.Scene {
       shooterActor.face.trigger('fire', this.game.loop.time)
     }
 
+    let remaining = flights.length
+    const onFlightDone = (): void => {
+      if (--remaining > 0) return
+      this.flyingProjectile = null
+
+      // 1. 全部抵達落點：執行真實地形挖坑與傷害結算
+      onArriveImpact()
+
+      // 2. 播放該砲彈專屬爆炸序列與震動
+      showExplosions()
+
+      // 3. 停留 postImpactHoldMs 讓玩家看清楚命中結果與坦克下墜，再切換下一回合
+      this.time.delayedCall(projSpec.postImpactHoldMs, () => {
+        onSequenceComplete()
+      })
+    }
+    flights.forEach((f, i) => this.launchFlight(f.path, muzzle, projSpec, i === 0, onFlightDone))
+  }
+
+  /** 播放單顆彈丸的飛行動畫；`primary` 的彈體供鏡頭跟隨與瞄準預覽參考 */
+  private launchFlight(
+    path: { x: number; y: number }[],
+    muzzle: { x: number; y: number },
+    projSpec: ProjectileBlueprint,
+    primary: boolean,
+    onDone: () => void,
+  ): void {
+    const fx = projSpec.visual.fx
     // 砲彈：實體彈使用 Kenney 彈體精靈並沿速度方向旋轉；能量彈畫發光核心
     const projContainer = this.add.container(muzzle.x, muzzle.y).setDepth(22)
     let body: Phaser.GameObjects.Image | null = null
@@ -942,9 +973,9 @@ export class BattleScene extends Phaser.Scene {
     if (projSpec.visual.sprite) {
       // 疊加光暈讓彈體在任何背景上都醒目（Canvas 渲染器不能 tint，所以光暈貼圖本身就帶顏色）
       const halo = this.add
-        .image(0, 0, isPlasma ? 'fx_glow_plasma' : 'fx_glow_fire')
+        .image(0, 0, fx.glow)
         .setScale((projSpec.visual.coreRadius * 4.2) / 64)
-        .setAlpha(isPlasma ? 0.9 : 0.55)
+        .setAlpha(fx.haloAlpha)
         .setBlendMode(Phaser.BlendModes.ADD)
       body = this.add.image(0, 0, projSpec.visual.sprite.key).setScale(projSpec.visual.sprite.scale)
       projContainer.add([halo, body])
@@ -957,7 +988,7 @@ export class BattleScene extends Phaser.Scene {
           .setStrokeStyle(2.5, projSpec.visual.strokeColor),
       ])
     }
-    this.flyingProjectile = projContainer
+    if (primary) this.flyingProjectile = projContainer
 
     // 固定播放時鐘：路徑每點 = 2 個模擬步，不依射程縮放，視覺重力加速度才會一致
     const flightDuration = Math.max(MIN_FLIGHT_MS, (path.length - 1) * 2 * PLAYBACK_MS_PER_STEP)
@@ -991,176 +1022,32 @@ export class BattleScene extends Phaser.Scene {
         // 每隔固定步數釋放該砲彈專屬尾焰特效
         if (idx !== lastTrailIndex) {
           lastTrailIndex = idx
-          this.spawnTrailParticle(px, py, projSpec.visual.trailStyle)
+          this.spawnTrailParticle(px, py, fx)
         }
       },
       onComplete: () => {
         projContainer.destroy()
-        this.flyingProjectile = null
-
-        // 1. 抵達落點瞬間：執行真實地形挖坑與傷害結算
-        onArriveImpact()
-
-        // 2. 播放該砲彈專屬爆炸序列與震動
-        this.triggerExplosionVisual(explosionX, explosionY, explosionRadius, bulletType)
-
-        // 3. 停留 postImpactHoldMs 讓玩家看清楚命中結果與坦克下墜，再切換下一回合
-        this.time.delayedCall(projSpec.postImpactHoldMs, () => {
-          onSequenceComplete()
-        })
+        onDone()
       },
     })
   }
 
   /** 疊加混色的光暈閃一下（砲口、尾焰、爆炸核心） */
-  private flashGlow(x: number, y: number, key: 'fx_glow_fire' | 'fx_glow_plasma', size: number, duration: number, depth = 21): void {
-    const glow = this.add
-      .image(x, y, key)
-      .setScale(size * 0.4)
-      .setDepth(depth)
-      .setBlendMode(Phaser.BlendModes.ADD)
-    this.tweens.add({ targets: glow, scale: size, alpha: 0, duration, ease: 'Quad.Out', onComplete: () => glow.destroy() })
+  private flashGlow(x: number, y: number, key: GlowKey, size: number, duration: number, depth = 21): void {
+    this.fxSystem?.flashGlow(x, y, key, size, duration, depth)
   }
 
-  /** 火花：沿方向飛出並縮短淡出 */
-  private spawnSparks(x: number, y: number, count: number, speed: number, depth = 25): void {
-    for (let i = 0; i < count; i++) {
-      const a = Math.random() * Math.PI * 2
-      const dist = speed * (0.5 + Math.random() * 0.7)
-      const spark = this.add
-        .image(x, y, 'fx_spark')
-        .setRotation(a)
-        .setScale(0.5 + Math.random() * 0.5, 0.7)
-        .setDepth(depth)
-        .setBlendMode(Phaser.BlendModes.ADD)
-      this.tweens.add({
-        targets: spark,
-        x: x + Math.cos(a) * dist,
-        y: y + Math.sin(a) * dist + dist * 0.25,
-        scaleX: 0.1,
-        alpha: 0,
-        duration: 380 + Math.random() * 260,
-        ease: 'Cubic.Out',
-        onComplete: () => spark.destroy(),
-      })
-    }
-  }
-
-  private spawnTrailParticle(x: number, y: number, style: ProjectileTrailStyle): void {
-    if (!this.scene.isActive()) return
-
-    if (style === 'plasma_beam') {
-      // 電漿彈：青紫光點拖尾 + 擴散電磁環
-      this.flashGlow(x, y, 'fx_glow_plasma', 0.42, 380, 19)
-      const ring = this.add
-        .circle(x, y, 5, 0x38bdf8, 0.5)
-        .setStrokeStyle(1.5, 0xc084fc)
-        .setDepth(19)
-      this.tweens.add({
-        targets: ring,
-        scale: 1.9,
-        alpha: 0,
-        duration: 340,
-        onComplete: () => ring.destroy(),
-      })
-      return
-    }
-
-    const heavy = style === 'heavy_fireball'
-    // 火焰光點（疊加混色）+ 煙霧；重砲彈尾焰更大、煙更黑、偶爾噴火星
-    this.flashGlow(x, y, 'fx_glow_fire', heavy ? 0.5 : 0.32, heavy ? 320 : 240, 20)
-    if (heavy && Math.random() < 0.25) this.spawnSparks(x, y, 1, 22, 20)
-    if (Math.random() < 0.6) {
-      this.spawnPuff(
-        x + (Math.random() - 0.5) * 4,
-        y + (Math.random() - 0.5) * 4,
-        heavy ? 0.2 + Math.random() * 0.08 : 0.12 + Math.random() * 0.06,
-        heavy ? 'fx_smoke' : 'fx_puff',
-      )
-    }
+  private spawnTrailParticle(x: number, y: number, fx: ProjectileFx): void {
+    this.fxSystem?.spawnTrailParticle(x, y, fx)
   }
 
   triggerExplosionVisual(
     x: number,
     y: number,
     radius = 38,
-    bulletType: BulletType = 'MISSILE_STANDARD',
+    bulletType: BulletType = PROJECTILE_LIST[0].id,
   ): void {
-    if (!this.scene.isActive()) return
-    const projSpec = PROJECTILE_REGISTRY[bulletType] ?? PROJECTILE_REGISTRY.MISSILE_STANDARD
-    const mapSpec = MAP_REGISTRY[this.battleState.mapId] ?? MAP_REGISTRY.harvest_plains
-    this.cameras.main.shake(320, projSpec.visual.cameraShakeIntensity)
-
-    // Kenney 爆炸序列影格（電漿彈改用白藍閃光）
-    const isPlasma = projSpec.visual.trailStyle === 'plasma_beam'
-    const fxKey = isPlasma ? 'fx_flash' : 'fx_explosion'
-    const boom = this.add
-      .sprite(x, y, fxKey)
-      .setScale((radius * 2.5) / (isPlasma ? 128 : 192))
-      .setDepth(26)
-    boom.play(fxKey)
-    boom.once(Phaser.Animations.Events.ANIMATION_COMPLETE, () => boom.destroy())
-
-    // 疊加光核 + 白色衝擊波 + 四散火花（重砲彈火花更多）
-    this.flashGlow(x, y, isPlasma ? 'fx_glow_plasma' : 'fx_glow_fire', (radius * 3.2) / 64, 520, 27)
-    const wave = this.add
-      .image(x, y, 'fx_shockwave')
-      .setScale(0.1)
-      .setAlpha(0.9)
-      .setDepth(25)
-      .setBlendMode(Phaser.BlendModes.ADD)
-    this.tweens.add({
-      targets: wave,
-      scale: (radius * 2.4) / 128,
-      alpha: 0,
-      duration: 460,
-      ease: 'Cubic.Out',
-      onComplete: () => wave.destroy(),
-    })
-    if (!isPlasma) this.spawnSparks(x, y, Math.round(radius / 4), radius * 1.6)
-
-    // 衝擊波擴散環
-    const ring = this.add
-      .circle(x, y, 10, projSpec.visual.coreColor, 0.25)
-      .setStrokeStyle(4, projSpec.visual.glowColor, 1)
-      .setDepth(25)
-    this.tweens.add({
-      targets: ring,
-      radius: radius * 1.6,
-      alpha: 0,
-      duration: 420,
-      ease: 'Cubic.Out',
-      onComplete: () => ring.destroy(),
-    })
-
-    // 地形土塊飛濺（拋物線落下）
-    for (let i = 0; i < 16; i++) {
-      const size = 2 + Math.random() * 4
-      const chunk = this.add
-        .rectangle(x, y, size, size, mapSpec.debrisColors[i % mapSpec.debrisColors.length])
-        .setDepth(24)
-      const vx = (Math.random() - 0.5) * radius * 4.5
-      const vy = -radius * (1.5 + Math.random() * 2.5)
-      const state = { t: 0 }
-      this.tweens.add({
-        targets: state,
-        t: 1,
-        duration: 700 + Math.random() * 300,
-        onUpdate: () => {
-          chunk.setPosition(x + vx * state.t, y + vy * state.t + 520 * state.t * state.t)
-          chunk.setAngle(state.t * 540)
-          chunk.setAlpha(1 - state.t * state.t)
-        },
-        onComplete: () => chunk.destroy(),
-      })
-    }
-
-    // 爆炸後殘留的煙柱
-    for (let i = 0; i < 3; i++) {
-      this.time.delayedCall(180 + i * 160, () => {
-        this.spawnPuff(x + (Math.random() - 0.5) * radius, y - 10, 0.35 + Math.random() * 0.2, 'fx_smoke', 23)
-      })
-    }
+    this.fxSystem?.triggerExplosionVisual(x, y, radius, bulletType)
   }
 
   /** 傷害數字飄字；擊毀時額外顯示 K.O. */
@@ -1208,26 +1095,26 @@ export class BattleScene extends Phaser.Scene {
   }
 
   focusActiveTank(immediate = false): void {
-    this.manualCamera = false
+    if (!this.cameraManager) return
+    this.cameraManager.manualCamera = false
     // 開局時 Vue 可能比 Phaser 場景先就緒，scene 尚未建立就先略過
     if (!this.scene?.isActive() || !this.battleState) return
     const active = this.battleState.tanks[this.battleState.activePlayer]
     if (active && immediate) {
-      this.cameras.main.centerOn(active.x, active.y - 40)
+      this.cameraManager.focusTank(active)
     }
   }
 
   panCameraBy(dx: number, dy: number): void {
-    if (!this.scene.isActive()) return
-    this.manualCamera = true
-    this.cameras.main.scrollX += dx
-    this.cameras.main.scrollY += dy
+    if (!this.scene?.isActive() || !this.cameraManager) return
+    this.cameraManager.manualCamera = true
+    this.cameraManager.panBy(dx, dy)
   }
 
   centerCameraAt(worldX: number, worldY: number): void {
-    if (!this.scene.isActive()) return
-    this.manualCamera = true
-    this.cameras.main.centerOn(worldX, worldY)
+    if (!this.scene?.isActive() || !this.cameraManager) return
+    this.cameraManager.manualCamera = true
+    this.cameraManager.centerOn(worldX, worldY)
   }
 
   getTerrainCanvasSource(): HTMLCanvasElement | null {

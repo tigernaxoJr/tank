@@ -5,7 +5,7 @@
  *   2. `commitFireImpact`: 砲彈實際飛抵落點瞬間，才執行挖坑、扣血、坦克下墜（含摔落/墜入深淵傷害）。
  *   3. `finalizeTurnAfterHold`: 爆炸停留結束後才切換回合與風向。
  */
-import type { BulletType, FireActionCommand, PlayerId } from '@/shared/kernel/types'
+import type { BotLevel, BulletType, FireActionCommand, PassActionCommand, PlayerId } from '@/shared/kernel/types'
 import {
   DEFAULT_WORLD_HEIGHT,
   DEFAULT_WORLD_WIDTH,
@@ -23,15 +23,17 @@ import {
   launchVelocity,
   MUZZLE_RISE,
   slopeAt,
-  TANK_GROUND_OFFSET,
   syncTankToSurface,
   walkAlongTerrain,
   type BattleState,
+  type TankEntity,
 } from '../domain/battleState'
+import { defaultLoadout, verifyReveal } from '../domain/loadout'
 import { MAP_REGISTRY } from '../domain/mapRegistry'
 import { nextWindSpeed } from '../domain/windRules'
-import { PROJECTILE_REGISTRY } from '../domain/projectileRegistry'
-import { TANK_REGISTRY } from '../domain/tankRegistry'
+import { PROJECTILE_REGISTRY, type ProjectileBlueprint } from '../domain/projectileRegistry'
+import { SINGLE_SHOT } from '../domain/shotExtensions'
+import { effectiveWindMilli, getTankSpec, mitigateDamage, type TankBlueprint } from '../domain/tankRegistry'
 
 let defaultCore: TankCorePort | null = null
 
@@ -42,19 +44,35 @@ function getDefaultCore(seed: number): TankCorePort {
   return defaultCore
 }
 
+/** 一顆彈丸的確定性彈道與它的單發傷害（已含機種傷害倍率與樣式的傷害比例） */
+export interface PreparedShot {
+  readonly hit: TrajectoryHit
+  readonly maxDamage: number
+}
+
 export interface PreparedShotPlan {
   readonly cmd: FireActionCommand
-  readonly hit: TrajectoryHit
+  /** 一次開火的所有彈丸（單發 = 1 顆），依開火樣式 `pattern` 產生，結算順序即陣列順序 */
+  readonly shots: readonly PreparedShot[]
   /** 傷害範圍 (px)：決定誰會受傷、傷害衰減 */
   readonly damageRadius: number
   /** 挖坑半徑 (px)：決定地形被破壞多大 */
   readonly terrainRadius: number
-  readonly maxDamage: number
+  readonly directHitMultiplier: number
   readonly bulletType: BulletType
 }
 
+/** 一次挖坑：供畫面重繪地形與連線重播紀錄 */
+export interface CarveEvent {
+  readonly x: number
+  readonly y: number
+  readonly radius: number
+  readonly dirty: DirtyRect
+}
+
 export interface ImpactResult {
-  readonly dirty: DirtyRect | null
+  /** 依彈丸順序的挖坑事件（沒有命中任何東西的彈丸不產生） */
+  readonly carves: readonly CarveEvent[]
   /** 本次命中造成的總傷害（爆炸 + 摔落 + 墜入深淵），供畫面跳出傷害數字 */
   readonly damageByPlayer: Record<PlayerId, number>
 }
@@ -70,6 +88,92 @@ export function syncAllTanksToTerrain(state: BattleState, core: TankCorePort): v
 /**
  * 第一階段：計算確定性彈道並將狀態切為 'FIRING'，此時尚未挖坑或扣血（等待砲彈飛抵目標）
  */
+/** 砲彈吸附：吸附半徑與直擊倍率由各砲彈 blueprint 決定；此為坦克本體碰撞半徑與吸附彎折步數 */
+const TANK_HIT_RADIUS_PX = 22
+const MAGNET_PULL_STEPS = 6
+
+/** 兩點間是否沒有地形遮擋（每 3px 取樣，略過終點附近 8px 以免誤判坦克所貼的地面） */
+function hasClearLine(core: TankCorePort, x0: number, y0: number, x1: number, y1: number): boolean {
+  const len = Math.hypot(x1 - x0, y1 - y0)
+  for (let d = 0; d < len - 8; d += 3) {
+    const r = d / len
+    if (core.isSolid(Math.round(x0 + (x1 - x0) * r), Math.round(y0 + (y1 - y0) * r))) return false
+  }
+  return true
+}
+
+/** 模擬一顆彈丸：先算物理彈道，再套用坦克吸附（飛行途中進入吸附範圍且無遮擋就彎向坦克） */
+function simulatePellet(
+  engine: TankCorePort,
+  shooter: TankEntity,
+  shooterSpec: TankBlueprint,
+  projSpec: ProjectileBlueprint,
+  angle: number,
+  power: number,
+  wind: number,
+  aliveOthers: readonly TankEntity[],
+): TrajectoryHit {
+  const { vxMilli, vyMilli } = launchVelocity(angle, power, projSpec.speedMultiplier)
+  let hit = engine.simulateShot({
+    startX: shooter.x,
+    startY: shooter.y - MUZZLE_RISE,
+    vxMilli,
+    vyMilli,
+    windMilli: effectiveWindMilli(wind, projSpec.windMultiplier, shooterSpec),
+    gravityMilli: projSpec.gravityMilli,
+    maxSteps: 1200,
+  })
+
+  const magnetRadius = Math.max(TANK_HIT_RADIUS_PX, projSpec.magnetRadius)
+  const magnetRadiusSq = magnetRadius * magnetRadius
+
+  // 吸附力：砲彈飛行途中進入坦克（不分敵我，友傷是刻意的技術風險）吸附範圍且無地形遮擋，
+  // 後段彈道向坦克中心彎曲並直接命中；進入坦克本體碰撞半徑則直接命中
+  for (let i = 0; i < hit.path.length; i++) {
+    const pt = hit.path[i]
+    const target = aliveOthers.find((t) => {
+      const dx = pt.x - t.x
+      const dy = pt.y - (t.y - 10)
+      const distSq = dx * dx + dy * dy
+      if (distSq > magnetRadiusSq) return false
+      return distSq <= TANK_HIT_RADIUS_PX * TANK_HIT_RADIUS_PX || hasClearLine(engine, pt.x, pt.y, t.x, t.y - 10)
+    })
+    if (target) {
+      const tx = target.x
+      const ty = target.y - 10
+      const pull = Array.from({ length: MAGNET_PULL_STEPS }, (_, k) => {
+        const r = (k + 1) / MAGNET_PULL_STEPS
+        return { x: Math.round(pt.x + (tx - pt.x) * r), y: Math.round(pt.y + (ty - pt.y) * r) }
+      })
+      hit = {
+        hitX: tx,
+        hitY: ty,
+        impactedTerrain: false,
+        hitTank: true,
+        stepsTaken: Math.max(1, i * 2),
+        path: [...hit.path.slice(0, i + 1), ...pull],
+      }
+      break
+    }
+  }
+  return hit
+}
+
+/**
+ * 這次開火實際使用的砲彈（兩端確定性一致）：
+ *  - 有承諾（連線真人）：必須附上通過驗證的揭露，否則回傳 null 拒絕開火；
+ *  - 明牌配置（單機、電腦、被接手）：不在配置內就退回主彈；
+ *  - 都沒有：只接受這台坦克的砲彈池，其餘退回預設彈。
+ */
+function resolveBullet(tank: TankEntity, spec: TankBlueprint, cmd: FireActionCommand): BulletType | null {
+  if (tank.loadoutRoot) {
+    const inPool = spec.shots.includes(cmd.bulletType)
+    return inPool && verifyReveal(tank.tankId, tank.loadoutRoot, cmd.bulletType, cmd.reveal) ? cmd.bulletType : null
+  }
+  const allowed = tank.loadout ?? spec.shots
+  return allowed.includes(cmd.bulletType) ? cmd.bulletType : allowed[0]
+}
+
 export function prepareFireTrajectory(
   state: BattleState,
   cmd: FireActionCommand,
@@ -86,64 +190,42 @@ export function prepareFireTrajectory(
   const shooter = state.tanks[cmd.playerId]
   if (!shooter || shooter.hp <= 0) return null
 
+  const shooterSpec = getTankSpec(shooter.tankId)
+  const bulletType = resolveBullet(shooter, shooterSpec, cmd)
+  // 彈藥承諾驗證失敗（偽造或偷換）：兩端都拒絕這次開火，狀態維持不動
+  if (!bulletType) return null
+
   shooter.angle = cmd.angle
   shooter.power = cmd.power
   state.phase = 'FIRING'
 
-  const shooterSpec = TANK_REGISTRY[shooter.tankId] ?? TANK_REGISTRY.aegis
-  // 只接受這台坦克的專屬砲彈，其餘一律退回預設彈（兩端確定性一致）
-  const bulletType = shooterSpec.shots.includes(cmd.bulletType) ? cmd.bulletType : shooterSpec.shots[0]
   const projSpec = PROJECTILE_REGISTRY[bulletType]
 
-  const { vxMilli, vyMilli } = launchVelocity(cmd.angle, cmd.power, projSpec.speedMultiplier)
+  const aliveOthers = Object.values(state.tanks).filter((t) => t.id !== shooter.id && t.hp > 0)
+  const pellets = (projSpec.pattern ?? SINGLE_SHOT)({ state, shooter, projectile: projSpec, cmd })
+  const baseDamage = Math.round(projSpec.maxDamage * shooterSpec.damageMultiplier)
+  const shots: PreparedShot[] = pellets.map((pellet) => ({
+    hit: simulatePellet(
+      engine,
+      shooter,
+      shooterSpec,
+      projSpec,
+      cmd.angle + pellet.angleDelta,
+      cmd.power + pellet.powerDelta,
+      cmd.wind,
+      aliveOthers,
+    ),
+    maxDamage: Math.round(baseDamage * pellet.damageScale),
+  }))
 
-  let hit = engine.simulateShot({
-    startX: shooter.x,
-    startY: shooter.y - MUZZLE_RISE,
-    vxMilli,
-    vyMilli,
-    windMilli: cmd.wind * projSpec.windMultiplier,
-    gravityMilli: projSpec.gravityMilli,
-    maxSteps: 1200,
-  })
-
-  const aliveOthers = Object.values(state.tanks).filter(
-    (t) => t.id !== shooter.id && t.hp > 0,
-  )
-  const tankRadiusSq = 22 * 22
-
-  for (let i = 0; i < hit.path.length; i++) {
-    const pt = hit.path[i]
-    const hitTankEntity = aliveOthers.find((t) => {
-      const dx = pt.x - t.x
-      const dy = pt.y - (t.y - 10)
-      return dx * dx + dy * dy <= tankRadiusSq
-    })
-    if (hitTankEntity) {
-      hit = {
-        hitX: pt.x,
-        hitY: pt.y,
-        impactedTerrain: false,
-        hitTank: true,
-        stepsTaken: Math.max(1, i * 2),
-        path: hit.path.slice(0, i + 1),
-      }
-      break
-    }
-  }
-
-  state.lastShotPath = hit.path.map((pt) => ({ x: pt.x, y: pt.y }))
-
-  const damageRadius = projSpec.damageRadius + shooterSpec.damageRadiusBonus
-  const terrainRadius = projSpec.terrainRadius + shooterSpec.terrainRadiusBonus
-  const maxDamage = Math.round(projSpec.maxDamage * shooterSpec.damageMultiplier)
+  state.lastShotPath = shots[0].hit.path.map((pt) => ({ x: pt.x, y: pt.y }))
 
   return {
     cmd,
-    hit,
-    damageRadius,
-    terrainRadius,
-    maxDamage,
+    shots,
+    damageRadius: projSpec.damageRadius + shooterSpec.damageRadiusBonus,
+    terrainRadius: projSpec.terrainRadius + shooterSpec.terrainRadiusBonus,
+    directHitMultiplier: projSpec.directHitMultiplier,
     bulletType,
   }
 }
@@ -158,23 +240,22 @@ export function commitFireImpact(
   core?: TankCorePort,
 ): ImpactResult {
   const engine = core ?? getDefaultCore(state.seed)
-  const { hit, damageRadius, terrainRadius, maxDamage } = plan
+  const { shots, damageRadius, terrainRadius, directHitMultiplier } = plan
   const damageByPlayer: Record<PlayerId, number> = {}
-  let dirty: DirtyRect | null = null
+  const carves: CarveEvent[] = []
 
-  if (hit.impactedTerrain || hit.hitTank) {
-    dirty = engine.carveCircle(hit.hitX, hit.hitY, terrainRadius)
+  // 依序結算每顆彈丸；各自經過裝甲 / 抗性後再加總
+  for (const { hit, maxDamage } of shots) {
+    if (!hit.impactedTerrain && !hit.hitTank) continue
+    carves.push({ x: hit.hitX, y: hit.hitY, radius: terrainRadius, dirty: engine.carveCircle(hit.hitX, hit.hitY, terrainRadius) })
 
     for (const tank of Object.values(state.tanks)) {
       if (tank.hp <= 0) continue
-      damageByPlayer[tank.id] = engine.computeExplosionDamage(
-        hit.hitX,
-        hit.hitY,
-        tank.x,
-        tank.y,
-        damageRadius,
-        maxDamage,
-      )
+      const base = engine.computeExplosionDamage(hit.hitX, hit.hitY, tank.x, tank.y, damageRadius, maxDamage)
+      const isDirect = hit.hitTank && Math.hypot(hit.hitX - tank.x, hit.hitY - (tank.y - 10)) <= 2
+      // 直擊（爆心已吸附到車身中心）吃滿傷害，不吃 tank.y 與車身中心的 10px 衰減
+      const raw = isDirect ? Math.round(maxDamage * directHitMultiplier) : base
+      damageByPlayer[tank.id] = (damageByPlayer[tank.id] ?? 0) + mitigateDamage(getTankSpec(tank.tankId), 'explosion', raw)
     }
 
     state.lastExplosion = {
@@ -190,14 +271,22 @@ export function commitFireImpact(
     const surfaceY = groundUnderTank(engine, tank)
     syncTankToSurface(tank, surfaceY, slopeAt(engine, tank.x, surfaceY))
     if (tank.hp <= 0) continue
-    const extra = surfaceY >= engine.height ? tank.maxHp : fallDamageFor(tank.y - beforeY)
+    const spec = getTankSpec(tank.tankId)
+    let extra = 0
+    if (surfaceY >= engine.height) {
+      // 墜入深淵：無視護盾與抗性直接陣亡
+      tank.shield = 0
+      extra = tank.maxHp
+    } else {
+      extra = mitigateDamage(spec, 'fall', fallDamageFor(tank.y - beforeY, spec.fallSafePx))
+    }
     if (extra > 0) {
       damageByPlayer[tank.id] = (damageByPlayer[tank.id] ?? 0) + extra
     }
   }
 
   applyDamageAndCheckWinner(state, damageByPlayer)
-  return { dirty, damageByPlayer }
+  return { carves, damageByPlayer }
 }
 
 /**
@@ -229,6 +318,19 @@ export function executeFireAction(
   finalizeTurnAfterHold(state)
 }
 
+/**
+ * 執行跳過回合動作（主動 PASS 或倒數計時超時）
+ */
+export function executePassAction(
+  state: BattleState,
+  cmd: PassActionCommand,
+): boolean {
+  if (state.phase !== 'AIMING' || isGameOver(state)) return false
+  if (cmd.turnId !== state.turnId || cmd.playerId !== state.activePlayer) return false
+  finalizeTurnAfterHold(state)
+  return true
+}
+
 function isGameOver(state: BattleState): boolean {
   return state.phase === 'GAME_OVER'
 }
@@ -248,21 +350,64 @@ export function moveActiveTank(
 
   const engine = core ?? getDefaultCore(state.seed)
   const fuelCost = Math.min(tank.moveFuel, Math.abs(deltaX))
-  const dest = walkAlongTerrain(engine, tank.x, groundUnderTank(engine, tank), Math.sign(deltaX) * fuelCost, true)
+  const climbPerPx = getTankSpec(tank.tankId).climbPerPx
+  const dest = walkAlongTerrain(engine, tank.x, groundUnderTank(engine, tank), Math.sign(deltaX) * fuelCost, true, climbPerPx)
   const moved = Math.abs(dest.x - tank.x)
   if (moved === 0) return false
 
   tank.x = dest.x
   tank.moveFuel = Math.max(0, tank.moveFuel - moved)
-  if (dest.fell) {
-    // 踏出邊緣：車身往下掉（深淵時一路掉出地圖底部），摔落直接陣亡
-    tank.y = dest.groundY >= engine.height ? engine.height + 60 : dest.groundY - TANK_GROUND_OFFSET
+  if (dest.fell && dest.groundY >= engine.height) {
+    // 踏出邊緣掉進深淵：車身一路掉出地圖底部，直接陣亡
+    tank.y = engine.height + 60
     tank.slopeDeg = 0
+    tank.shield = 0
     applyDamageAndCheckWinner(state, { [tank.id]: tank.hp })
     // 出手的坦克死了，直接換下一位（整場結束則維持 GAME_OVER）
     if (!isGameOver(state)) finalizeTurnAfterHold(state)
+  } else if (dest.fell) {
+    // 從高處（橋緣、台地邊）走下去：落在下層地面，依落差與機種抗性結算摔落傷害（與被炸下墜同一套規則）
+    const spec = getTankSpec(tank.tankId)
+    syncTankToSurface(tank, dest.groundY, slopeAt(engine, dest.x, dest.groundY))
+    const dmg = mitigateDamage(spec, 'fall', fallDamageFor(dest.dropPx ?? 0, spec.fallSafePx))
+    if (dmg > 0) {
+      applyDamageAndCheckWinner(state, { [tank.id]: dmg })
+      if (tank.hp <= 0 && !isGameOver(state)) finalizeTurnAfterHold(state)
+    }
   } else {
     syncTankToSurface(tank, dest.groundY, slopeAt(engine, dest.x, dest.groundY))
   }
+  return true
+}
+
+/**
+ * 玩家中途離線視為認輸：坦克陣亡並退出出手順序；若正輪到他且沒有砲彈在飛就直接換下一位
+ * （砲彈在飛時由該回合結算自然推進，advanceTurn 會跳過陣亡者）。已陣亡 / 不存在 / 對局已結束回傳 false。
+ */
+export function forfeitPlayer(state: BattleState, id: PlayerId): boolean {
+  const tank = state.tanks[id]
+  if (!tank || tank.hp <= 0 || state.phase === 'GAME_OVER') return false
+  tank.shield = 0
+  const wasActive = state.activePlayer === id
+  applyDamageAndCheckWinner(state, { [id]: tank.hp })
+  if (wasActive && state.phase === 'AIMING') finalizeTurnAfterHold(state)
+  return true
+}
+
+/**
+ * 玩家中途離線、房間設定為「電腦接手」：該坦克改由電腦操控（難度預設中等），其餘規則不變。
+ * 實際的瞄準 / 開火由房主端的 AI 算出後以一般動作訊息廣播，所以各端只需切換旗標。
+ */
+export function takeOverWithBot(state: BattleState, id: PlayerId, level: BotLevel = 'normal'): boolean {
+  const tank = state.tanks[id]
+  if (!tank || tank.hp <= 0 || state.phase === 'GAME_OVER' || tank.isBot) return false
+  tank.isBot = true
+  tank.botLevel = level
+  // 接手的電腦沒有真人的承諾原文，改用預設的明牌配置（PLAYER_LEFT 兩端都會執行，結果一致）
+  if (tank.loadoutRoot) {
+    delete tank.loadoutRoot
+    tank.loadout = defaultLoadout(tank.tankId)
+  }
+  if (!tank.name.startsWith('🤖')) tank.name = `🤖 ${tank.name}`
   return true
 }

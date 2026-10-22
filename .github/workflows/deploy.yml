@@ -39,16 +39,26 @@ jobs:
       - name: Build Wasm package
         run: wasm-pack build crates/tank-core --target web --out-dir ../../src/shared/wasm/pkg
 
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
+          cache: pnpm
 
       - name: Install frontend dependencies
-        run: npm install
+        run: pnpm install --frozen-lockfile
+
+      - name: Install signaling server dependencies
+        run: npm ci --prefix server
+
+      - name: Run tests (frontend Vitest + signaling server)
+        run: pnpm test
 
       - name: Type-check & Build static site
-        run: npm run build
+        run: pnpm run build
 
       - name: Configure Pages
         if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')

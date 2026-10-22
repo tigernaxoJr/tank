@@ -2,10 +2,11 @@
  * Battle Slice (中大型複雜模組 - 完整 DDD 輕量分層)
  * 支援 1v1 ~ 5v5 (最多 10 台坦克) 與模組化 TankBlueprint / MapBlueprint 引擎
  */
-import type { BotLevel, MapPresetId, PlayerId, RosterSlot, TankArchetypeId, TeamId } from '@/shared/kernel/types'
+import type { BotLevel, BulletType, MapPresetId, PlayerId, RosterSlot, TankArchetypeId, TeamId } from '@/shared/kernel/types'
 import type { TankCorePort } from '@/shared/wasm'
+import { sanitizeLoadout } from './loadout'
 import { MAP_REGISTRY } from './mapRegistry'
-import { TANK_REGISTRY } from './tankRegistry'
+import { getTankSpec, tankAt } from './tankRegistry'
 
 export type TurnPhase = 'AIMING' | 'FIRING' | 'GAME_OVER'
 
@@ -18,6 +19,8 @@ export interface TankEntity {
   y: number
   hp: number
   maxHp: number
+  shield: number
+  maxShield: number
   angle: number
   power: number
   slopeDeg: number
@@ -25,6 +28,10 @@ export interface TankEntity {
   maxMoveFuel: number
   isBot: boolean
   botLevel: BotLevel
+  /** 明牌的主彈、副彈（單機、電腦、被電腦接手後）；連線對戰的真人坦克為了迷霧不帶此欄位 */
+  loadout?: BulletType[]
+  /** 連線對戰的彈藥承諾（Merkle 根），開火時以 `reveal` 驗證，見 loadout.ts */
+  loadoutRoot?: string
 }
 
 export interface BattleState {
@@ -42,8 +49,8 @@ export interface BattleState {
 }
 
 const DEFAULT_ROSTER: RosterSlot[] = [
-  { id: 'p1', name: 'Player 1', team: 'A', tankId: 'aegis', isHost: true },
-  { id: 'p2', name: 'Player 2', team: 'B', tankId: 'goliath', isHost: false },
+  { id: 'p1', name: 'Player 1', team: 'A', tankId: tankAt(0), isHost: true },
+  { id: 'p2', name: 'Player 2', team: 'B', tankId: tankAt(1), isHost: false },
 ]
 
 export function buildInterleavedTurnOrder(roster: RosterSlot[]): PlayerId[] {
@@ -56,6 +63,13 @@ export function buildInterleavedTurnOrder(roster: RosterSlot[]): PlayerId[] {
     if (i < teamB.length) order.push(teamB[i])
   }
   return order.length > 0 ? order : ['p1', 'p2']
+}
+
+/** 名單上的彈藥資訊：有承諾（連線真人）就只記根；否則明牌，電腦沒指定時帶預設 */
+function loadoutFields(slot: RosterSlot): Pick<TankEntity, 'loadout' | 'loadoutRoot'> {
+  if (slot.loadoutRoot) return { loadoutRoot: slot.loadoutRoot }
+  if (slot.loadout || slot.isBot) return { loadout: sanitizeLoadout(slot.tankId, slot.loadout) }
+  return {}
 }
 
 export function createInitialBattleState(
@@ -75,7 +89,7 @@ export function createInitialBattleState(
   const leftMargin = 180
   const leftSpan = Math.floor(arenaWidth * 0.32)
   teamASlots.forEach((slot, idx) => {
-    const spec = TANK_REGISTRY[slot.tankId] ?? TANK_REGISTRY.aegis
+    const spec = getTankSpec(slot.tankId)
     const count = teamASlots.length
     const step = count > 1 ? Math.floor(leftSpan / (count - 1)) : 0
     const x = count === 1 ? leftMargin + Math.floor(leftSpan * 0.35) : leftMargin + idx * step
@@ -88,6 +102,8 @@ export function createInitialBattleState(
       y: 400,
       hp: spec.maxHp,
       maxHp: spec.maxHp,
+      shield: spec.shield,
+      maxShield: spec.shield,
       angle: 45,
       power: 65,
       slopeDeg: 0,
@@ -95,6 +111,7 @@ export function createInitialBattleState(
       maxMoveFuel: spec.moveFuel,
       isBot: slot.isBot === true,
       botLevel: slot.botLevel ?? 'hard',
+      ...loadoutFields(slot),
     }
   })
 
@@ -102,7 +119,7 @@ export function createInitialBattleState(
   const rightMargin = 180
   const rightSpan = Math.floor(arenaWidth * 0.32)
   teamBSlots.forEach((slot, idx) => {
-    const spec = TANK_REGISTRY[slot.tankId] ?? TANK_REGISTRY.aegis
+    const spec = getTankSpec(slot.tankId)
     const count = teamBSlots.length
     const step = count > 1 ? Math.floor(rightSpan / (count - 1)) : 0
     const x =
@@ -118,6 +135,8 @@ export function createInitialBattleState(
       y: 400,
       hp: spec.maxHp,
       maxHp: spec.maxHp,
+      shield: spec.shield,
+      maxShield: spec.shield,
       angle: 135,
       power: 65,
       slopeDeg: 0,
@@ -125,6 +144,7 @@ export function createInitialBattleState(
       maxMoveFuel: spec.moveFuel,
       isBot: slot.isBot === true,
       botLevel: slot.botLevel ?? 'hard',
+      ...loadoutFields(slot),
     }
   })
 
@@ -143,6 +163,11 @@ export function createInitialBattleState(
     lastShotPath: [],
     lastExplosion: null,
   }
+}
+
+/** 力道精度：兩位小數（0.01）。HUD、瞄準動畫與電腦 AI 都經此函式，確保送出的力道值一致 */
+export function quantizePower(power: number): number {
+  return Math.round(power * 100) / 100
 }
 
 /** 砲口初速（千分位整數），開火結算、瞄準預覽與電腦 AI 共用同一公式以確保一致 */
@@ -168,9 +193,9 @@ const FALL_SAFE_PX = 30
 const FALL_PX_PER_DAMAGE = 6
 const MAX_FALL_DAMAGE = 30
 
-export function fallDamageFor(dropPx: number): number {
-  if (dropPx <= FALL_SAFE_PX) return 0
-  return Math.min(MAX_FALL_DAMAGE, Math.floor((dropPx - FALL_SAFE_PX) / FALL_PX_PER_DAMAGE))
+export function fallDamageFor(dropPx: number, safePx = FALL_SAFE_PX): number {
+  if (dropPx <= safePx) return 0
+  return Math.min(MAX_FALL_DAMAGE, Math.floor((dropPx - safePx) / FALL_PX_PER_DAMAGE))
 }
 
 export function syncTankToSurface(tank: TankEntity, surfaceY: number, slopeDeg: number): void {
@@ -193,9 +218,10 @@ export function slopeAt(core: TankCorePort, x: number, groundY: number): number 
 }
 
 /**
- * 沿地形逐像素行走：可爬上緩坡、走下台階，但會被陡壁、低矮天花板擋住。
+ * 沿地形逐像素行走：可爬上緩坡、走下台階，但會被陡壁、低矮天花板擋住（可爬高度 climbPerPx 依機種而異）。
  * 前方沒有地面（橋面 / 浮空島邊緣、深淵）或落差超過 FALL_SAFE_PX（懸崖）時：預設停在邊緣（供電腦規劃走位，不會自殺）；
- * allowFall = true（玩家真的走出去）則踏空下墜，回傳 fell = true，由呼叫端判定陣亡。
+ * allowFall = true（玩家真的走出去）則踏空下墜，回傳 fell = true 與落差 dropPx：下方是深淵（groundY >= core.height）直接陣亡，
+ * 落在下層地面則由呼叫端依 dropPx 與機種摔落抗性結算摔落傷害。
  */
 export function walkAlongTerrain(
   core: TankCorePort,
@@ -203,7 +229,8 @@ export function walkAlongTerrain(
   startGroundY: number,
   deltaX: number,
   allowFall = false,
-): { x: number; groundY: number; fell?: boolean } {
+  climbPerPx = MAX_CLIMB_PER_PX,
+): { x: number; groundY: number; fell?: boolean; dropPx?: number } {
   const dir = Math.sign(deltaX)
   const minX = 30
   const maxX = core.width - 30
@@ -212,12 +239,12 @@ export function walkAlongTerrain(
   for (let i = 0; i < Math.abs(Math.round(deltaX)); i++) {
     const nx = x + dir
     if (nx < minX || nx > maxX) break
-    const probe = groundY - MAX_CLIMB_PER_PX
+    const probe = groundY - climbPerPx
     if (core.isSolid(nx, probe)) break
     const ng = core.groundBelow(nx, probe)
-    // 前方沒有地面，或落差超過安全高度（懸崖）：踏出去就是墜落
+    // 前方沒有地面，或落差超過安全高度（懸崖）：踏出去就是墜落（落地後的摔落傷害由呼叫端依 dropPx 結算）
     if (ng >= core.height || ng - groundY > FALL_SAFE_PX) {
-      if (allowFall) return { x: nx, groundY: ng, fell: true }
+      if (allowFall) return { x: nx, groundY: ng, fell: true, dropPx: ng - groundY }
       break
     }
     if (core.isSolid(nx, ng - TANK_HEADROOM)) break
@@ -246,7 +273,9 @@ export function applyDamageAndCheckWinner(
   for (const [pid, dmg] of Object.entries(damageByPlayer)) {
     const tank = state.tanks[pid]
     if (tank && dmg > 0) {
-      tank.hp = Math.max(0, Math.min(tank.maxHp, tank.hp - dmg))
+      const absorbed = Math.min(tank.shield, dmg)
+      tank.shield -= absorbed
+      tank.hp = Math.max(0, Math.min(tank.maxHp, tank.hp - (dmg - absorbed)))
     }
   }
 
@@ -287,4 +316,23 @@ export function advanceTurn(state: BattleState, nextWind: number): void {
   }
 
   state.phase = 'AIMING'
+}
+
+/**
+ * 對戰狀態雜湊（地形雜湊 + 各坦克位置/生命/護盾），供連線同步檢查；
+ * 任何一端的坦克數值與對手不一致都能被偵測。FNV-1a 整數運算，確定性。
+ */
+export function battleStateHash(state: BattleState, terrainHash: number): number {
+  let h = (0x811c9dc5 ^ terrainHash) >>> 0
+  const mix = (v: number) => {
+    h = Math.imul(h ^ (Math.round(v) | 0), 0x01000193) >>> 0
+  }
+  for (const id of Object.keys(state.tanks).sort()) {
+    const t = state.tanks[id]
+    mix(t.x)
+    mix(t.y)
+    mix(t.hp)
+    mix(t.shield)
+  }
+  return h
 }

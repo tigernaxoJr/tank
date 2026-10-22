@@ -2,12 +2,14 @@
   "name": "tank-artillery-web",
   "private": true,
   "version": "0.1.0",
+  "packageManager": "pnpm@10.34.7",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "vue-tsc -b && vite build",
     "preview": "vite preview",
     "signaling": "node server/index.js",
+    "test": "vitest run && npm test --prefix server",
     "test:rust": "cargo test --manifest-path crates/tank-core/Cargo.toml",
     "build:wasm": "wasm-pack build crates/tank-core --target web --out-dir ../../src/shared/wasm/pkg",
     "render:assets": "blender -b -P tools/blender/render_assets.py",
@@ -15,6 +17,7 @@
     "paint:units": "node tools/assets/paint_units.mjs"
   },
   "dependencies": {
+    "@noble/hashes": "^2.4.0",
     "peerjs": "^1.5.4",
     "phaser": "^3.90.0",
     "vue": "^3.5.13"
@@ -27,6 +30,7 @@
     "tailwindcss": "^4.0.9",
     "typescript": "~5.7.3",
     "vite": "^6.2.0",
+    "vitest": "^5.0.5",
     "vue-tsc": "^2.2.4"
   }
 }

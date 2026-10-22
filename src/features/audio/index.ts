@@ -3,7 +3,15 @@
  * 小型且規則單純的功能不拆 domain/application/infra 子目錄，直接於 index.ts 內完成封裝。
  */
 
-export type SoundEffect = 'fire' | 'explosion' | 'move' | 'tick'
+export type SoundEffect =
+  | 'fire'
+  | 'explosion'
+  | 'move'
+  | 'tick'
+  | 'ui_click'
+  | 'ui_select'
+  | 'ui_ready'
+  | 'ui_start'
 
 export class SoundController {
   private muted = false
@@ -81,6 +89,47 @@ export class SoundController {
           gain.gain.linearRampToValueAtTime(0.001, now + 0.04)
           osc.start(now)
           osc.stop(now + 0.04)
+          break
+        }
+        case 'ui_click': {
+          osc.type = 'sine'
+          osc.frequency.setValueAtTime(650, now)
+          osc.frequency.exponentialRampToValueAtTime(450, now + 0.035)
+          gain.gain.setValueAtTime(0.18, now)
+          gain.gain.linearRampToValueAtTime(0.001, now + 0.035)
+          osc.start(now)
+          osc.stop(now + 0.035)
+          break
+        }
+        case 'ui_select': {
+          osc.type = 'triangle'
+          osc.frequency.setValueAtTime(440, now)
+          osc.frequency.exponentialRampToValueAtTime(720, now + 0.06)
+          gain.gain.setValueAtTime(0.22, now)
+          gain.gain.linearRampToValueAtTime(0.001, now + 0.06)
+          osc.start(now)
+          osc.stop(now + 0.06)
+          break
+        }
+        case 'ui_ready': {
+          osc.type = 'sine'
+          osc.frequency.setValueAtTime(523.25, now) // C5
+          osc.frequency.setValueAtTime(659.25, now + 0.05) // E5
+          osc.frequency.setValueAtTime(783.99, now + 0.1) // G5
+          gain.gain.setValueAtTime(0.25, now)
+          gain.gain.linearRampToValueAtTime(0.001, now + 0.22)
+          osc.start(now)
+          osc.stop(now + 0.22)
+          break
+        }
+        case 'ui_start': {
+          osc.type = 'sawtooth'
+          osc.frequency.setValueAtTime(220, now)
+          osc.frequency.exponentialRampToValueAtTime(880, now + 0.25)
+          gain.gain.setValueAtTime(0.28, now)
+          gain.gain.linearRampToValueAtTime(0.001, now + 0.25)
+          osc.start(now)
+          osc.stop(now + 0.25)
           break
         }
       }
