@@ -19,5 +19,11 @@ export default defineTank({
   resist: { poison: 1 },
   passive: { name: '抗毒', description: '中毒傷害完全免疫，貼近自己的毒霧也不怕。' },
   shots: ['SCORPION_TOXIN', 'SCORPION_ACID'],
-  sprite: { scale: 0.4, pivotX: -2, pivotY: -27, face: { x: 18, y: -10, eyeGap: 15, eyeSize: 6 } },
+  sprite: {
+    scale: 0.4,
+    pivotX: -18.2,
+    pivotY: -40.8,
+    // 車身即頭：大眼長在殼前方，車頭那隻較小（3/4 視角），待機半垂眼皮 + 壞笑
+    face: { x: 16.5, y: -17.7, eyeGap: 11.2, eyeSize: 6.5, lid: 0x8a5ad0, iris: 0x8fe24f, farScale: 0.76, rest: 0.78, lidTilt: 0.8, mouthDy: 13.8, restMouth: 'smirk', blush: true },
+  },
 })

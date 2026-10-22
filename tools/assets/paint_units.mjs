@@ -23,6 +23,7 @@ import { existsSync, mkdirSync, readdirSync, writeFileSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { Resvg } from '@resvg/resvg-js'
+import { HULL_BOX as SCORPION_BOX, scorpionBarrel, scorpionHull } from './tanks/scorpion.mjs'
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..')
 const SVG_OUT = join(ROOT, 'tools', 'assets', 'unit-art')
@@ -221,18 +222,6 @@ function skinPart(id, d, c, bbox, toonOpts = {}, finishOpts = {}) {
   return [d1 + d2, b1 + b2]
 }
 
-/** Jointed insect leg seen from the side: hip under the body, knee out, pointed foot on the ground (y = 0). */
-function insectLeg(hx, hy, kx, ky, fx, c) {
-  const path = `M${hx},${hy}L${kx},${ky}L${fx},-0.6`
-  return (
-    `<path d="${path}" stroke="${INK}" stroke-width="5" fill="none" stroke-linejoin="round" stroke-linecap="round"/>` +
-    `<path d="${path}" stroke="${c.base}" stroke-width="2.8" fill="none" stroke-linejoin="round" stroke-linecap="round"/>` +
-    `<path d="M${hx},${hy}L${kx},${ky}" stroke="${c.light}" stroke-width="0.9" fill="none" stroke-linecap="round" opacity="0.8"/>` +
-    `<circle cx="${kx}" cy="${ky}" r="2.3" fill="${c.dark}" stroke="${INK}" stroke-width="0.9"/>` +
-    `<path d="M${f1(fx - 1.6)},-1.8L${fx},0.6L${f1(fx + 1.6)},-1.8Z" fill="${INK}"/>`
-  )
-}
-
 // ───────────────────────── barrels ─────────────────────────
 
 const ICE = { light: '#ffffff', base: '#c9f1ff', dark: '#7cc8ec', deep: '#3d8fc2' }
@@ -246,7 +235,6 @@ const SCARF = { light: '#ff9a9a', base: '#e5484d', dark: '#a8262b' }
  * hidden behind the hull. Each tank picks one silhouette:
  *   plain   straight tube + team band + flared muzzle (options: rings, spiral, drips)
  *   bell    blunderbuss that widens into a trumpet mouth (Zephyr's scatter gun)
- *   tail    three shrinking carapace segments ending in a glowing stinger (Scorpion)
  *   rails   twin rails, energy channel, team coils and a muzzle brake (Hawkeye)
  */
 function barrelSvg(spec, team, skin = STEEL) {
@@ -284,34 +272,6 @@ function barrelSvg(spec, team, skin = STEEL) {
     body += `<rect x="${len - 7.6}" y="${f1(-b + 1.4)}" width="1.6" height="${f1(spec.brake - 2.8)}" rx="0.6" fill="${INK}" opacity="0.8"/>`
     body += `<rect x="${len - 4.4}" y="${f1(-b + 1.4)}" width="1.6" height="${f1(spec.brake - 2.8)}" rx="0.6" fill="${INK}" opacity="0.8"/>`
     body += `<rect x="${len - 8.6}" y="${f1(-b + 0.8)}" width="7" height="1.1" rx="0.5" fill="#ffffff" opacity="0.7"/>`
-    return svgDoc(box, body, defs)
-  }
-
-  if (style === 'tail') {
-    // carapace segments, each a toon capsule slightly smaller than the last
-    const segs = [
-      [1, len * 0.42, thick],
-      [len * 0.36, len * 0.68, thick * 0.84],
-      [len * 0.63, len * 0.86, thick * 0.7],
-    ]
-    segs.forEach(([x0, x1, h], i) => {
-      const hh = h / 2
-      const d = `M${f1(x0 + hh)},${f1(-hh)}H${f1(x1 - hh)}A${f1(hh)},${f1(hh)} 0 0 1 ${f1(x1 - hh)},${f1(hh)}H${f1(x0 + hh)}A${f1(hh)},${f1(hh)} 0 0 1 ${f1(x0 + hh)},${f1(-hh)}Z`
-      const [dd, bb] = toon(`sg${i}`, d, skin, { shade: [1, 1.4], rim: 0.8 })
-      defs += dd
-      body += bb
-      body += line(x0 + hh * 0.7, -hh * 0.45, x1 - hh * 1.2, -hh * 0.45, '#ffffff', 0.9, 0.6)
-    })
-    // team rings over the two joints
-    for (const [x, h] of [[len * 0.37, thick * 0.92], [len * 0.64, thick * 0.78]]) {
-      body += `<rect x="${f1(x)}" y="${f1(-h / 2 - 0.6)}" width="3.4" height="${f1(h + 1.2)}" rx="1.3" fill="${c.base}" stroke="${INK}" stroke-width="${SW * 0.7}"/>`
-      body += `<rect x="${f1(x + 0.8)}" y="${f1(-h / 2 + 0.4)}" width="1.6" height="${f1(h * 0.28)}" rx="0.6" fill="${c.light}"/>`
-    }
-    // stinger: glowing toxic barb
-    const sx = len * 0.84
-    body += `<path d="M${f1(sx)},${f1(-thick * 0.32)}C${f1(sx + 5)},${f1(-thick * 0.34)} ${f1(len - 3)},-1.6 ${f1(len - 0.6)},0C${f1(len - 3)},1.6 ${f1(sx + 5)},${f1(thick * 0.34)} ${f1(sx)},${f1(thick * 0.32)}Z" fill="${TOXIC.base}" stroke="${INK}" stroke-width="${SW * 0.85}" stroke-linejoin="round"/>`
-    body += `<path d="M${f1(sx + 1.5)},${f1(-thick * 0.16)}C${f1(sx + 5)},${f1(-thick * 0.18)} ${f1(len - 5)},-0.9 ${f1(len - 2.6)},-0.3" stroke="${TOXIC.light}" stroke-width="1" fill="none" stroke-linecap="round"/>`
-    body += `<circle cx="${f1(len - 1.6)}" cy="1.9" r="1.1" fill="${TOXIC.light}" stroke="${INK}" stroke-width="0.5"/>`
     return svgDoc(box, body, defs)
   }
 
@@ -553,54 +513,13 @@ const TANKS = {
   },
 
   /**
-   * 毒蠍：紫色分節甲殼、八足步行、一對大螯、背上毒液罐、毒斑、蠍尾式分節砲管；隊伍色＝大螯、砲塔環、蠍尾關節環。
-   * face (21,-10) pivot (-2,-27)
+   * 毒蠍：角色優先的新畫風（車身即頭、大眼由 tankFace.ts 即時畫在殼前方），美術在 tools/assets/tanks/scorpion.mjs。
+   * face (16.5,-30.7) pivot (-18.2,-53.8)
    */
   scorpion: {
-    box: [-50, -64, 106, 65],
-    barrel: { len: 34, thick: 8.6, style: 'tail' },
-    hull(team) {
-      const c = TEAMS[team]
-      const s = SKINS.scorpion
-      const p = painter()
-      // venom canister on the rear deck: glass tube, green fluid, bubbles, steel caps
-      p.def(`<clipPath id="vc"><rect x="-33" y="-49" width="11" height="17" rx="3"/></clipPath>`)
-      p.raw(`<rect x="-33" y="-49" width="11" height="17" rx="3" fill="${GLASS.light}" opacity="0.9"/>`)
-      p.raw(`<g clip-path="url(#vc)"><rect x="-33" y="-43" width="11" height="12" fill="${TOXIC.base}"/><rect x="-33" y="-43" width="11" height="2" fill="${TOXIC.light}"/><rect x="-25.6" y="-43" width="3" height="12" fill="${TOXIC.dark}" opacity="0.6"/></g>`)
-      for (const [bx, by, br] of [[-29.4, -37.4, 1.3], [-26.6, -40, 0.9], [-28.6, -46, 0.8]]) p.raw(`<circle cx="${bx}" cy="${by}" r="${br}" fill="#ffffff" opacity="0.85"/>`)
-      p.raw(`<rect x="-33" y="-49" width="11" height="17" rx="3" fill="none" stroke="${INK}" stroke-width="${SW * 0.8}"/>`)
-      p.raw(`<rect x="-34.4" y="-51.6" width="13.8" height="3.6" rx="1.4" fill="${STEEL.base}" stroke="${INK}" stroke-width="${SW * 0.7}"/>`)
-      p.raw(line(-32, -46.6, -32, -36, '#ffffff', 1, 0.8))
-      // small dome turret with a purple venom band
-      p.add(skinPart('tu', 'M-15,-32C-15,-41.5 -9,-45.5 -2,-45.5C5,-45.5 11,-41.5 11,-32Z', s, [-15, -46, 11, -32], { shade: [1.5, 2.1] }, { seed: 32, grain: 18, scuffs: 2 }))
-      p.raw(`<path d="M-14.6,-36.4H10.6V-33H-14.6Z" fill="${c.base}" stroke="${INK}" stroke-width="0.9"/>`)
-      p.raw(gloss(-6, -42, 4.6, 1.4))
-      // no track: eight jointed legs (far pair darker and offset), rear legs splay back, front legs forward
-      const far = { light: s.base, base: s.dark, dark: s.deep }
-      for (const [hx, dir] of [[-20, -1], [-6, -1], [8, 1], [22, 1]]) p.raw(insectLeg(hx + 3, -13, hx + 3 + dir * 8, -8.6, hx + 3 + dir * 12, far))
-      for (const [hx, dir] of [[-26, -1], [-12, -1], [4, 1], [18, 1]]) p.raw(insectLeg(hx, -12, hx + dir * 8.6, -7.6, hx + dir * 13, s))
-      // big open pincer on the front bumper (behind the body so the shell overlaps its root)
-      p.add(toon('cw0', 'M30,-22H38Q40,-22 40,-20V-15.6Q40,-13.6 38,-13.6H30Z', c, { shade: [0.8, 1.1], rim: 0.6 }))
-      p.add(skinPart('cw1', 'M36,-21C38,-29 46,-33 53,-29.6C55,-28.6 54.6,-26.4 52.6,-26.2C47.6,-25.6 44,-23.4 42.4,-19.4Z', c, [36, -33, 55, -19], { shade: [1, 1.4], rim: 0.7 }, { seed: 33, grain: 10, scuffs: 1 }))
-      p.add(skinPart('cw2', 'M37.6,-14.6C41.6,-11.6 47,-11.8 51,-15.4C52.4,-16.6 52,-18.2 50.4,-18C47,-17.6 43.6,-17.6 41.6,-18.6Z', c, [37, -19, 52, -11], { shade: [1, 1.4], rim: 0.7 }, { seed: 34, grain: 8, scuffs: 1 }))
-      p.raw(`<circle cx="49" cy="-29.4" r="1" fill="#ffffff" opacity="0.85"/>`)
-      p.raw(`<path d="M45,-27.6L46.4,-25.2M47,-16.6L48.2,-14.4" stroke="${c.deep}" stroke-width="0.9" stroke-linecap="round" opacity="0.7"/>`)
-      // low carapace body
-      const bodyD = 'M-38,-12C-42.5,-12 -42.5,-20 -39.5,-25C-35.5,-31 -26,-33.5 -14,-33.5H17C29,-33.5 37,-28.5 39.5,-21.5C41,-16.5 40,-12 36,-12Z'
-      p.add(skinPart('hu', bodyD, s, [-43, -34, 41, -11], { shade: [2.4, 3] }, { seed: 31, grain: 70 }))
-      p.def(`<clipPath id="cp"><path d="${bodyD}"/></clipPath>`)
-      // carapace segment seams on the rear half
-      let seams = ''
-      for (const x of [-27, -17, -7]) seams += `<path d="M${x},-34C${x - 2.6},-27 ${x - 2.6},-19 ${x},-11" stroke="${s.deep}" stroke-width="1.2" fill="none" opacity="0.5"/>`
-      // toxic spots
-      for (const [sx, sy, sr] of [[-33, -20, 2.4], [-22, -26.6, 1.8], [-13, -18, 2.1], [-27.6, -14.6, 1.3]]) {
-        seams += `<circle cx="${sx}" cy="${sy}" r="${sr}" fill="${TOXIC.base}" stroke="${INK}" stroke-width="0.6"/><circle cx="${sx - sr * 0.3}" cy="${sy - sr * 0.3}" r="${f1(sr * 0.35)}" fill="${TOXIC.light}"/>`
-      }
-      for (const [x0, x1] of [[-38, -28], [-26, -18], [-16, -8]]) seams += `<path d="M${x0},-27C${x0 + 2},-31 ${x1 - 2},-32.4 ${x1},-32" stroke="${s.light}" stroke-width="1.2" fill="none" stroke-linecap="round" opacity="0.7"/>`
-      p.raw(`<g clip-path="url(#cp)">${seams}</g>`)
-      p.raw(gloss(-16, -30.6, 10, 1.8, -3))
-      return p.doc(this.box)
-    },
+    box: SCORPION_BOX,
+    hull: (team) => scorpionHull(TEAMS[team], INK),
+    barrelArt: (team) => scorpionBarrel(TEAMS[team], INK),
   },
 
   /**
@@ -1100,7 +1019,7 @@ function emit(group, name, svgText, zoom = 1) {
 for (const [id, tank] of Object.entries(TANKS)) {
   for (const team of Object.keys(TEAMS)) {
     emit('tanks', `${id}_${team}_hull`, tank.hull(team), TANK_ZOOM)
-    emit('tanks', `${id}_${team}_barrel`, barrelSvg(tank.barrel, team, SKINS[id]), TANK_ZOOM)
+    emit('tanks', `${id}_${team}_barrel`, tank.barrelArt ? tank.barrelArt(team) : barrelSvg(tank.barrel, team, SKINS[id]), TANK_ZOOM)
   }
 }
 for (const [key, draw] of Object.entries(SHOTS)) emit('projectiles', key, draw(), SHOT_ZOOM)

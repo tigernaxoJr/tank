@@ -19,5 +19,5 @@ export default defineTank({
   resist: {},
   passive: { name: '鷹眼', description: '風敏感度 0.7，砲彈最不容易被風吹偏。' },
   shots: ['HAWK_RAIL', 'HAWK_FLARE'],
-  sprite: { scale: 0.4, pivotX: -3, pivotY: -23, face: { x: 16, y: -8, eyeGap: 14, eyeSize: 5.4 } },
+  sprite: { scale: 0.4, pivotX: -3, pivotY: -23, face: { x: 16, y: -8, eyeGap: 14, eyeSize: 5.4, lid: 0xe6e9ef, iris: 0xffcf3f } },
 })

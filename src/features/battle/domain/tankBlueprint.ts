@@ -11,8 +11,24 @@ export interface FaceSpec {
   readonly y: number
   /** 兩眼中心距離 */
   readonly eyeGap: number
-  /** 眼睛半高 */
+  /** 眼睛半高（近側那隻眼） */
   readonly eyeSize: number
+  /** 眼皮色＝臉部周圍的車身色；瞇眼、眨眼時眼皮由上往下蓋住眼白 */
+  readonly lid: number
+  /** 虹膜色 */
+  readonly iris: number
+  /** 3/4 視角：車頭那側（遠側）眼睛的縮放，預設 1 */
+  readonly farScale?: number
+  /** 待機時的眼皮開度（1 = 全開；慵懶、陰險的個性 < 1），預設 1 */
+  readonly rest?: number
+  /** 眼皮斜度：正值 = 車頭那側較低（斜眼、壞笑），負值 = 車尾那側較低，預設 0 */
+  readonly lidTilt?: number
+  /** 嘴巴中心距臉中心的垂直距離，預設 eyeSize + 4.5 */
+  readonly mouthDy?: number
+  /** 待機嘴型，預設 smile */
+  readonly restMouth?: 'smile' | 'smirk' | 'flat'
+  /** 腮紅 */
+  readonly blush?: boolean
 }
 
 /** 傷害類型：explosion / fall / poison 已啟用；burn / movement 為預留 */

@@ -19,5 +19,5 @@ export default defineTank({
   resist: { fall: 0.5 },
   passive: { name: '滑行', description: '落差 70 px 內不受摔落傷害，摔落傷害再減半，可以直接跳下懸崖突襲。' },
   shots: ['ZEPHYR_SCATTER', 'ZEPHYR_SKIP'],
-  sprite: { scale: 0.4, pivotX: -6, pivotY: -25, face: { x: 14, y: -9, eyeGap: 14, eyeSize: 5.2 } },
+  sprite: { scale: 0.4, pivotX: -6, pivotY: -25, face: { x: 14, y: -9, eyeGap: 14, eyeSize: 5.2, lid: 0xf1ecdd, iris: 0x3b82f6 } },
 })

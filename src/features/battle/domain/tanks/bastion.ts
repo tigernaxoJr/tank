@@ -20,5 +20,5 @@ export default defineTank({
   passive: { name: '紮根', description: '整個回合沒有移動，下一次受到的爆炸傷害 −20%。' },
   idleStatus: { status: 'rooted', turns: 1, power: 20 },
   shots: ['BASTION_MORTAR', 'BASTION_RAMPART'],
-  sprite: { scale: 0.4, pivotX: 3, pivotY: -34, face: { x: 16, y: -14, eyeGap: 16, eyeSize: 6.5 } },
+  sprite: { scale: 0.4, pivotX: 3, pivotY: -34, face: { x: 16, y: -14, eyeGap: 16, eyeSize: 6.5, lid: 0xc9c4b6, iris: 0x8b5a2b } },
 })

@@ -71,12 +71,21 @@ export class TankFace {
   private lookX = 0
   private lookY = 0
   private lastTime = 0
+  private readonly irisDark: number
+  private readonly irisLight: number
 
   constructor(
     scene: Phaser.Scene,
     private readonly spec: FaceSpec,
   ) {
     this.gfx = scene.add.graphics()
+    const iris = Phaser.Display.Color.IntegerToColor(spec.iris)
+    this.irisDark = iris.clone().darken(30).color
+    this.irisLight = iris.clone().lighten(25).color
+  }
+
+  private get rest(): number {
+    return this.spec.rest ?? 1
   }
 
   trigger(event: FaceEvent, time: number): void {
@@ -130,7 +139,7 @@ export class TankFace {
       pupil: 1,
       browTilt: 0,
       browLift: 0,
-      mouth: 'smile',
+      mouth: this.spec.restMouth ?? 'smile',
       sweat: false,
       stars: false,
     }
@@ -207,36 +216,51 @@ export class TankFace {
   private draw(e: Expression, dir: number, time: number): void {
     const g = this.gfx
     const { eyeGap, eyeSize } = this.spec
+    const far = this.spec.farScale ?? 1
     const cx = this.spec.x * dir
     const cy = this.spec.y
-    const rx = eyeSize * 0.8
-    const ry = eyeSize
+    const lw = this.lineWidth
     g.clear()
 
-    for (const side of [-1, 1]) {
-      const ex = cx + (side * eyeGap) / 2
-      this.drawEye(e, ex, cy, rx, ry, side, time)
-      // >< / XX / 螺旋眼本身就很搶眼，再加眉毛在 25px 的臉上會糊成一團
-      if (e.eyes === 'open' || e.eyes === 'happy') this.drawBrow(e, ex, cy - ry - 2.5 - e.browLift, rx, side)
+    if (this.spec.blush && e.eyes !== 'x') {
+      g.fillStyle(0xff7fb0, 0.45)
+      g.fillEllipse(cx + dir * (eyeGap / 2 + eyeSize * 0.2), cy + eyeSize * 1.2, eyeSize * 1.5, eyeSize * 0.65)
     }
-    this.drawMouth(e.mouth, cx + dir * 1.5, cy + ry + 4.5, eyeGap * 0.36, dir)
-    if (e.sweat) this.drawSweat(cx - dir * (eyeGap / 2 + rx + 3), cy - ry * 0.4, time)
-    if (e.stars) this.drawStars(cx, cy - ry - 11, eyeGap * 0.9, time)
+    for (const side of [-1, 1]) {
+      // 3/4 視角：車頭那側（side 與面向相同）的眼睛在遠側，畫小一點
+      const k = side === dir ? far : 1
+      const ex = cx + (side * eyeGap) / 2
+      const ry = eyeSize * k
+      const rx = ry * 0.9
+      this.drawEye(e, ex, cy, rx, ry, side, dir, time)
+      // >< / XX / 螺旋眼本身就很搶眼，再加眉毛在小小的臉上會糊成一團
+      if (e.eyes === 'open' || e.eyes === 'happy') this.drawBrow(e, ex, cy - ry * Math.max(1, e.open) - lw * 1.6 - e.browLift, rx, side)
+    }
+    const w = Math.max(eyeGap * 0.36, eyeSize * 0.75)
+    this.drawMouth(e.mouth, cx + dir * 1.5, cy + (this.spec.mouthDy ?? eyeSize + 4.5), w, dir)
+    if (e.sweat) this.drawSweat(cx - dir * (eyeGap / 2 + eyeSize + 3), cy - eyeSize * 0.4, time)
+    if (e.stars) this.drawStars(cx, cy - eyeSize - 11, eyeGap * 0.9 + 4, time)
   }
 
-  /** 先畫半透明白邊再畫墨線，讓表情線條在沙漠與海軍兩種塗裝上都看得清楚 */
+  /** 線寬隨臉的大小縮放，大眼睛配粗墨線 */
+  private get lineWidth(): number {
+    return Math.max(2, this.spec.eyeSize * 0.32)
+  }
+
+  /** 先畫半透明白邊再畫墨線，讓表情線條在深色與淺色車身上都看得清楚 */
   private ink(width: number, draw: () => void): void {
-    this.gfx.lineStyle(width + 2.5, HALO, 0.5)
+    this.gfx.lineStyle(width + 2.2, HALO, 0.4)
     draw()
     this.gfx.lineStyle(width, INK, 1)
     draw()
   }
 
-  private drawEye(e: Expression, ex: number, ey: number, rx: number, ry: number, side: number, time: number): void {
+  private drawEye(e: Expression, ex: number, ey: number, rx: number, ry: number, side: number, dir: number, time: number): void {
     const g = this.gfx
+    const lw = this.lineWidth
     switch (e.eyes) {
       case 'happy':
-        this.ink(2.2, () => {
+        this.ink(lw, () => {
           g.beginPath()
           g.arc(ex, ey + ry * 0.35, rx * 0.95, Math.PI * 1.1, Math.PI * 1.9)
           g.strokePath()
@@ -246,7 +270,7 @@ export class TankFace {
         // 左眼 >、右眼 <
         const tip = ex - side * rx * 0.7
         const back = ex + side * rx * 0.7
-        this.ink(2.2, () => {
+        this.ink(lw, () => {
           g.beginPath()
           g.moveTo(back, ey - ry * 0.6)
           g.lineTo(tip, ey)
@@ -256,16 +280,18 @@ export class TankFace {
         return
       }
       case 'x':
-        this.ink(2.2, () => {
+        this.ink(lw, () => {
           g.lineBetween(ex - rx * 0.7, ey - ry * 0.6, ex + rx * 0.7, ey + ry * 0.6)
           g.lineBetween(ex - rx * 0.7, ey + ry * 0.6, ex + rx * 0.7, ey - ry * 0.6)
         })
         return
       case 'spiral': {
+        const rim = Math.max(1.1, ry * 0.2)
+        g.fillStyle(INK, 1)
+        g.fillEllipse(ex, ey, (rx + rim) * 2, (ry + rim) * 2)
         g.fillStyle(0xffffff, 1)
         g.fillEllipse(ex, ey, rx * 2, ry * 2)
-        g.lineStyle(1.6, INK, 1)
-        g.strokeEllipse(ex, ey, rx * 2, ry * 2)
+        g.lineStyle(Math.max(1.4, lw * 0.7), INK, 1)
         const spin = time / 120
         g.beginPath()
         for (let i = 0; i <= 28; i++) {
@@ -281,61 +307,111 @@ export class TankFace {
       }
     }
 
-    // 一般睜眼：眼皮由上往下蓋，眼睛高度縮短並往下靠
+    // 一般睜眼：粗墨框 → 眼白（下緣淡影）→ 虹膜 + 瞳孔 + 反光 → 車身色眼皮由上往下蓋
     const open = Math.max(0, Math.min(1.2, e.open))
-    if (open < 0.12) {
-      this.ink(2, () => g.lineBetween(ex - rx, ey + ry * 0.5, ex + rx, ey + ry * 0.5))
+    const s = open > 1 ? open : 1
+    const RX = rx * s
+    const RY = ry * s
+    const rim = Math.max(1.1, ry * 0.2)
+    // 待機的半垂眼皮只在一般狀態生效；驚嚇（open > 1）一律睜大
+    const lidOpen = open > 1 ? 1 : open * this.rest
+    g.fillStyle(INK, 1)
+    g.fillEllipse(ex, ey, (RX + rim) * 2, (RY + rim) * 2)
+    if (lidOpen < 0.1) {
+      // 閉眼：眼皮整片蓋住，下緣一道睫毛弧線
+      g.fillStyle(this.spec.lid, 1)
+      g.fillEllipse(ex, ey, RX * 2, RY * 2)
+      this.ink(lw * 0.9, () => {
+        g.beginPath()
+        g.arc(ex, ey - RY * 0.15, RX * 0.85, Math.PI * 0.18, Math.PI * 0.82)
+        g.strokePath()
+      })
       return
     }
-    const h = ry * 2 * Math.min(1, open)
-    const scale = open > 1 ? open : 1
-    const cy = ey + ry * (1 - Math.min(1, open))
     g.fillStyle(0xffffff, 1)
-    g.fillEllipse(ex, cy, rx * 2 * scale, h * scale)
-    g.lineStyle(1.6, INK, 1)
-    g.strokeEllipse(ex, cy, rx * 2 * scale, h * scale)
+    g.fillEllipse(ex, ey, RX * 2, RY * 2)
+    g.fillStyle(0xdfe3f5, 1)
+    g.fillEllipse(ex, ey + RY * 0.45, RX * 1.6, RY * 0.9)
 
-    const pr = rx * 0.52 * e.pupil
-    const px = ex + this.lookX * (rx - pr) * 0.85
-    const py = cy + this.lookY * Math.max(0, h / 2 - pr) * 0.85
+    const ir = RX * 0.64
+    const ix = ex + this.lookX * (RX - ir) * 0.85
+    const iy = ey + this.lookY * Math.max(0, RY - ir) * 0.85 + RY * 0.05
+    g.fillStyle(this.irisDark, 1)
+    g.fillCircle(ix, iy, ir)
+    g.fillStyle(this.spec.iris, 1)
+    g.fillCircle(ix, iy + ir * 0.08, ir * 0.82)
+    g.fillStyle(this.irisLight, 0.75)
+    g.fillCircle(ix, iy + ir * 0.38, ir * 0.45)
     g.fillStyle(INK, 1)
-    g.fillCircle(px, py, pr)
-    g.fillStyle(0xffffff, 0.9)
-    g.fillCircle(px - pr * 0.35, py - pr * 0.4, Math.max(0.8, pr * 0.32))
-    if (open < 1) {
-      // 眼皮線
-      this.ink(1.8, () => g.lineBetween(ex - rx, cy - h / 2, ex + rx, cy - h / 2))
+    g.fillCircle(ix, iy, ir * 0.48 * e.pupil)
+    g.fillStyle(0xffffff, 1)
+    g.fillCircle(ix - ir * 0.36, iy - ir * 0.36, Math.max(0.9, ir * 0.3))
+    g.fillStyle(0xffffff, 0.85)
+    g.fillCircle(ix + ir * 0.36, iy + ir * 0.34, Math.max(0.5, ir * 0.13))
+
+    const tilt = this.spec.lidTilt ?? 0
+    if (lidOpen < 0.97 || tilt !== 0) this.drawLid(ex, ey, RX, RY, lidOpen, tilt * dir, lw)
+  }
+
+  /**
+   * 眼皮：眼白橢圓與「眼皮線以上」半平面的交集，填車身色，再沿眼皮線描墨線。
+   * 取樣橢圓周、把 y 夾到眼皮線以上即可得到交集多邊形（凸形 ∩ 半平面）。
+   */
+  private drawLid(ex: number, ey: number, rx: number, ry: number, open: number, tilt: number, lw: number): void {
+    const g = this.gfx
+    const lidY = (x: number) => ey - ry + (1 - open) * ry * 1.85 + tilt * ((x - ex) / rx) * ry * 0.35
+    const pts: Phaser.Math.Vector2[] = []
+    for (let i = 0; i < 36; i++) {
+      const a = (i / 36) * Math.PI * 2
+      const x = ex + Math.cos(a) * (rx + 0.4)
+      const y = ey + Math.sin(a) * (ry + 0.4)
+      pts.push(new Phaser.Math.Vector2(x, Math.min(y, lidY(x))))
+    }
+    g.fillStyle(this.spec.lid, 1)
+    g.fillPoints(pts, true)
+
+    const line: Phaser.Math.Vector2[] = []
+    for (let i = 0; i <= 14; i++) {
+      const x = ex - rx + (i / 14) * rx * 2
+      const half = ry * Math.sqrt(Math.max(0, 1 - ((x - ex) / rx) ** 2))
+      const y = lidY(x)
+      if (y > ey - half && y < ey + half) line.push(new Phaser.Math.Vector2(x, y))
+    }
+    if (line.length > 1) {
+      g.lineStyle(lw * 0.9, INK, 1)
+      g.strokePoints(line, false)
     }
   }
 
   private drawBrow(e: Expression, ex: number, by: number, rx: number, side: number): void {
     const inner = ex - side * rx * 0.95
     const outer = ex + side * rx * 0.95
-    this.ink(2.2, () => this.gfx.lineBetween(inner, by + e.browTilt * 2.6, outer, by - e.browTilt * 1.2))
+    this.ink(this.lineWidth * 1.15, () => this.gfx.lineBetween(inner, by + e.browTilt * 2.6, outer, by - e.browTilt * 1.2))
   }
 
   private drawMouth(shape: MouthShape, mx: number, my: number, w: number, dir: number): void {
     const g = this.gfx
+    const lw = this.lineWidth
     switch (shape) {
       case 'smile':
-        this.ink(2, () => {
+        this.ink(lw, () => {
           g.beginPath()
           g.arc(mx, my - w * 0.55, w, Math.PI * 0.25, Math.PI * 0.75)
           g.strokePath()
         })
         return
       case 'frown':
-        this.ink(2, () => {
+        this.ink(lw, () => {
           g.beginPath()
           g.arc(mx, my + w * 0.75, w, Math.PI * 1.25, Math.PI * 1.75)
           g.strokePath()
         })
         return
       case 'flat':
-        this.ink(2, () => g.lineBetween(mx - w * 0.5, my, mx + w * 0.5, my))
+        this.ink(lw, () => g.lineBetween(mx - w * 0.5, my, mx + w * 0.5, my))
         return
       case 'smirk':
-        this.ink(2, () => {
+        this.ink(lw, () => {
           g.beginPath()
           g.moveTo(mx - dir * w * 0.6, my + 0.5)
           g.lineTo(mx + dir * w * 0.2, my + 0.5)
@@ -344,7 +420,7 @@ export class TankFace {
         })
         return
       case 'wavy':
-        this.ink(1.8, () => {
+        this.ink(lw * 0.9, () => {
           g.beginPath()
           for (let i = 0; i <= 4; i++) {
             const px = mx - w * 0.6 + (i * w * 1.2) / 4
@@ -358,7 +434,7 @@ export class TankFace {
       case 'o':
       case 'shout':
       case 'grin': {
-        g.lineStyle(2.5, HALO, 0.5)
+        g.lineStyle(lw + 0.5, HALO, 0.4)
         g.fillStyle(INK, 1)
         if (shape === 'grin') {
           g.slice(mx, my - 1.5, w * 0.75, 0, Math.PI, false)

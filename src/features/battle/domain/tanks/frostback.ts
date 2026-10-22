@@ -19,5 +19,5 @@ export default defineTank({
   resist: {},
   passive: { name: '冰甲', description: '開場自帶 15 點護盾（不會回復）。' },
   shots: ['FROST_FREEZE', 'FROST_ICICLE'],
-  sprite: { scale: 0.4, pivotX: 2, pivotY: -32, face: { x: 18, y: -15, eyeGap: 16, eyeSize: 6.5 } },
+  sprite: { scale: 0.4, pivotX: 2, pivotY: -32, face: { x: 18, y: -15, eyeGap: 16, eyeSize: 6.5, lid: 0x7c8092, iris: 0x7cc8ec } },
 })

@@ -19,5 +19,5 @@ export default defineTank({
   resist: { fall: 1 },
   passive: { name: '地底老手', description: '摔落傷害完全免疫；所有砲彈的挖坑範圍 +6 px。' },
   shots: ['BURROW_DRILL', 'BURROW_QUAKE'],
-  sprite: { scale: 0.4, pivotX: -8, pivotY: -36, face: { x: 10, y: -15, eyeGap: 15, eyeSize: 6 } },
+  sprite: { scale: 0.4, pivotX: -8, pivotY: -36, face: { x: 10, y: -15, eyeGap: 15, eyeSize: 6, lid: 0x9e6b3d, iris: 0xd1901a } },
 })
