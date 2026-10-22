@@ -1,4 +1,4 @@
-import { computed, reactive, ref } from 'vue'
+import { computed, reactive } from 'vue'
 import {
   BOT_LEVEL_SPECS,
   tankAt,
@@ -12,87 +12,98 @@ import type {
 } from '@/shared/kernel/types'
 import { resolveTank, type TankChoice } from '../tankChoice'
 
+/** 單機練習每一席由誰操控：玩家（同機輪流）、電腦，或空位（兩隊人數可以不同，例如 2v4） */
+export type SeatControl = 'player' | 'bot' | 'empty'
+
+export interface PracticeSeat {
+  tank: TankChoice
+  control: SeatControl
+  /** 電腦難度，每一席各自設定；改成玩家時保留，切回電腦沿用 */
+  level: BotLevel
+}
+
+export const SEATS_PER_TEAM = 5
+
 export function useLocalSkirmish(
   picksFor: (tankId: TankArchetypeId) => BulletType[],
   onSelectPrimaryTank: (choice: TankChoice) => void,
 ) {
-  const hotseatCountPerTeam = ref(1)
-
-  // 預設陣容依註冊表輪流排（B 隊錯開一台），新增機種自動納入；每席也可以選「隨機」，開打時才抽
-  const hotseatTeamATanks = reactive<TankChoice[]>(
-    Array.from({ length: 5 }, (_, i) => tankAt(i)),
-  )
-  const hotseatTeamBTanks = reactive<TankChoice[]>(
-    Array.from({ length: 5 }, (_, i) => tankAt(i + 1)),
-  )
-
-  // 單機模式各隊由玩家或電腦操控（預設：玩家 vs 電腦）
-  const hotseatBotTeams = reactive<Record<TeamId, boolean>>({ A: false, B: true })
-
-  // 各隊電腦難度（預設中等：會有瞄準偏差，不至於每發都命中）
-  const hotseatBotLevels = reactive<Record<TeamId, BotLevel>>({ A: 'normal', B: 'normal' })
-  const BOT_LEVELS = Object.entries(BOT_LEVEL_SPECS) as [BotLevel, (typeof BOT_LEVEL_SPECS)[BotLevel]][]
-
-  const hotseatStartLabel = computed(() => {
-    const n = hotseatCountPerTeam.value
-    if (hotseatBotTeams.A && hotseatBotTeams.B) return `🍿 觀戰 ${n}v${n} 電腦對決`
-    if (hotseatBotTeams.A || hotseatBotTeams.B) return `🚀 啟動 ${n}v${n} 挑戰電腦`
-    return `🚀 啟動 ${n}v${n} 單機熱座對戰`
+  // 預設陣容依註冊表輪流排（B 隊錯開一台），新增機種自動納入；每席也可以選「隨機」，開打時才抽。
+  // 預設 1v1：A1 是玩家自己（我的戰車），B1 是中等電腦，其餘空位
+  const seat = (team: TeamId, i: number): PracticeSeat => ({
+    tank: tankAt(i + (team === 'B' ? 1 : 0)),
+    control: i > 0 ? 'empty' : team === 'A' ? 'player' : 'bot',
+    level: 'normal',
+  })
+  const hotseatSeats = reactive<Record<TeamId, PracticeSeat[]>>({
+    A: Array.from({ length: SEATS_PER_TEAM }, (_, i) => seat('A', i)),
+    B: Array.from({ length: SEATS_PER_TEAM }, (_, i) => seat('B', i)),
   })
 
+  const BOT_LEVELS = Object.entries(BOT_LEVEL_SPECS) as [BotLevel, (typeof BOT_LEVEL_SPECS)[BotLevel]][]
+
+  const occupied = (team: TeamId) => hotseatSeats[team].filter((s) => s.control !== 'empty')
+  const teamCount = computed(() => ({ A: occupied('A').length, B: occupied('B').length }))
+
+  const hotseatStartLabel = computed(() => {
+    const all = [...occupied('A'), ...occupied('B')]
+    const size = `${teamCount.value.A}v${teamCount.value.B}`
+    if (all.every((s) => s.control === 'bot')) return `🍿 觀戰 ${size} 電腦對決`
+    if (all.some((s) => s.control === 'bot')) return `🚀 啟動 ${size} 挑戰電腦`
+    return `🚀 啟動 ${size} 單機熱座對戰`
+  })
+
+  /** A1 是「我的戰車」不能空；每隊至少留一席，最後一台不能改成空位 */
+  function canEmpty(team: TeamId, index: number): boolean {
+    if (team === 'A' && index === 0) return false
+    return hotseatSeats[team][index].control !== 'empty' ? teamCount.value[team] > 1 : true
+  }
+
+  function setSeatControl(team: TeamId, index: number, control: SeatControl): void {
+    if (control === 'empty' && !canEmpty(team, index)) return
+    hotseatSeats[team][index].control = control
+  }
+
+  function setSeatLevel(team: TeamId, index: number, level: BotLevel): void {
+    hotseatSeats[team][index].level = level
+  }
+
   function setHotseatSlotTank(team: TeamId, slotIndex: number, choice: TankChoice): void {
-    if (team === 'A') {
-      hotseatTeamATanks[slotIndex] = choice
-      if (slotIndex === 0) {
-        onSelectPrimaryTank(choice)
-      }
-    } else {
-      hotseatTeamBTanks[slotIndex] = choice
-    }
+    hotseatSeats[team][slotIndex].tank = choice
+    if (team === 'A' && slotIndex === 0) onSelectPrimaryTank(choice)
   }
 
   function buildHotseatRoster(): RosterSlot[] {
-    const n = Math.max(1, Math.min(5, hotseatCountPerTeam.value))
     const roster: RosterSlot[] = []
-    for (let i = 1; i <= n; i++) {
-      const tankId: TankArchetypeId = resolveTank(hotseatTeamATanks[i - 1] ?? tankAt(i - 1))
-      const isBot = hotseatBotTeams.A
-      roster.push({
-        id: `a${i}`,
-        name: isBot ? `🤖 CPU A${i}` : `琥珀 A${i}`,
-        team: 'A',
-        tankId,
-        isHost: i === 1,
-        isBot,
-        loadout: picksFor(tankId),
-        botLevel: isBot ? hotseatBotLevels.A : undefined,
-      })
-    }
-    for (let i = 1; i <= n; i++) {
-      const tankId: TankArchetypeId = resolveTank(hotseatTeamBTanks[i - 1] ?? tankAt(i))
-      const isBot = hotseatBotTeams.B
-      roster.push({
-        id: `b${i}`,
-        name: isBot ? `🤖 CPU B${i}` : `皇家藍 B${i}`,
-        team: 'B',
-        tankId,
-        isHost: false,
-        isBot,
-        loadout: picksFor(tankId),
-        botLevel: isBot ? hotseatBotLevels.B : undefined,
+    for (const team of ['A', 'B'] as const) {
+      hotseatSeats[team].forEach((s, i) => {
+        if (s.control === 'empty') return
+        const tankId: TankArchetypeId = resolveTank(s.tank)
+        const isBot = s.control === 'bot'
+        const label = `${team}${i + 1}`
+        roster.push({
+          id: `${team.toLowerCase()}${i + 1}`,
+          name: isBot ? `🤖 CPU ${label}` : team === 'A' ? `琥珀 ${label}` : `皇家藍 ${label}`,
+          team,
+          tankId,
+          isHost: team === 'A' && i === 0,
+          isBot,
+          loadout: picksFor(tankId),
+          botLevel: isBot ? s.level : undefined,
+        })
       })
     }
     return roster
   }
 
   return {
-    hotseatCountPerTeam,
-    hotseatTeamATanks,
-    hotseatTeamBTanks,
-    hotseatBotTeams,
-    hotseatBotLevels,
+    hotseatSeats,
     BOT_LEVELS,
     hotseatStartLabel,
+    teamCount,
+    canEmpty,
+    setSeatControl,
+    setSeatLevel,
     setHotseatSlotTank,
     buildHotseatRoster,
   }

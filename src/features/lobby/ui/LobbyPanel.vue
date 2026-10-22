@@ -4,6 +4,7 @@ import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
 import {
   MAP_REGISTRY,
   getTankSpec,
+  BOT_LEVEL_SPECS,
   tankAt,
   type LoadoutSecret,
   type MapBlueprint,
@@ -117,13 +118,13 @@ const {
 
 // --- 單機熱座 / 挑戰電腦設定 ---
 const {
-  hotseatCountPerTeam,
-  hotseatTeamATanks,
-  hotseatTeamBTanks,
-  hotseatBotTeams,
-  hotseatBotLevels,
+  hotseatSeats,
   BOT_LEVELS,
   hotseatStartLabel,
+  teamCount,
+  canEmpty,
+  setSeatControl,
+  setSeatLevel,
   setHotseatSlotTank,
   buildHotseatRoster,
 } = useLocalSkirmish(picksFor, (choice) => selectTankArchetype(choice))
@@ -132,8 +133,17 @@ const {
 const slotPicker = ref<{ team: TeamId; index: number } | null>(null)
 
 function slotChoice(team: TeamId, index: number): TankChoice {
-  const tanks = team === 'A' ? hotseatTeamATanks : hotseatTeamBTanks
-  return tanks[index] ?? tankAt(index + (team === 'B' ? 1 : 0))
+  return hotseatSeats[team][index]?.tank ?? tankAt(index + (team === 'B' ? 1 : 0))
+}
+
+/** 這一席電腦的難度往前 / 往後切一級（到頭就停） */
+function cycleSeatLevel(team: TeamId, index: number, step: 1 | -1): void {
+  const i = BOT_LEVELS.findIndex(([level]) => level === hotseatSeats[team][index].level)
+  const next = BOT_LEVELS[Math.max(0, Math.min(BOT_LEVELS.length - 1, i + step))][0]
+  if (next !== hotseatSeats[team][index].level) {
+    setSeatLevel(team, index, next)
+    soundController.play('ui_click')
+  }
 }
 
 function slotTank(team: TeamId, index: number): { url: string | null; name: string } {
@@ -425,7 +435,7 @@ function selectTankArchetype(choice: TankChoice): void {
   const tankId: TankArchetypeId = resolveTank(choice)
   randomTank.value = choice === RANDOM_TANK
   session.selectedTankId = tankId
-  hotseatTeamATanks[0] = choice
+  hotseatSeats.A[0].tank = choice
   syncWithTank(tankId)
   if (session.phase !== 'connected') return
 
@@ -782,21 +792,6 @@ onUnmounted(() => {
 
         <section class="toon-panel relative mt-4 flex min-h-0 flex-col gap-3 p-4 pt-6 lg:mb-2">
           <span class="toon-ribbon absolute -top-4 left-4">隊伍</span>
-          <div class="flex items-center gap-3">
-            <span class="text-sm">人數</span>
-            <div class="toon-segment font-num flex-1 text-base font-extrabold">
-              <button
-                v-for="n in [1, 2, 3, 4, 5]"
-                :key="n"
-                type="button"
-                :aria-pressed="hotseatCountPerTeam === n"
-                @click="hotseatCountPerTeam = n; soundController.play('ui_click')"
-              >
-                {{ n }}v{{ n }}
-              </button>
-            </div>
-          </div>
-
           <div class="grid min-h-0 flex-1 grid-cols-1 content-start gap-x-5 gap-y-4 overflow-y-auto p-1 xl:grid-cols-2">
             <div
               v-for="team in ([
@@ -806,53 +801,60 @@ onUnmounted(() => {
               :key="team.id"
               class="flex flex-col gap-2"
             >
-              <!-- 操控方：玩家 / 電腦；難度列固定佔位，兩隊高度一致 -->
               <div class="flex items-center gap-2">
                 <span class="toon-pill shrink-0 px-3 text-base text-white" :style="{ background: team.color, textShadow: '0 2px 0 rgb(29 35 64 / .35)' }">
                   {{ team.label }}
                 </span>
-                <div class="toon-segment ml-auto w-32 text-sm">
-                  <button type="button" :aria-pressed="!hotseatBotTeams[team.id]" @click="hotseatBotTeams[team.id] = false; soundController.play('ui_click')">玩家</button>
-                  <button type="button" :aria-pressed="hotseatBotTeams[team.id]" @click="hotseatBotTeams[team.id] = true; soundController.play('ui_click')">電腦</button>
-                </div>
-              </div>
-              <div class="flex items-center gap-2 transition-opacity" :class="hotseatBotTeams[team.id] ? '' : 'opacity-35'">
-                <span class="shrink-0 text-xs">難度</span>
-                <div class="toon-segment flex-1 text-xs">
-                  <button
-                    v-for="[level, spec] in BOT_LEVELS"
-                    :key="level"
-                    type="button"
-                    :disabled="!hotseatBotTeams[team.id]"
-                    :aria-pressed="hotseatBotTeams[team.id] && hotseatBotLevels[team.id] === level"
-                    @click="hotseatBotLevels[team.id] = level; soundController.play('ui_click')"
-                  >
-                    {{ spec.label }}
-                  </button>
-                </div>
+                <span class="font-num text-sm text-ink-soft">{{ teamCount[team.id] }} 台</span>
               </div>
 
-              <!-- 每席同一個大小：點擊跳出選車彈窗 -->
-              <button
-                v-for="idx in hotseatCountPerTeam"
-                :key="`${team.id}-${idx}`"
-                type="button"
-                class="slot-card flex h-14 items-center gap-2 rounded-2xl border-[3px] border-ink bg-paper px-2 text-left"
-                @click="openSlotPicker(team.id, idx - 1)"
+              <!-- 每席同一個大小：左邊點了跳出選車彈窗，右邊設定操控方（玩家 / 電腦 / 空位）與這台電腦的難度 -->
+              <div
+                v-for="(seat, i) in hotseatSeats[team.id]"
+                :key="`${team.id}-${i}`"
+                class="seat-card flex h-16 items-center gap-2 rounded-2xl border-[3px] border-ink px-2"
+                :class="seat.control === 'empty' ? 'seat-card--empty' : 'bg-paper'"
               >
-                <span class="font-num w-7 shrink-0 text-center text-base font-extrabold">{{ team.id }}{{ idx }}</span>
-                <span class="flex h-10 w-14 shrink-0 items-center justify-center rounded-lg border-[2.5px] border-ink" :style="{ background: team.color }">
-                  <img v-if="slotTank(team.id, idx - 1).url" :src="slotTank(team.id, idx - 1).url!" alt="" class="h-6 w-auto" :class="team.id === 'B' ? '-scale-x-100' : ''" />
-                  <span v-else class="toon-mystery h-7 text-lg">?</span>
-                </span>
-                <span class="min-w-0 flex-1 leading-tight">
-                  <span class="block truncate text-base">{{ slotTank(team.id, idx - 1).name }}</span>
-                  <span class="block truncate text-xs text-ink-soft">
-                    {{ hotseatBotTeams[team.id] ? '電腦' : team.id === 'A' && idx === 1 ? '我的戰車' : '玩家' }}
-                  </span>
-                </span>
-                <span class="shrink-0 text-xl text-ink-soft">›</span>
-              </button>
+                <span class="font-num w-6 shrink-0 text-center text-base font-extrabold">{{ team.id }}{{ i + 1 }}</span>
+                <template v-if="seat.control === 'empty'">
+                  <span class="min-w-0 flex-1 text-sm text-ink-soft">空位</span>
+                  <button type="button" class="toon-btn shrink-0 px-2.5 py-1 text-sm" @click="setSeatControl(team.id, i, 'player'); soundController.play('ui_click')">＋ 玩家</button>
+                  <button type="button" class="toon-btn toon-btn--sky shrink-0 px-2.5 py-1 text-sm" @click="setSeatControl(team.id, i, 'bot'); soundController.play('ui_click')">＋ 電腦</button>
+                </template>
+                <template v-else>
+                  <button type="button" class="seat-tank flex min-w-0 flex-1 items-center gap-2 rounded-xl py-1 text-left" @click="openSlotPicker(team.id, i)">
+                    <span class="flex h-10 w-12 shrink-0 items-center justify-center rounded-lg border-[2.5px] border-ink" :style="{ background: team.color }">
+                      <img v-if="slotTank(team.id, i).url" :src="slotTank(team.id, i).url!" alt="" class="h-6 w-auto" :class="team.id === 'B' ? '-scale-x-100' : ''" />
+                      <span v-else class="toon-mystery h-7 text-lg">?</span>
+                    </span>
+                    <span class="min-w-0 flex-1 leading-tight">
+                      <span class="block truncate text-base">{{ slotTank(team.id, i).name }}</span>
+                      <span class="block truncate text-xs text-ink-soft">{{ team.id === 'A' && i === 0 ? '我的戰車 ›' : '換車 ›' }}</span>
+                    </span>
+                  </button>
+                  <div class="flex w-[7.5rem] shrink-0 flex-col gap-1">
+                    <div class="toon-segment whitespace-nowrap text-xs [&>button]:px-1">
+                      <button type="button" :aria-pressed="seat.control === 'player'" @click="setSeatControl(team.id, i, 'player'); soundController.play('ui_click')">玩家</button>
+                      <button type="button" :aria-pressed="seat.control === 'bot'" @click="setSeatControl(team.id, i, 'bot'); soundController.play('ui_click')">電腦</button>
+                      <button
+                        type="button"
+                        aria-label="改成空位"
+                        title="改成空位"
+                        :disabled="!canEmpty(team.id, i)"
+                        @click="setSeatControl(team.id, i, 'empty'); soundController.play('ui_click')"
+                      >
+                        ✕
+                      </button>
+                    </div>
+                    <!-- 難度列固定佔位，玩家席淡出，每張卡高度一致 -->
+                    <div class="flex items-center gap-1 text-xs transition-opacity" :class="seat.control === 'bot' ? '' : 'invisible'">
+                      <button type="button" aria-label="降低難度" class="seat-step" @click="cycleSeatLevel(team.id, i, -1)">‹</button>
+                      <span class="flex-1 text-center">{{ BOT_LEVEL_SPECS[seat.level].label }}</span>
+                      <button type="button" aria-label="提高難度" class="seat-step" @click="cycleSeatLevel(team.id, i, 1)">›</button>
+                    </div>
+                  </div>
+                </template>
+              </div>
             </div>
           </div>
         </section>
@@ -887,14 +889,31 @@ onUnmounted(() => {
 </template>
 
 <style scoped>
-.slot-card {
+.seat-card {
   box-shadow: 0 3px 0 var(--color-ink);
-  cursor: pointer;
-  transition: transform 0.1s ease, box-shadow 0.1s ease;
 }
-.slot-card:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 5px 0 var(--color-ink);
-  background: #fffbe0;
+.seat-card--empty {
+  border-style: dashed;
+  background: rgb(255 255 255 / 0.45);
+  box-shadow: none;
+}
+.seat-tank {
+  cursor: pointer;
+  transition: background-color 0.1s ease;
+}
+.seat-tank:hover {
+  background-color: #fffbe0;
+}
+.seat-step {
+  width: 1.4rem;
+  height: 1.4rem;
+  border: 2px solid var(--color-ink);
+  border-radius: 9999px;
+  background-color: var(--color-paper);
+  line-height: 1;
+  cursor: pointer;
+}
+.seat-step:hover {
+  background-color: var(--color-sun);
 }
 </style>

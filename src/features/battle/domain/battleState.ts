@@ -225,18 +225,45 @@ export function syncTankToSurface(tank: TankEntity, surfaceY: number, slopeDeg: 
 /** 每水平移動 1px 最多可爬升的高度（約 70°），更陡的牆面會擋住坦克 */
 export const MAX_CLIMB_PER_PX = 3
 /**
- * 像人跨過小土堆：短而陡的凸起（彈坑邊緣、碎石、小土丘）可以直接爬過去，只有大片連續陡坡與高牆擋得住。
+ * 像履帶輾過小土堆：短而陡的凸起（彈坑邊緣、碎石、小土丘）可以直接爬過去，只有大片連續陡坡與高牆擋得住。
+ * 尺度以車身為準（車寬約 60px、履帶約 24px 高），比履帶矮的垂直斷面都不算牆。
  * - 單步（1px 水平）最多可上 STEP_UP_PX，比這更高的垂直斷面就是牆。
- * - 最近 STEP_WINDOW_PX 水平距離內的總爬升不得超過 climbPerPx × STEP_WINDOW_PX；坡持續陡下去就會超過而停住。
+ * - 最近 STEP_WINDOW_PX（約三分之一車身）水平距離內的總爬升不得超過 climbPerPx × STEP_WINDOW_PX；坡持續陡下去就會超過而停住。
  */
-export const STEP_UP_PX = 16
-const STEP_WINDOW_PX = 16
+export const STEP_UP_PX = 24
+const STEP_WINDOW_PX = 20
 /** 坦克車身高度：前方地形的淨空不足（例如橋下、洞穴天花板太低）就無法通過 */
 const TANK_HEADROOM = 18
+/**
+ * 窄縫跨越：車身約 60px 寬，比 2 × GAP_BRIDGE_PX 窄的裂縫（例如橋面被打穿的小洞）直接跨過去，
+ * 不會卡在縫前、也不會整台掉進去。彈坑都比這寬，被炸出坑照樣會掉下去。
+ */
+const GAP_BRIDGE_PX = 8
 
-/** 坦克腳下的地面 y（多層地形時從坦克目前高度往下找，而不是整欄最上層） */
+/** 從 fromY 往下找，地面在可站立範圍（沒有落差超過 FALL_SAFE_PX，也不是深淵）就回傳，否則 null */
+function nearGround(core: TankCorePort, x: number, fromY: number, refY: number): number | null {
+  const g = core.groundBelow(x, fromY)
+  return g < core.height && g - refY <= FALL_SAFE_PX ? g : null
+}
+
+/** 左右 GAP_BRIDGE_PX 內都有可站立的地面就是窄縫，回傳較高的一側；否則 null */
+function bridgeAcross(core: TankCorePort, x: number, fromY: number, refY: number): number | null {
+  let left: number | null = null
+  let right: number | null = null
+  for (let k = 1; k <= GAP_BRIDGE_PX && (left === null || right === null); k++) {
+    left ??= nearGround(core, x - k, fromY, refY)
+    right ??= nearGround(core, x + k, fromY, refY)
+  }
+  return left !== null && right !== null ? Math.min(left, right) : null
+}
+
+/** 坦克腳下的地面 y（多層地形時從坦克目前高度往下找，而不是整欄最上層；跨在窄縫上時以兩側地面為準） */
 export function groundUnderTank(core: TankCorePort, tank: Pick<TankEntity, 'x' | 'y'>): number {
-  return core.groundBelow(tank.x, tank.y + TANK_GROUND_OFFSET - MAX_CLIMB_PER_PX)
+  const foot = tank.y + TANK_GROUND_OFFSET
+  const from = foot - MAX_CLIMB_PER_PX
+  const g = core.groundBelow(tank.x, from)
+  if (g < core.height && g - foot <= FALL_SAFE_PX) return g
+  return bridgeAcross(core, tank.x, from, foot) ?? g
 }
 
 export function slopeAt(core: TankCorePort, x: number, groundY: number): number {
@@ -276,8 +303,14 @@ export function walkAlongTerrain(
       const windowStart = trail[Math.max(0, trail.length - STEP_WINDOW_PX)]
       if (windowStart - ng > climbPerPx * STEP_WINDOW_PX) break
     }
-    // 前方沒有地面，或落差超過安全高度（懸崖）：踏出去就是墜落（落地後的摔落傷害由呼叫端依 dropPx 結算）
+    // 前方沒有地面，或落差超過安全高度（懸崖）：窄縫就跨過去（車身維持原高度）；
+    // 否則踏出去就是墜落（落地後的摔落傷害由呼叫端依 dropPx 結算）
     if (ng >= core.height || ng - groundY > FALL_SAFE_PX) {
+      if (spansGap(core, nx, dir, probe, groundY)) {
+        x = nx
+        trail.push(groundY)
+        continue
+      }
       if (allowFall) return { x: nx, groundY: ng, fell: true, dropPx: ng - groundY }
       break
     }
@@ -287,6 +320,15 @@ export function walkAlongTerrain(
     trail.push(ng)
   }
   return { x, groundY }
+}
+
+/** 前方 2 × GAP_BRIDGE_PX 內又有差不多高的地面：這是窄縫，可以跨過 */
+function spansGap(core: TankCorePort, gapX: number, dir: number, fromY: number, groundY: number): boolean {
+  for (let k = 1; k < GAP_BRIDGE_PX * 2; k++) {
+    const g = core.groundBelow(gapX + dir * k, fromY)
+    if (g < core.height && Math.abs(g - groundY) <= STEP_UP_PX) return true
+  }
+  return false
 }
 
 /** 出生點：取該欄最上層地表；若該欄是深淵（浮空島地圖的空隙）就往兩側尋找最近的地面 */

@@ -7,7 +7,7 @@ export default defineProjectile({
   badge: '中毒 3 回合 · 每回合 8',
   description: '爆開一團毒霧，直接傷害低，但被波及的坦克中毒 3 回合，每個自己的回合開始時扣血。重複命中只會刷新回合數。',
   damageRadius: 36,
-  terrainRadius: 24,
+  terrainRadius: 32,
   maxDamage: 14,
   magnetRadius: 24,
   directHitMultiplier: 1,

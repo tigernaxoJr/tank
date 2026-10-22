@@ -15,6 +15,7 @@ import {
   applyDamageAndCheckWinner,
   battleStateHash,
   buildInterleavedTurnOrder,
+  groundUnderTank,
 } from '@/features/battle/domain/battleState'
 import { isForgedAction } from '@/features/lobby/infra/messageGuards'
 import { planBotShot } from '@/features/battle/domain/botBrain'
@@ -253,6 +254,51 @@ describe('移動', () => {
     const { state, core, tank, bx } = bumpBattle(60, 40)
     moveActiveTank(state, 60, core)
     expect(tank.x).toBeLessThan(bx)
+  })
+  it('比履帶矮的垂直台階（22px）也壓得過去', () => {
+    const { state, core, tank, bx, bumpW } = bumpBattle(22, 30)
+    tank.tankId = 'bastion'
+    tank.moveFuel = 999
+    moveActiveTank(state, 80, core)
+    expect(tank.x).toBeGreaterThan(bx + bumpW)
+  })
+  /** 平地中間一道直通到底的窄縫（寬 gapW px），p1 站在縫左側 */
+  function crackBattle(gapW: number) {
+    const { state, core } = setupBattle()
+    const gx = Math.round(core.width * 0.3)
+    core.resetTerrain(1, {
+      width: core.width,
+      height: core.height,
+      baseMode: 'none',
+      features: [
+        { kind: 'rect', x: 0, y: 0.6, w: gx / core.width, h: 1, op: 'add' },
+        { kind: 'rect', x: (gx + gapW) / core.width, y: 0.6, w: 1, h: 1, op: 'add' },
+      ] as never,
+    })
+    const t = state.tanks.p1
+    t.x = gx - 10
+    t.y = core.surfaceY(t.x) - 12
+    t.moveFuel = 999
+    return { state, core, tank: t, gx }
+  }
+  it('窄縫（例如橋面被打穿的小洞）直接跨過去，不會掉進深淵', () => {
+    const { state, core, tank, gx } = crackBattle(10)
+    moveActiveTank(state, 6, core)
+    moveActiveTank(state, 40, core)
+    expect(tank.hp).toBe(tank.maxHp)
+    expect(tank.x).toBeGreaterThan(gx + 30)
+  })
+  it('停在窄縫正上方，爆炸結算時也不會掉下去', () => {
+    const { state, core, tank, gx } = crackBattle(10)
+    moveActiveTank(state, 15, core)
+    expect(tank.x).toBe(gx + 5)
+    const y = tank.y
+    expect(groundUnderTank(core, tank)).toBe(y + 12)
+  })
+  it('比車身窄很多以外的寬溝照樣會掉下去', () => {
+    const { state, core, tank } = crackBattle(60)
+    moveActiveTank(state, 40, core)
+    expect(tank.hp).toBe(0)
   })
 })
 

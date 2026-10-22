@@ -132,11 +132,15 @@ export function useBattleInput(ctx: BattleInputContext) {
   const holdMove = (e: PointerEvent, dir: 1 | -1) => holdRepeat(e, () => handleMove(dir * 6), 40)
   const holdAngle = (e: PointerEvent, delta: number) => holdRepeat(e, () => adjustAngle(delta), 70)
 
-  function startCharging(): void {
+  /**
+   * pressedAtMs / releasedAtMs 用事件本身的 timeStamp（與 performance.now() 同一時鐘）：主執行緒忙著畫圖時，
+   * 事件要等到這一幀做完才會處理，若改用處理當下的時間，放開後力道還會多漲一截（感覺像放開有延遲）
+   */
+  function startCharging(pressedAtMs = performance.now()): void {
     const tank = ctx.activeTank.value
     if (ctx.controlsDisabled.value || isCharging.value || !tank) return
     isCharging.value = true
-    chargeStartMs = performance.now()
+    chargeStartMs = Math.min(pressedAtMs, performance.now())
     powerBeforeCharge = tank.power
     ctx.onUpdateAim(tank.angle, CHARGE_START_POWER)
 
@@ -148,7 +152,7 @@ export function useBattleInput(ctx: BattleInputContext) {
     animFrameId = requestAnimationFrame(loop)
   }
 
-  function stopChargingAndFire(): void {
+  function stopChargingAndFire(releasedAtMs = performance.now()): void {
     if (!isCharging.value) return
     isCharging.value = false
     if (animFrameId !== null) {
@@ -157,7 +161,7 @@ export function useBattleInput(ctx: BattleInputContext) {
     }
     const tank = ctx.activeTank.value
     if (!ctx.controlsDisabled.value && tank) {
-      const finalPower = chargedPowerAt(performance.now())
+      const finalPower = chargedPowerAt(Math.max(chargeStartMs, Math.min(releasedAtMs, performance.now())))
       ctx.onUpdateAim(tank.angle, finalPower)
       lastFiredPowerByPlayer[tank.id] = finalPower
       ctx.onFire()
@@ -180,12 +184,12 @@ export function useBattleInput(ctx: BattleInputContext) {
   function onPointerDownCharge(e: PointerEvent): void {
     if (ctx.controlsDisabled.value) return
     e.preventDefault()
-    startCharging()
+    startCharging(e.timeStamp)
 
-    const onPointerUp = () => {
+    const onPointerUp = (ev: PointerEvent) => {
       window.removeEventListener('pointerup', onPointerUp)
       window.removeEventListener('pointercancel', onPointerUp)
-      stopChargingAndFire()
+      stopChargingAndFire(ev.timeStamp)
     }
 
     window.addEventListener('pointerup', onPointerUp)
@@ -230,7 +234,7 @@ export function useBattleInput(ctx: BattleInputContext) {
     } else if (e.code === 'Space' || e.key === ' ') {
       e.preventDefault()
       if (e.repeat) return
-      startCharging()
+      startCharging(e.timeStamp)
     } else if (e.key === 'p' || e.key === 'P') {
       e.preventDefault()
       ctx.onPass?.()
@@ -241,7 +245,7 @@ export function useBattleInput(ctx: BattleInputContext) {
     if (isInputFocused()) return
     if (e.code === 'Space' || e.key === ' ') {
       e.preventDefault()
-      stopChargingAndFire()
+      stopChargingAndFire(e.timeStamp)
     }
   }
 

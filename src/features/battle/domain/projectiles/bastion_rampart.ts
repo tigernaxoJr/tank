@@ -7,7 +7,7 @@ export default defineProjectile({
   badge: '無傷害 · 堆出土丘',
   description: '落點堆出一座土丘：替自己擋住來彈、封住對手的走位，或把對手墊高。不造成任何傷害。',
   damageRadius: 0,
-  terrainRadius: 40,
+  terrainRadius: 54,
   maxDamage: 0,
   magnetRadius: 0,
   directHitMultiplier: 1,
