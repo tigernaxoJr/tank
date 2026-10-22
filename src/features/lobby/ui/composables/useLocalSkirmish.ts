@@ -3,7 +3,6 @@ import {
   BOT_LEVEL_SPECS,
   tankAt,
 } from '@/features/battle'
-import { soundController } from '@/features/audio'
 import type {
   BotLevel,
   BulletType,
@@ -11,18 +10,19 @@ import type {
   TankArchetypeId,
   TeamId,
 } from '@/shared/kernel/types'
+import { resolveTank, type TankChoice } from '../tankChoice'
 
 export function useLocalSkirmish(
   picksFor: (tankId: TankArchetypeId) => BulletType[],
-  onSelectPrimaryTank: (tankId: TankArchetypeId) => void,
+  onSelectPrimaryTank: (choice: TankChoice) => void,
 ) {
   const hotseatCountPerTeam = ref(1)
 
-  // 預設陣容依註冊表輪流排（B 隊錯開一台），新增機種自動納入
-  const hotseatTeamATanks = reactive<TankArchetypeId[]>(
+  // 預設陣容依註冊表輪流排（B 隊錯開一台），新增機種自動納入；每席也可以選「隨機」，開打時才抽
+  const hotseatTeamATanks = reactive<TankChoice[]>(
     Array.from({ length: 5 }, (_, i) => tankAt(i)),
   )
-  const hotseatTeamBTanks = reactive<TankArchetypeId[]>(
+  const hotseatTeamBTanks = reactive<TankChoice[]>(
     Array.from({ length: 5 }, (_, i) => tankAt(i + 1)),
   )
 
@@ -40,15 +40,14 @@ export function useLocalSkirmish(
     return `🚀 啟動 ${n}v${n} 單機熱座對戰`
   })
 
-  function setHotseatSlotTank(team: TeamId, slotIndex: number, tankId: TankArchetypeId): void {
-    soundController.play('ui_click')
+  function setHotseatSlotTank(team: TeamId, slotIndex: number, choice: TankChoice): void {
     if (team === 'A') {
-      hotseatTeamATanks[slotIndex] = tankId
+      hotseatTeamATanks[slotIndex] = choice
       if (slotIndex === 0) {
-        onSelectPrimaryTank(tankId)
+        onSelectPrimaryTank(choice)
       }
     } else {
-      hotseatTeamBTanks[slotIndex] = tankId
+      hotseatTeamBTanks[slotIndex] = choice
     }
   }
 
@@ -56,7 +55,7 @@ export function useLocalSkirmish(
     const n = Math.max(1, Math.min(5, hotseatCountPerTeam.value))
     const roster: RosterSlot[] = []
     for (let i = 1; i <= n; i++) {
-      const tankId = hotseatTeamATanks[i - 1] ?? tankAt(i - 1)
+      const tankId: TankArchetypeId = resolveTank(hotseatTeamATanks[i - 1] ?? tankAt(i - 1))
       const isBot = hotseatBotTeams.A
       roster.push({
         id: `a${i}`,
@@ -70,7 +69,7 @@ export function useLocalSkirmish(
       })
     }
     for (let i = 1; i <= n; i++) {
-      const tankId = hotseatTeamBTanks[i - 1] ?? tankAt(i)
+      const tankId: TankArchetypeId = resolveTank(hotseatTeamBTanks[i - 1] ?? tankAt(i))
       const isBot = hotseatBotTeams.B
       roster.push({
         id: `b${i}`,

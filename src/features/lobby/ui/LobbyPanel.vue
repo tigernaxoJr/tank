@@ -3,7 +3,7 @@ import { isForgedAction } from '../infra/messageGuards'
 import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
 import {
   MAP_REGISTRY,
-  TANK_LIST,
+  getTankSpec,
   tankAt,
   type LoadoutSecret,
   type MapBlueprint,
@@ -17,6 +17,9 @@ import TacticalGuideModal from './TacticalGuideModal.vue'
 import LobbyHub from './LobbyHub.vue'
 import RoomView from './RoomView.vue'
 import CreateRoomDialog from './CreateRoomDialog.vue'
+import TankPickerModal from './TankPickerModal.vue'
+import { splitDisplayName } from './displayNames'
+import { RANDOM_TANK, resolveTank, type TankChoice } from './tankChoice'
 import {
   countTeamMembers,
   generateRoomCode,
@@ -81,6 +84,8 @@ const joinInputCode = ref('')
 const copied = ref(false)
 const copiedLink = ref(false)
 const pendingSeed = ref(1024)
+/** 本機玩家選了「隨機」：session.selectedTankId 是已抽好的機種，大廳只顯示問號 */
+const randomTank = ref(false)
 
 const session = reactive<RoomSession>({
   roomCode: '',
@@ -121,10 +126,27 @@ const {
   hotseatStartLabel,
   setHotseatSlotTank,
   buildHotseatRoster,
-} = useLocalSkirmish(picksFor, (tankId) => {
-  session.selectedTankId = tankId
-  syncWithTank(tankId)
-})
+} = useLocalSkirmish(picksFor, (choice) => selectTankArchetype(choice))
+
+/** 單機練習：正在幫哪一席選車（彈窗） */
+const slotPicker = ref<{ team: TeamId; index: number } | null>(null)
+
+function slotChoice(team: TeamId, index: number): TankChoice {
+  const tanks = team === 'A' ? hotseatTeamATanks : hotseatTeamBTanks
+  return tanks[index] ?? tankAt(index + (team === 'B' ? 1 : 0))
+}
+
+function slotTank(team: TeamId, index: number): { url: string | null; name: string } {
+  const choice = slotChoice(team, index)
+  if (choice === RANDOM_TANK) return { url: null, name: '隨機' }
+  const spec = getTankSpec(choice)
+  return { url: spec.getSprites(team).hullUrl, name: splitDisplayName(spec.name).zh }
+}
+
+function openSlotPicker(team: TeamId, index: number): void {
+  soundController.play('ui_click')
+  slotPicker.value = { team, index }
+}
 
 /** 只接受格式正確的承諾（64 位十六進位字元） */
 const isRoot = (v: unknown): v is string => typeof v === 'string' && /^[0-9a-f]{64}$/.test(v)
@@ -217,6 +239,7 @@ function handleHostReceivePeerMessage(peerSlotId: PlayerId, msg: ProtocolMessage
     if (slot) {
       slot.name = msg.guestName.trim() || peerSlotId.toUpperCase()
       slot.tankId = msg.tankId || tankAt(0)
+      slot.randomTank = msg.randomTank === true
       if (isRoot(msg.loadoutRoot)) slot.loadoutRoot = msg.loadoutRoot
       broadcastRosterFromHost()
     }
@@ -227,6 +250,7 @@ function handleHostReceivePeerMessage(peerSlotId: PlayerId, msg: ProtocolMessage
     const slot = session.roster.find((r) => r.id === peerSlotId)
     if (slot) {
       slot.tankId = msg.tankId
+      slot.randomTank = msg.randomTank === true
       if (isRoot(msg.loadoutRoot)) slot.loadoutRoot = msg.loadoutRoot
       if (msg.ready !== undefined) slot.ready = msg.ready
       if (slot.team !== msg.targetTeam) {
@@ -302,6 +326,7 @@ async function handleHost(): Promise<void> {
       name,
       team: 'A',
       tankId: session.selectedTankId,
+      randomTank: randomTank.value,
       isHost: true,
       loadoutRoot: localRoot.value,
     },
@@ -371,6 +396,7 @@ async function handleJoin(): Promise<void> {
           type: 'PLAYER_JOIN_INFO',
           guestName: session.localPlayerName,
           tankId: session.selectedTankId,
+          randomTank: randomTank.value,
           loadoutRoot: localRoot.value,
         }
         transport.sendToHost(joinInfo)
@@ -394,9 +420,12 @@ async function handleJoin(): Promise<void> {
   }
 }
 
-function selectTankArchetype(tankId: TankArchetypeId): void {
+function selectTankArchetype(choice: TankChoice): void {
+  // 隨機：現在就抽好（連線對戰的彈藥承諾要綁定機種），但大廳只顯示問號
+  const tankId: TankArchetypeId = resolveTank(choice)
+  randomTank.value = choice === RANDOM_TANK
   session.selectedTankId = tankId
-  hotseatTeamATanks[0] = tankId
+  hotseatTeamATanks[0] = choice
   syncWithTank(tankId)
   if (session.phase !== 'connected') return
 
@@ -405,6 +434,7 @@ function selectTankArchetype(tankId: TankArchetypeId): void {
   if (session.isHost) {
     if (localSlot) {
       localSlot.tankId = tankId
+      localSlot.randomTank = randomTank.value
       localSlot.loadoutRoot = localRoot.value
       broadcastRosterFromHost()
     }
@@ -414,6 +444,7 @@ function selectTankArchetype(tankId: TankArchetypeId): void {
       playerId: session.localPlayerId,
       targetTeam: currentTeam,
       tankId,
+      randomTank: randomTank.value,
       loadoutRoot: localRoot.value,
     }
     transport.sendToHost(req)
@@ -436,6 +467,7 @@ function handlePickLoadout(picks: BulletType[]): void {
       playerId: session.localPlayerId,
       targetTeam: localSlot?.team ?? 'A',
       tankId: session.selectedTankId,
+      randomTank: randomTank.value,
       loadoutRoot: localRoot.value,
     }
     transport.sendToHost(req)
@@ -451,6 +483,7 @@ function handleToggleReady(): void {
     playerId: session.localPlayerId,
     targetTeam: localSlot?.team ?? 'A',
     tankId: session.selectedTankId,
+    randomTank: randomTank.value,
     loadoutRoot: localRoot.value,
     ready: !localReady.value,
   }
@@ -488,6 +521,7 @@ function handleSwitchTeam(targetTeam: TeamId): void {
       playerId: session.localPlayerId,
       targetTeam,
       tankId: session.selectedTankId,
+      randomTank: randomTank.value,
       loadoutRoot: localRoot.value,
     }
     transport.sendToHost(req)
@@ -668,6 +702,7 @@ onUnmounted(() => {
       :directory-available="directory.available"
       :signaling="signalingInfo"
       :selected-tank-id="session.selectedTankId"
+      :random-tank="randomTank"
       :loadout-picks="loadoutPicks"
       :connecting="session.phase === 'hosting' || session.phase === 'joining'"
       :connecting-code="session.phase === 'joining' ? session.roomCode : ''"
@@ -698,6 +733,7 @@ onUnmounted(() => {
       :selected-map-id="session.selectedMapId"
       :disconnect-policy="session.disconnectPolicy"
       :selected-tank-id="session.selectedTankId"
+      :random-tank="randomTank"
       :loadout-picks="loadoutPicks"
       :copied="copied"
       :copied-link="copiedLink"
@@ -722,14 +758,14 @@ onUnmounted(() => {
         <button
           type="button"
           aria-label="返回大廳"
-          class="toon-btn h-11 w-11 rounded-full p-0 text-2xl"
+          class="toon-btn h-11 w-11 shrink-0 rounded-full p-0 text-2xl"
           @click="gameMode = 'p2p'; soundController.play('ui_click')"
         >
           ‹
         </button>
-        <div class="leading-none">
-          <h1 class="toon-title text-[1.9rem]">單機練習</h1>
-          <span class="toon-pill mt-1 bg-paper text-sm">同一台電腦輪流操作，或讓電腦接手任一隊</span>
+        <div class="flex min-w-0 flex-col items-start gap-3.5">
+          <h1 class="toon-title text-[1.9rem] leading-none">單機練習</h1>
+          <p class="text-sm leading-none text-ink-soft">同一台電腦輪流操作，或讓電腦接手任一隊</p>
         </div>
       </header>
 
@@ -737,6 +773,7 @@ onUnmounted(() => {
         <aside class="min-h-0 pt-4 lg:overflow-y-auto lg:pb-2">
           <TankHangarPodium
             :selected-tank-id="session.selectedTankId"
+            :random="randomTank"
             :loadout-picks="loadoutPicks"
             @select-tank="selectTankArchetype"
             @change-loadout="handlePickLoadout"
@@ -760,51 +797,62 @@ onUnmounted(() => {
             </div>
           </div>
 
-          <div class="grid min-h-0 flex-1 grid-cols-1 content-start gap-4 overflow-y-auto pr-1 xl:grid-cols-2">
+          <div class="grid min-h-0 flex-1 grid-cols-1 content-start gap-x-5 gap-y-4 overflow-y-auto p-1 xl:grid-cols-2">
             <div
               v-for="team in ([
-                { id: 'A', label: '橘隊', color: 'var(--color-team-a)', tanks: hotseatTeamATanks, offset: 0 },
-                { id: 'B', label: '藍隊', color: 'var(--color-team-b)', tanks: hotseatTeamBTanks, offset: 1 },
+                { id: 'A', label: '橘隊', color: 'var(--color-team-a)' },
+                { id: 'B', label: '藍隊', color: 'var(--color-team-b)' },
               ] as const)"
               :key="team.id"
               class="flex flex-col gap-2"
             >
-              <span class="toon-pill w-fit px-3 text-base text-white" :style="{ background: team.color, textShadow: '0 2px 0 rgb(29 35 64 / .35)' }">
-                {{ team.label }}
-              </span>
-              <div class="toon-segment text-sm">
-                <button type="button" :aria-pressed="!hotseatBotTeams[team.id]" @click="hotseatBotTeams[team.id] = false; soundController.play('ui_click')">玩家</button>
-                <button type="button" :aria-pressed="hotseatBotTeams[team.id]" @click="hotseatBotTeams[team.id] = true; soundController.play('ui_click')">電腦</button>
+              <!-- 操控方：玩家 / 電腦；難度列固定佔位，兩隊高度一致 -->
+              <div class="flex items-center gap-2">
+                <span class="toon-pill shrink-0 px-3 text-base text-white" :style="{ background: team.color, textShadow: '0 2px 0 rgb(29 35 64 / .35)' }">
+                  {{ team.label }}
+                </span>
+                <div class="toon-segment ml-auto w-32 text-sm">
+                  <button type="button" :aria-pressed="!hotseatBotTeams[team.id]" @click="hotseatBotTeams[team.id] = false; soundController.play('ui_click')">玩家</button>
+                  <button type="button" :aria-pressed="hotseatBotTeams[team.id]" @click="hotseatBotTeams[team.id] = true; soundController.play('ui_click')">電腦</button>
+                </div>
               </div>
-              <div v-if="hotseatBotTeams[team.id]" class="toon-segment text-xs">
-                <button
-                  v-for="[level, spec] in BOT_LEVELS"
-                  :key="level"
-                  type="button"
-                  :aria-pressed="hotseatBotLevels[team.id] === level"
-                  @click="hotseatBotLevels[team.id] = level; soundController.play('ui_click')"
-                >
-                  {{ spec.label }}
-                </button>
+              <div class="flex items-center gap-2 transition-opacity" :class="hotseatBotTeams[team.id] ? '' : 'opacity-35'">
+                <span class="shrink-0 text-xs">難度</span>
+                <div class="toon-segment flex-1 text-xs">
+                  <button
+                    v-for="[level, spec] in BOT_LEVELS"
+                    :key="level"
+                    type="button"
+                    :disabled="!hotseatBotTeams[team.id]"
+                    :aria-pressed="hotseatBotTeams[team.id] && hotseatBotLevels[team.id] === level"
+                    @click="hotseatBotLevels[team.id] = level; soundController.play('ui_click')"
+                  >
+                    {{ spec.label }}
+                  </button>
+                </div>
               </div>
-              <div
+
+              <!-- 每席同一個大小：點擊跳出選車彈窗 -->
+              <button
                 v-for="idx in hotseatCountPerTeam"
                 :key="`${team.id}-${idx}`"
-                class="flex items-center gap-2 rounded-2xl border-[3px] border-ink bg-paper p-1.5"
+                type="button"
+                class="slot-card flex h-14 items-center gap-2 rounded-2xl border-[3px] border-ink bg-paper px-2 text-left"
+                @click="openSlotPicker(team.id, idx - 1)"
               >
-                <span class="font-num w-8 shrink-0 text-center text-base font-extrabold">{{ team.id }}{{ idx }}</span>
-                <button
-                  v-for="t in TANK_LIST"
-                  :key="t.id"
-                  type="button"
-                  :title="t.name"
-                  class="toon-btn h-10 flex-1 rounded-xl p-0"
-                  :class="(team.tanks[idx - 1] ?? tankAt(idx - 1 + team.offset)) === t.id ? 'toon-btn--sun' : ''"
-                  @click="setHotseatSlotTank(team.id, idx - 1, t.id)"
-                >
-                  <img :src="t.getSprites(team.id).hullUrl" alt="" class="h-6 w-auto" :class="team.id === 'B' ? '-scale-x-100' : ''" />
-                </button>
-              </div>
+                <span class="font-num w-7 shrink-0 text-center text-base font-extrabold">{{ team.id }}{{ idx }}</span>
+                <span class="flex h-10 w-14 shrink-0 items-center justify-center rounded-lg border-[2.5px] border-ink" :style="{ background: team.color }">
+                  <img v-if="slotTank(team.id, idx - 1).url" :src="slotTank(team.id, idx - 1).url!" alt="" class="h-6 w-auto" :class="team.id === 'B' ? '-scale-x-100' : ''" />
+                  <span v-else class="toon-mystery h-7 text-lg">?</span>
+                </span>
+                <span class="min-w-0 flex-1 leading-tight">
+                  <span class="block truncate text-base">{{ slotTank(team.id, idx - 1).name }}</span>
+                  <span class="block truncate text-xs text-ink-soft">
+                    {{ hotseatBotTeams[team.id] ? '電腦' : team.id === 'A' && idx === 1 ? '我的戰車' : '玩家' }}
+                  </span>
+                </span>
+                <span class="shrink-0 text-xl text-ink-soft">›</span>
+              </button>
             </div>
           </div>
         </section>
@@ -825,6 +873,28 @@ onUnmounted(() => {
           </div>
         </section>
       </div>
+
+      <TankPickerModal
+        :open="slotPicker !== null"
+        :title="slotPicker ? `${slotPicker.team}${slotPicker.index + 1} · 選擇戰車` : ''"
+        :selected="slotPicker ? slotChoice(slotPicker.team, slotPicker.index) : RANDOM_TANK"
+        :team="slotPicker?.team ?? 'A'"
+        @pick="(c) => slotPicker && setHotseatSlotTank(slotPicker.team, slotPicker.index, c)"
+        @close="slotPicker = null"
+      />
     </div>
   </section>
 </template>
+
+<style scoped>
+.slot-card {
+  box-shadow: 0 3px 0 var(--color-ink);
+  cursor: pointer;
+  transition: transform 0.1s ease, box-shadow 0.1s ease;
+}
+.slot-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 5px 0 var(--color-ink);
+  background: #fffbe0;
+}
+</style>

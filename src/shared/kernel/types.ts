@@ -37,6 +37,8 @@ export interface RosterSlot {
   name: string
   team: TeamId
   tankId: TankArchetypeId
+  /** 玩家選了「隨機」：tankId 已抽好，但大廳席次只顯示問號，開打才揭曉 */
+  randomTank?: boolean
   isHost: boolean
   /** 由電腦 AI 操控（僅限單機熱座模式） */
   isBot?: boolean
@@ -117,6 +119,7 @@ export interface PlayerJoinInfoEvent {
   readonly type: 'PLAYER_JOIN_INFO'
   readonly guestName: string
   readonly tankId: TankArchetypeId
+  readonly randomTank?: boolean
   readonly loadoutRoot?: string
 }
 
@@ -125,6 +128,7 @@ export interface UpdatePlayerSetupEvent {
   readonly playerId: PlayerId
   readonly targetTeam: TeamId
   readonly tankId: TankArchetypeId
+  readonly randomTank?: boolean
   /** 有帶值才更新準備狀態；換隊 / 換車請求不帶此欄位 */
   readonly ready?: boolean
   /** 有帶值才更新彈藥承諾（換車或重選彈藥時） */

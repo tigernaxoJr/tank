@@ -15,6 +15,7 @@ import { MAX_PLAYERS_PER_TEAM } from '../domain/roomSession'
 import TankHangarPodium from './TankHangarPodium.vue'
 import MapPickerCard from './MapPickerCard.vue'
 import { splitDisplayName } from './displayNames'
+import type { TankChoice } from './tankChoice'
 
 const props = defineProps<{
   roomCode: string
@@ -29,6 +30,7 @@ const props = defineProps<{
   selectedMapId: MapPresetId
   disconnectPolicy: DisconnectPolicy
   selectedTankId: TankArchetypeId
+  randomTank: boolean
   loadoutPicks: readonly BulletType[]
   copied: boolean
   copiedLink: boolean
@@ -45,7 +47,7 @@ const emit = defineEmits<{
   (e: 'select-map', mapId: MapPresetId): void
   (e: 'open-gallery'): void
   (e: 'select-policy', policy: DisconnectPolicy): void
-  (e: 'select-tank', tankId: TankArchetypeId): void
+  (e: 'select-tank', choice: TankChoice): void
   (e: 'change-loadout', picks: BulletType[]): void
   (e: 'dismiss-error'): void
 }>()
@@ -71,6 +73,7 @@ function hullUrl(slot: RosterSlot): string {
 }
 
 function tankLabel(slot: RosterSlot): string {
+  if (slot.randomTank) return '隨機'
   return splitDisplayName(getTankSpec(slot.tankId).name).zh
 }
 
@@ -102,9 +105,9 @@ const hint = computed(() => {
       >
         ‹
       </button>
-      <div class="mr-auto min-w-0 leading-none">
-        <h1 class="toon-title truncate text-[1.9rem]">{{ roomTitle }}</h1>
-        <span class="toon-pill mt-1 bg-paper text-sm">
+      <div class="mr-auto flex min-w-0 flex-col items-start gap-2.5">
+        <h1 class="toon-title max-w-full truncate px-1 pb-1 text-[1.9rem] leading-tight">{{ roomTitle }}</h1>
+        <span class="toon-pill bg-paper text-sm">
           <span class="h-2.5 w-2.5 rounded-full border-2 border-ink" :class="locked ? 'bg-coral' : 'bg-grass'" />
           {{ locked ? '對戰中' : '等待中' }} · <b class="font-num">{{ roster.length }}/{{ MAX_PLAYERS_PER_TEAM * 2 }}</b>
         </span>
@@ -125,6 +128,7 @@ const hint = computed(() => {
       <aside class="min-h-0 pt-4 lg:overflow-y-auto lg:pb-2">
         <TankHangarPodium
           :selected-tank-id="selectedTankId"
+          :random="randomTank"
           :loadout-picks="loadoutPicks"
           :locked="locked"
           @select-tank="(id) => emit('select-tank', id)"
@@ -156,7 +160,8 @@ const hint = computed(() => {
                       :style="{ background: team.color }"
                       :title="tankLabel(seat)"
                     >
-                      <img :src="hullUrl(seat)" alt="" class="h-5 w-auto" :class="team.id === 'B' ? '-scale-x-100' : ''" />
+                      <span v-if="seat.randomTank" class="toon-mystery h-6 text-base">?</span>
+                      <img v-else :src="hullUrl(seat)" alt="" class="h-5 w-auto" :class="team.id === 'B' ? '-scale-x-100' : ''" />
                     </span>
                     <span
                       class="toon-pill ml-auto shrink-0 px-1.5 text-[11px]"

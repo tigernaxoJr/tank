@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import {
-  TANK_LIST,
   buildTankCard,
   getTankSpec,
   PROJECTILE_REGISTRY,
@@ -9,6 +8,8 @@ import {
 } from '@/features/battle'
 import { soundController } from '@/features/audio'
 import LoadoutPicker from './LoadoutPicker.vue'
+import TankPickerModal from './TankPickerModal.vue'
+import { RANDOM_TANK, type TankChoice } from './tankChoice'
 import { splitDisplayName } from './displayNames'
 import turfUrl from '@/assets/ui/stage_turf.svg'
 import type { BulletType, TankArchetypeId, TeamId } from '@/shared/kernel/types'
@@ -17,19 +18,22 @@ const props = defineProps<{
   selectedTankId: TankArchetypeId
   loadoutPicks: readonly BulletType[]
   locked?: boolean
+  /** 選了「隨機」：selectedTankId 是暫定的機種，展示台蓋成問號，開打時才揭曉 */
+  random?: boolean
 }>()
 
 const emit = defineEmits<{
-  (e: 'select-tank', tankId: TankArchetypeId): void
+  (e: 'select-tank', choice: TankChoice): void
   (e: 'change-loadout', picks: BulletType[]): void
 }>()
 
 const paint = ref<TeamId>('A')
 const showLoadoutModal = ref(false)
+const showTankModal = ref(false)
 
 const spec = computed<TankBlueprint>(() => getTankSpec(props.selectedTankId))
 const card = computed(() => buildTankCard(props.selectedTankId))
-const label = computed(() => splitDisplayName(spec.value.name))
+const label = computed(() => (props.random ? { zh: '隨機戰車', en: 'RANDOM' } : splitDisplayName(spec.value.name)))
 const sprites = computed(() => spec.value.getSprites(paint.value))
 
 const shots = computed(() =>
@@ -63,10 +67,16 @@ function shotSprite(key: string | undefined): string | null {
   return key ? `/assets/units/projectiles/${key}.png` : null
 }
 
-function pickTank(tankId: TankArchetypeId): void {
-  if (tankId === props.selectedTankId) return
-  soundController.play('ui_select')
-  emit('select-tank', tankId)
+const currentChoice = computed<TankChoice>(() => (props.random ? RANDOM_TANK : props.selectedTankId))
+
+function pickTank(choice: TankChoice): void {
+  if (choice !== currentChoice.value) emit('select-tank', choice)
+}
+
+function openTankModal(): void {
+  if (props.locked) return
+  soundController.play('ui_click')
+  showTankModal.value = true
 }
 
 function setPaint(team: TeamId): void {
@@ -93,40 +103,39 @@ function setPaint(team: TeamId): void {
         />
       </div>
       <img :src="turfUrl" alt="" class="absolute bottom-2 left-1/2 h-10 w-52 max-w-none -translate-x-1/2" />
-      <div class="tank-bob absolute bottom-[38px] left-1/2 h-0 w-0">
+      <div v-if="!random" class="tank-bob absolute bottom-[38px] left-1/2 h-0 w-0">
         <!-- rig 原點：車身底線上方 HULL_BASE_Y；整組以 RIG_SCALE 縮放 -->
         <div class="absolute left-0 top-0 h-0 w-0" :style="{ transform: `scale(${RIG_SCALE})`, transformOrigin: '0 0', marginTop: `${-HULL_BASE_Y * ART_ZOOM * RIG_SCALE}px` }">
           <img :src="sprites.barrelUrl" alt="" class="rig-barrel absolute max-w-none" :style="barrelStyle" />
           <img :src="sprites.hullUrl" :alt="spec.name" class="rig-hull absolute max-w-none" :style="hullStyle" />
         </div>
       </div>
+      <span v-else class="toon-mystery tank-bob absolute bottom-[30px] left-1/2 h-20 text-5xl" aria-label="隨機戰車">?</span>
     </div>
 
-    <div class="flex items-end justify-between gap-2 px-1">
-      <div class="min-w-0">
-        <div class="truncate text-2xl leading-none">{{ label.zh }}</div>
-        <div class="mt-1 truncate text-sm text-ink-soft">{{ spec.subtitle }}</div>
+    <div class="flex items-center gap-2 px-1">
+      <div class="min-w-0 flex-1">
+        <div class="flex items-baseline gap-2">
+          <span class="truncate text-2xl leading-none">{{ label.zh }}</span>
+          <span class="font-num shrink-0 text-sm font-extrabold text-ink-soft">{{ label.en }}</span>
+        </div>
+        <div class="mt-1 truncate text-sm text-ink-soft">{{ random ? '開打時從所有戰車抽一台' : spec.subtitle }}</div>
       </div>
-      <span class="font-num shrink-0 text-lg font-extrabold text-ink-soft">{{ label.en }}</span>
-    </div>
-
-    <!-- 選車 -->
-    <div class="grid grid-cols-3 gap-2">
       <button
-        v-for="t in TANK_LIST"
-        :key="t.id"
         type="button"
-        class="toon-btn flex-col gap-0 rounded-xl px-1 pb-1 pt-1.5 text-sm"
-        :class="selectedTankId === t.id ? 'toon-btn--sun' : ''"
-        @click="pickTank(t.id)"
+        :disabled="locked"
+        class="toon-btn toon-btn--sun shrink-0 rounded-xl px-3 py-1.5 text-base"
+        @click="openTankModal"
       >
-        <img :src="t.getSprites(paint).hullUrl" alt="" class="h-9 w-auto" />
-        <span>{{ splitDisplayName(t.name).zh }}</span>
+        換車
       </button>
     </div>
 
-    <!-- 數值 -->
-    <div class="space-y-1.5 px-1">
+    <!-- 數值（隨機時不透露） -->
+    <div v-if="random" class="flex h-[74px] items-center justify-center rounded-xl border-[3px] border-dashed border-ink/25 px-2 text-center text-sm text-ink-soft">
+      耐久、火力、機動與彈藥都等開打揭曉
+    </div>
+    <div v-else class="space-y-1.5 px-1">
       <div v-for="s in stats" :key="s.label" class="flex items-center gap-2">
         <span class="w-9 shrink-0 text-sm">{{ s.label }}</span>
         <div class="h-3.5 flex-1 overflow-hidden rounded-full border-[2.5px] border-ink bg-paper">
@@ -142,7 +151,7 @@ function setPaint(team: TeamId): void {
     </div>
 
     <!-- 彈藥 -->
-    <div class="flex items-center gap-2">
+    <div v-if="!random" class="flex items-center gap-2">
       <div
         v-for="(shot, i) in shots"
         :key="i"
@@ -169,6 +178,15 @@ function setPaint(team: TeamId): void {
         換彈
       </button>
     </div>
+
+    <TankPickerModal
+      :open="showTankModal"
+      title="選擇戰車"
+      :selected="currentChoice"
+      :team="paint"
+      @pick="pickTank"
+      @close="showTankModal = false"
+    />
 
     <Teleport to="body">
       <div
