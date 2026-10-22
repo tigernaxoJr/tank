@@ -17,6 +17,7 @@
     "paint:units": "node tools/assets/paint_units.mjs"
   },
   "dependencies": {
+    "@noble/hashes": "^2.4.0",
     "peerjs": "^1.5.4",
     "phaser": "^3.90.0",
     "vue": "^3.5.13"

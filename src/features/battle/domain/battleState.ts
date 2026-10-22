@@ -2,8 +2,9 @@
  * Battle Slice (中大型複雜模組 - 完整 DDD 輕量分層)
  * 支援 1v1 ~ 5v5 (最多 10 台坦克) 與模組化 TankBlueprint / MapBlueprint 引擎
  */
-import type { BotLevel, MapPresetId, PlayerId, RosterSlot, TankArchetypeId, TeamId } from '@/shared/kernel/types'
+import type { BotLevel, BulletType, MapPresetId, PlayerId, RosterSlot, TankArchetypeId, TeamId } from '@/shared/kernel/types'
 import type { TankCorePort } from '@/shared/wasm'
+import { sanitizeLoadout } from './loadout'
 import { MAP_REGISTRY } from './mapRegistry'
 import { getTankSpec, tankAt } from './tankRegistry'
 
@@ -27,6 +28,10 @@ export interface TankEntity {
   maxMoveFuel: number
   isBot: boolean
   botLevel: BotLevel
+  /** 明牌的主彈、副彈（單機、電腦、被電腦接手後）；連線對戰的真人坦克為了迷霧不帶此欄位 */
+  loadout?: BulletType[]
+  /** 連線對戰的彈藥承諾（Merkle 根），開火時以 `reveal` 驗證，見 loadout.ts */
+  loadoutRoot?: string
 }
 
 export interface BattleState {
@@ -58,6 +63,13 @@ export function buildInterleavedTurnOrder(roster: RosterSlot[]): PlayerId[] {
     if (i < teamB.length) order.push(teamB[i])
   }
   return order.length > 0 ? order : ['p1', 'p2']
+}
+
+/** 名單上的彈藥資訊：有承諾（連線真人）就只記根；否則明牌，電腦沒指定時帶預設 */
+function loadoutFields(slot: RosterSlot): Pick<TankEntity, 'loadout' | 'loadoutRoot'> {
+  if (slot.loadoutRoot) return { loadoutRoot: slot.loadoutRoot }
+  if (slot.loadout || slot.isBot) return { loadout: sanitizeLoadout(slot.tankId, slot.loadout) }
+  return {}
 }
 
 export function createInitialBattleState(
@@ -99,6 +111,7 @@ export function createInitialBattleState(
       maxMoveFuel: spec.moveFuel,
       isBot: slot.isBot === true,
       botLevel: slot.botLevel ?? 'hard',
+      ...loadoutFields(slot),
     }
   })
 
@@ -131,6 +144,7 @@ export function createInitialBattleState(
       maxMoveFuel: spec.moveFuel,
       isBot: slot.isBot === true,
       botLevel: slot.botLevel ?? 'hard',
+      ...loadoutFields(slot),
     }
   })
 

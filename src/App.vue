@@ -2,6 +2,7 @@
 import { nextTick, ref } from 'vue'
 import { BattleArena, tankAt } from '@/features/battle'
 import { LobbyPanel, type StartGamePayload } from '@/features/lobby'
+import type { LoadoutSecret } from '@/features/battle'
 import type { MapPresetId, PlayerId, ProtocolMessage, RosterSlot } from '@/shared/kernel/types'
 
 const inBattle = ref(false)
@@ -10,6 +11,7 @@ const localRole = ref<PlayerId>('p1')
 const isHost = ref(true)
 const matchSeed = ref(1024)
 const mapId = ref<MapPresetId>('harvest_plains')
+const loadoutSecret = ref<LoadoutSecret | undefined>()
 const roster = ref<RosterSlot[]>([
   { id: 'p1', name: 'Player 1', team: 'A', tankId: tankAt(0), isHost: true },
   { id: 'p2', name: 'Player 2', team: 'B', tankId: tankAt(1), isHost: false },
@@ -25,6 +27,7 @@ async function onStartGame(payload: StartGamePayload): Promise<void> {
   matchSeed.value = payload.seed
   mapId.value = payload.mapId
   roster.value = payload.roster
+  loadoutSecret.value = payload.loadoutSecret
   inBattle.value = true
   await nextTick()
   battleRef.value?.resetMatch(payload.seed, payload.initialWind, payload.roster, payload.mapId)
@@ -89,6 +92,7 @@ function onOutgoingMessage(msg: ProtocolMessage): void {
       :initial-seed="matchSeed"
       :map-id="mapId"
       :roster="roster"
+      :loadout-secret="loadoutSecret"
       @outgoing-message="onOutgoingMessage"
       @leave-game="onLeaveGame"
     />

@@ -144,6 +144,8 @@ tank/
    * **房主權威**：房主轉發客端動作前必須驗證來源（`ACTION_FIRE` / `ACTION_MOVE` 的 `playerId` 須等於送件連線槽位，`isForgedAction`）；`RESYNC_REQUEST` 只給房主處理、不轉發。
    * **協議訊息一覽**（`shared/kernel/types.ts` 的 `ProtocolMessage`）：大廳類 `PLAYER_JOIN_INFO` / `UPDATE_PLAYER_SETUP` / `LOBBY_ROSTER_UPDATE`（含 `disconnectPolicy`）/ `START_BATTLE`；
      對戰類 `ACTION_FIRE` / `ACTION_MOVE`（兩端以相同指令各自確定性模擬）、`SYNC_HASH`、`RESYNC_REQUEST` / `RESYNC_STATE`（見 `06` §三之五）、`PLAYER_LEFT`（見 `06` §三之六）。新增訊息時要同步更新此清單。
+   * **彈藥承諾欄位**：`RosterSlot.loadoutRoot`（Merkle 根，隨名單廣播）、`ACTION_FIRE.reveal`（開火時揭露所用那一格）、`PLAYER_JOIN_INFO` / `UPDATE_PLAYER_SETUP` 的 `loadoutRoot`，規則見 `06` §三之七。
+   * **真人坦克的砲彈原文不得進入任何廣播或快照**（名單、`START_BATTLE`、`RESYNC_STATE` 的 `BattleState` JSON 都只能有承諾根）；原文 `LoadoutSecret` 只留在本機，由 `registry` 以外的 `loadout.ts` 管理。
 5. **全畫面街機駕駛艙 HUD 與零捲動守則 (In-Canvas Arcade HUD & Zero Page Scrolling)**：
    * **禁止外置 HTML 表單與頁面捲動**：進入對戰後（[`BattleArena.vue`](../src/features/battle/ui/BattleArena.vue)），畫面必須以 `fixed inset-0 h-dvh w-screen overflow-hidden` 佔滿整個瀏覽器視窗，**絕對不可出現垂直或水平捲軸**。
    * **Phaser 畫布使用 `Scale.RESIZE`**：畫布等於視窗大小、不裁切；寬度不足 `lg` 時頂部對戰列改為靠左並下移，避免與左上鏡頭列、右上雷達重疊。

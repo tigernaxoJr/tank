@@ -23,6 +23,7 @@ import {
   syncAllTanksToTerrain,
   takeOverWithBot,
 } from '../application/useBattleTurn'
+import { availableShots, revealFor, type LoadoutSecret } from '../domain/loadout'
 import { battleStateHash, createInitialBattleState, quantizePower } from '../domain/battleState'
 import { planBotMove, planBotShot } from '../domain/botBrain'
 import { MAP_REGISTRY, terrainOptionsFor } from '../domain/mapRegistry'
@@ -38,6 +39,8 @@ const props = withDefaults(
     initialSeed?: number
     mapId?: MapPresetId
     roster?: RosterSlot[]
+    /** 連線對戰中本機玩家的彈藥承諾原文，開火時用來揭露；單機不需要 */
+    loadoutSecret?: LoadoutSecret
   }>(),
   {
     mode: 'hotseat',
@@ -67,9 +70,16 @@ const state = reactive(
 )
 // 每位玩家各自記住選用的彈種（熱座輪流時不會互相覆蓋）
 const bulletChoice = reactive<Record<PlayerId, BulletType>>({})
+/** 某位玩家現在能用的砲彈；連線對戰中對手的配置在他開火前未揭露，回傳 null */
+function knownShots(playerId: PlayerId): readonly BulletType[] | null {
+  const tank = state.tanks[playerId]
+  if (!tank) return null
+  if (tank.loadoutRoot) return playerId === props.localRole && props.loadoutSecret ? props.loadoutSecret.loadout : null
+  return availableShots(tank)
+}
+const hudShots = computed(() => knownShots(state.activePlayer))
 const bulletType = computed<BulletType>(() => {
-  const tank = state.tanks[state.activePlayer]
-  const shots = getTankSpec(tank?.tankId).shots
+  const shots = hudShots.value ?? getTankSpec(state.tanks[state.activePlayer]?.tankId).shots
   const chosen = bulletChoice[state.activePlayer]
   return chosen && shots.includes(chosen) ? chosen : shots[0]
 })
@@ -197,6 +207,8 @@ function handleFire(): void {
     power: shooter.power,
     wind: state.wind,
     bulletType: bulletType.value,
+    // 連線對戰：附上這一格的揭露，其他端據此驗證沒有中途偷換
+    reveal: shooter.loadoutRoot && props.loadoutSecret ? (revealFor(shooter.tankId, props.loadoutSecret, bulletType.value) ?? undefined) : undefined,
   }
   applyFireCommand(cmd, true)
 }
@@ -497,6 +509,7 @@ onMounted(() => {
       <BattleHud
         :state="state"
         :bullet-type="bulletType"
+        :shots="hudShots"
         :can-control="canControl"
         :is-bot-turn="isBotTurn"
         :is-muted="isMuted"

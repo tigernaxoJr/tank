@@ -1,7 +1,21 @@
 <script setup lang="ts">
 import { isForgedAction } from '../infra/messageGuards'
 import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
-import { BOT_LEVEL_SPECS, MAP_LIST, MAP_REGISTRY, renderMapPreview, TANK_LIST, TANK_REGISTRY, getTankSpec, tankAt } from '@/features/battle'
+import {
+  BOT_LEVEL_SPECS,
+  MAP_LIST,
+  MAP_REGISTRY,
+  renderMapPreview,
+  TANK_LIST,
+  TANK_REGISTRY,
+  createLoadoutSecret,
+  getTankSpec,
+  loadoutRoot,
+  sanitizeLoadout,
+  tankAt,
+  type LoadoutSecret,
+} from '@/features/battle'
+import LoadoutPicker from './LoadoutPicker.vue'
 import TankStatPanel from './TankStatPanel.vue'
 import {
   countTeamMembers,
@@ -16,9 +30,11 @@ import {
   type PeerTransportPort,
   type SignalingEndpointInfo,
 } from '../infra/peerAdapter'
+import { loadLoadoutPicks, saveLoadoutPicks } from '../infra/loadoutStorage'
 import { createRoomDirectory, type RoomListing, type RoomStatus } from '../infra/roomDirectory'
 import type {
   BotLevel,
+  BulletType,
   DisconnectPolicy,
   LobbyRosterUpdateEvent,
   MapPresetId,
@@ -41,6 +57,8 @@ export interface StartGamePayload {
   mapId: MapPresetId
   roster: RosterSlot[]
   roomCode: string
+  /** 連線對戰中本機玩家的彈藥承諾原文（只留在本機，不得廣播）；單機沒有 */
+  loadoutSecret?: LoadoutSecret
 }
 
 const props = defineProps<{
@@ -87,6 +105,32 @@ const session = reactive<RoomSession>({
   roster: [],
   errorMessage: undefined,
 })
+
+// --- 彈藥配置：選擇記在 localStorage；連線對戰只廣播承諾（Merkle 根），原文留在本機直到開火時逐格揭露 ---
+const loadoutPicks = ref<BulletType[]>(loadLoadoutPicks(session.selectedTankId))
+// 單機各隊的配置（同機種共用一份，與連線對戰選的是同一份記憶）
+const loadoutCache = reactive<Record<string, BulletType[]>>({})
+function picksFor(tankId: TankArchetypeId): BulletType[] {
+  return (loadoutCache[tankId] ??= loadLoadoutPicks(tankId))
+}
+function onPickHotseatLoadout(tankId: TankArchetypeId, picks: BulletType[]): void {
+  loadoutCache[tankId] = sanitizeLoadout(tankId, picks)
+  saveLoadoutPicks(tankId, loadoutCache[tankId])
+  if (tankId === session.selectedTankId) {
+    loadoutPicks.value = loadoutCache[tankId]
+    refreshCommitment()
+  }
+}
+const localRoot = ref('')
+let localSecret: LoadoutSecret | null = null
+function refreshCommitment(): void {
+  localSecret = createLoadoutSecret(session.selectedTankId, loadoutPicks.value)
+  localRoot.value = loadoutRoot(session.selectedTankId, localSecret)
+}
+refreshCommitment()
+
+/** 只接受格式正確的承諾（64 位十六進位字元） */
+const isRoot = (v: unknown): v is string => typeof v === 'string' && /^[0-9a-f]{64}$/.test(v)
 
 const transport: PeerTransportPort = createPeerTransport()
 const signalingInfo = ref<SignalingEndpointInfo>(transport.getSignalingInfo())
@@ -185,6 +229,7 @@ function handleHostReceivePeerMessage(peerSlotId: PlayerId, msg: ProtocolMessage
     if (slot) {
       slot.name = msg.guestName.trim() || peerSlotId.toUpperCase()
       slot.tankId = msg.tankId || tankAt(0)
+      if (isRoot(msg.loadoutRoot)) slot.loadoutRoot = msg.loadoutRoot
       broadcastRosterFromHost()
     }
     return
@@ -194,6 +239,7 @@ function handleHostReceivePeerMessage(peerSlotId: PlayerId, msg: ProtocolMessage
     const slot = session.roster.find((r) => r.id === peerSlotId)
     if (slot) {
       slot.tankId = msg.tankId
+      if (isRoot(msg.loadoutRoot)) slot.loadoutRoot = msg.loadoutRoot
       if (msg.ready !== undefined) slot.ready = msg.ready
       if (slot.team !== msg.targetTeam) {
         if (countTeamMembers(session.roster, msg.targetTeam) < MAX_PLAYERS_PER_TEAM) {
@@ -240,6 +286,7 @@ function handleClientReceiveMessage(msg: ProtocolMessage): void {
       mapId: msg.mapId,
       roster: msg.roster,
       roomCode: session.roomCode,
+      loadoutSecret: localSecret ?? undefined,
     })
     return
   }
@@ -263,6 +310,7 @@ async function handleHost(): Promise<void> {
       team: 'A',
       tankId: session.selectedTankId,
       isHost: true,
+      loadoutRoot: localRoot.value,
     },
   ]
 
@@ -328,6 +376,7 @@ async function handleJoin(): Promise<void> {
           type: 'PLAYER_JOIN_INFO',
           guestName: session.localPlayerName,
           tankId: session.selectedTankId,
+          loadoutRoot: localRoot.value,
         }
         transport.sendToHost(joinInfo)
       },
@@ -353,6 +402,8 @@ async function handleJoin(): Promise<void> {
 function selectTankArchetype(tankId: TankArchetypeId): void {
   session.selectedTankId = tankId
   hotseatTeamATanks[0] = tankId
+  loadoutPicks.value = loadLoadoutPicks(tankId)
+  refreshCommitment()
   if (session.phase !== 'connected') return
 
   const localSlot = session.roster.find((r) => r.id === session.localPlayerId)
@@ -360,6 +411,7 @@ function selectTankArchetype(tankId: TankArchetypeId): void {
   if (session.isHost) {
     if (localSlot) {
       localSlot.tankId = tankId
+      localSlot.loadoutRoot = localRoot.value
       broadcastRosterFromHost()
     }
   } else {
@@ -368,6 +420,7 @@ function selectTankArchetype(tankId: TankArchetypeId): void {
       playerId: session.localPlayerId,
       targetTeam: currentTeam,
       tankId,
+      loadoutRoot: localRoot.value,
     }
     transport.sendToHost(req)
   }
@@ -384,6 +437,32 @@ function setHotseatSlotTank(team: TeamId, slotIndex: number, tankId: TankArchety
   }
 }
 
+/** 重選主彈 / 副彈：存起來、重新承諾，並在連線中把新的承諾告訴房主 */
+function onPickLoadout(picks: BulletType[]): void {
+  if (session.locked) return
+  loadoutPicks.value = sanitizeLoadout(session.selectedTankId, picks)
+  saveLoadoutPicks(session.selectedTankId, loadoutPicks.value)
+  loadoutCache[session.selectedTankId] = loadoutPicks.value
+  refreshCommitment()
+  if (session.phase !== 'connected') return
+  const localSlot = session.roster.find((r) => r.id === session.localPlayerId)
+  if (session.isHost) {
+    if (localSlot) {
+      localSlot.loadoutRoot = localRoot.value
+      broadcastRosterFromHost()
+    }
+  } else {
+    const req: UpdatePlayerSetupEvent = {
+      type: 'UPDATE_PLAYER_SETUP',
+      playerId: session.localPlayerId,
+      targetTeam: localSlot?.team ?? 'A',
+      tankId: session.selectedTankId,
+      loadoutRoot: localRoot.value,
+    }
+    transport.sendToHost(req)
+  }
+}
+
 function handleToggleReady(): void {
   if (session.isHost) return
   const localSlot = session.roster.find((r) => r.id === session.localPlayerId)
@@ -392,6 +471,7 @@ function handleToggleReady(): void {
     playerId: session.localPlayerId,
     targetTeam: localSlot?.team ?? 'A',
     tankId: session.selectedTankId,
+    loadoutRoot: localRoot.value,
     ready: !localReady.value,
   }
   transport.sendToHost(req)
@@ -426,6 +506,7 @@ function handleSwitchTeam(targetTeam: TeamId): void {
       playerId: session.localPlayerId,
       targetTeam,
       tankId: session.selectedTankId,
+      loadoutRoot: localRoot.value,
     }
     transport.sendToHost(req)
   }
@@ -458,6 +539,7 @@ function handleStartP2PBattle(): void {
     mapId: session.selectedMapId,
     roster: rosterSnapshot,
     roomCode: session.roomCode,
+    loadoutSecret: localSecret ?? undefined,
   })
 }
 
@@ -468,12 +550,12 @@ function handleStartHotseatBattle(): void {
   for (let i = 1; i <= n; i++) {
     const tankId = hotseatTeamATanks[i - 1] ?? tankAt(i - 1)
     const isBot = hotseatBotTeams.A
-    roster.push({ id: `a${i}`, name: isBot ? `🤖 CPU A${i}` : `琥珀 A${i}`, team: 'A', tankId, isHost: i === 1, isBot, botLevel: isBot ? hotseatBotLevels.A : undefined })
+    roster.push({ id: `a${i}`, name: isBot ? `🤖 CPU A${i}` : `琥珀 A${i}`, team: 'A', tankId, isHost: i === 1, isBot, loadout: picksFor(tankId), botLevel: isBot ? hotseatBotLevels.A : undefined })
   }
   for (let i = 1; i <= n; i++) {
     const tankId = hotseatTeamBTanks[i - 1] ?? tankAt(i)
     const isBot = hotseatBotTeams.B
-    roster.push({ id: `b${i}`, name: isBot ? `🤖 CPU B${i}` : `皇家藍 B${i}`, team: 'B', tankId, isHost: false, isBot, botLevel: isBot ? hotseatBotLevels.B : undefined })
+    roster.push({ id: `b${i}`, name: isBot ? `🤖 CPU B${i}` : `皇家藍 B${i}`, team: 'B', tankId, isHost: false, isBot, loadout: picksFor(tankId), botLevel: isBot ? hotseatBotLevels.B : undefined })
   }
   emit('start-game', {
     mode: 'hotseat',
@@ -617,6 +699,7 @@ onUnmounted(() => {
         </div>
 
         <TankStatPanel :tank-id="session.selectedTankId" />
+        <LoadoutPicker :tank-id="session.selectedTankId" :picks="loadoutPicks" :disabled="session.locked" @change="onPickLoadout" />
       </div>
 
       <!-- 2. 模組化跨螢幕地圖選擇器 -->
@@ -1187,6 +1270,9 @@ onUnmounted(() => {
               <div
                 v-for="idx in hotseatCountPerTeam"
                 :key="`a-${idx}`"
+                class="space-y-1"
+              >
+              <div
                 class="flex items-center justify-between gap-2 rounded-xl border border-amber-500/60 bg-white/80 px-2.5 py-1.5"
               >
                 <div class="flex items-center gap-2 min-w-0">
@@ -1219,6 +1305,13 @@ onUnmounted(() => {
                     {{ tank.name.slice(0, 2) }}
                   </button>
                 </div>
+              </div>
+              <LoadoutPicker
+                v-if="!hotseatBotTeams.A"
+                :tank-id="hotseatTeamATanks[idx - 1] ?? tankAt(idx - 1)"
+                :picks="picksFor(hotseatTeamATanks[idx - 1] ?? tankAt(idx - 1))"
+                @change="(picks) => onPickHotseatLoadout(hotseatTeamATanks[idx - 1] ?? tankAt(idx - 1), picks)"
+              />
               </div>
             </div>
 
@@ -1267,6 +1360,9 @@ onUnmounted(() => {
               <div
                 v-for="idx in hotseatCountPerTeam"
                 :key="`b-${idx}`"
+                class="space-y-1"
+              >
+              <div
                 class="flex items-center justify-between gap-2 rounded-xl border border-teal-600/40 bg-white/80 px-2.5 py-1.5"
               >
                 <div class="flex items-center gap-2 min-w-0">
@@ -1299,6 +1395,13 @@ onUnmounted(() => {
                     {{ tank.name.slice(0, 2) }}
                   </button>
                 </div>
+              </div>
+              <LoadoutPicker
+                v-if="!hotseatBotTeams.B"
+                :tank-id="hotseatTeamBTanks[idx - 1] ?? tankAt(idx)"
+                :picks="picksFor(hotseatTeamBTanks[idx - 1] ?? tankAt(idx))"
+                @change="(picks) => onPickHotseatLoadout(hotseatTeamBTanks[idx - 1] ?? tankAt(idx), picks)"
+              />
               </div>
             </div>
           </div>

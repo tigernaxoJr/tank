@@ -17,6 +17,8 @@ import type { BulletType } from '@/shared/kernel/types'
 interface Props {
   state: BattleState
   bulletType: BulletType
+  /** 出手坦克的主彈、副彈；連線對戰中對手尚未揭露時為 null（顯示「？」） */
+  shots: readonly BulletType[] | null
   canControl: boolean
   isBotTurn?: boolean
   isMuted: boolean
@@ -47,8 +49,8 @@ const activeSpriteUrl = computed(() => {
   return activeTankSpec.value.getSprites(activeTank.value.team).hullUrl
 })
 
-/** 目前出手坦克的兩種專屬砲彈 */
-const activeShots = computed(() => activeTankSpec.value.shots.map((id) => PROJECTILE_REGISTRY[id]))
+/** 目前出手坦克可用的砲彈（主彈、副彈）；未揭露時為 null */
+const activeShots = computed(() => props.shots?.map((id) => PROJECTILE_REGISTRY[id]) ?? null)
 
 const teamATanks = computed(() =>
   Object.values(props.state.tanks).filter((t) => t.team === 'A'),
@@ -255,7 +257,7 @@ function handleKeyDown(e: KeyboardEvent): void {
     e.preventDefault()
     adjustAngle(-1)
   } else if (/^[1-9]$/.test(e.key)) {
-    const shot = activeShots.value[Number(e.key) - 1]
+    const shot = activeShots.value?.[Number(e.key) - 1]
     if (shot) emit('change-bullet', shot.id)
   } else if (e.code === 'Space' || e.key === ' ') {
     e.preventDefault()
@@ -459,8 +461,11 @@ onUnmounted(() => {
         <div class="col-span-7 space-y-2 sm:col-span-4 lg:col-span-4">
           <div class="flex items-center justify-between gap-2">
             <div class="flex items-center gap-1.5">
+              <span v-if="!activeShots" class="rounded-xl border-2 border-dashed border-teal-600/30 px-2.5 py-1 text-[11px] font-extrabold text-teal-700" title="對手的彈藥在開火前不會揭露">
+                ？ ？
+              </span>
               <button
-                v-for="(proj, shotIdx) in activeShots"
+                v-for="(proj, shotIdx) in activeShots ?? []"
                 :key="proj.id"
                 type="button"
                 :disabled="controlsDisabled"

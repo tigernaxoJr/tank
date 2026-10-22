@@ -11,6 +11,17 @@ export {
   type TurnPhase,
 } from './domain/battleState'
 export { TANK_REGISTRY, TANK_LIST, getTankSpec, tankAt, type TankBlueprint } from './domain/tankRegistry'
+export {
+  LOADOUT_SIZE,
+  availableShots,
+  createLoadoutSecret,
+  defaultLoadout,
+  loadoutRoot,
+  revealFor,
+  sanitizeLoadout,
+  verifyReveal,
+  type LoadoutSecret,
+} from './domain/loadout'
 export { buildTankCard, type ShotCard, type TankCard } from './domain/tankStats'
 export {
   MAP_REGISTRY,

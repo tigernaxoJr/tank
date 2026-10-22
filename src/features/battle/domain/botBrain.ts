@@ -16,6 +16,7 @@ import {
   type TankEntity,
 } from './battleState'
 import { PROJECTILE_REGISTRY } from './projectileRegistry'
+import { availableShots } from './loadout'
 import { effectiveWindMilli, getTankSpec } from './tankRegistry'
 
 export interface BotShotPlan {
@@ -59,7 +60,7 @@ function pickTarget(state: BattleState, bot: TankEntity): TankEntity | null {
 const FINISHER_HP = 40
 
 function pickBullet(bot: TankEntity, target: TankEntity, random: () => number): BulletType {
-  const shots = getTankSpec(bot.tankId).shots
+  const shots = availableShots(bot)
   // 目標殘血時優先用單發傷害最高的砲彈（不指定特定彈種）；否則在可用砲彈中隨機
   if (target.hp <= FINISHER_HP) {
     return shots.reduce((best, id) => (PROJECTILE_REGISTRY[id].maxDamage > PROJECTILE_REGISTRY[best].maxDamage ? id : best))

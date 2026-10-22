@@ -60,7 +60,7 @@
 | 樣式 | Tailwind CSS 4 (`@tailwindcss/vite`) |
 | 遊戲引擎／渲染 | Phaser 3（2.5D 戰鬥場景、鏡頭、特效） |
 | 測試 | Vitest（`pnpm test`，測試在 `src/test/`；Rust 核心用 `pnpm run test:rust`） |
-| 連線 | PeerJS (WebRTC P2P) + 輕量信令伺服器 (`server/`, Node.js) |
+| 連線 | PeerJS (WebRTC P2P) + 輕量信令伺服器 (`server/`, Node.js)；`@noble/hashes`（SHA-256，連線對戰的彈藥承諾 / 揭露） |
 | 核心運算 | Rust → WebAssembly (`crates/tank-core`, `wasm-pack`) |
 | 美術資產管線 | Blender 算繪 (`tools/blender`)、Kenney 烘焙 (`tools/assets/bake_kenney_assets.py`, Pillow)、原創地圖主題與 Q 版坦克/砲彈程式繪製 (`tools/assets/paint_map_themes.mjs`、`tools/assets/paint_units.mjs`, `@resvg/resvg-js` devDependency)、vtracer / magick / svgo / rembg（見 [`docs/04-art-asset-pipeline.md`](./docs/04-art-asset-pipeline.md)） |
 | 素材授權 | Kenney CC0 + 專案原創程式繪製美術（地圖主題、坦克、砲彈；見 `CREDITS.md`） |

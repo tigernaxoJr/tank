@@ -41,6 +41,20 @@ export interface RosterSlot {
   botLevel?: BotLevel
   /** 房間「準備完畢」狀態；房主不需要準備，其餘玩家全部準備後房主才能開戰 */
   ready?: boolean
+  /** 本場帶上場的主彈、副彈（明牌）：單機熱座與電腦使用；連線對戰為了迷霧不會放這裡 */
+  loadout?: BulletType[]
+  /** 連線對戰的彈藥承諾（主彈、副彈兩個葉子雜湊合成的 Merkle 根）；開戰後不可更改，開火時用 `reveal` 證明 */
+  loadoutRoot?: string
+}
+
+/** 開火時對「彈藥承諾」的揭露：只揭露本次使用的那一格，另一格只給葉子雜湊，不洩漏砲彈 */
+export interface LoadoutReveal {
+  /** 0 = 主彈、1 = 副彈 */
+  readonly slot: number
+  /** 該格專屬的隨機鹽（hex） */
+  readonly salt: string
+  /** 另一格的葉子雜湊（hex） */
+  readonly sibling: string
 }
 
 export interface FireActionCommand {
@@ -51,6 +65,8 @@ export interface FireActionCommand {
   readonly power: number
   readonly wind: number
   readonly bulletType: BulletType
+  /** 連線對戰中證明 `bulletType` 屬於開戰前承諾的彈藥；單機與電腦不需要 */
+  readonly reveal?: LoadoutReveal
 }
 
 export interface MoveActionCommand {
@@ -92,6 +108,7 @@ export interface PlayerJoinInfoEvent {
   readonly type: 'PLAYER_JOIN_INFO'
   readonly guestName: string
   readonly tankId: TankArchetypeId
+  readonly loadoutRoot?: string
 }
 
 export interface UpdatePlayerSetupEvent {
@@ -101,6 +118,8 @@ export interface UpdatePlayerSetupEvent {
   readonly tankId: TankArchetypeId
   /** 有帶值才更新準備狀態；換隊 / 換車請求不帶此欄位 */
   readonly ready?: boolean
+  /** 有帶值才更新彈藥承諾（換車或重選彈藥時） */
+  readonly loadoutRoot?: string
 }
 
 export interface LobbyRosterUpdateEvent {

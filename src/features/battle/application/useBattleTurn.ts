@@ -28,6 +28,7 @@ import {
   type BattleState,
   type TankEntity,
 } from '../domain/battleState'
+import { defaultLoadout, verifyReveal } from '../domain/loadout'
 import { MAP_REGISTRY } from '../domain/mapRegistry'
 import { nextWindSpeed } from '../domain/windRules'
 import { PROJECTILE_REGISTRY, type ProjectileBlueprint } from '../domain/projectileRegistry'
@@ -158,6 +159,21 @@ function simulatePellet(
   return hit
 }
 
+/**
+ * 這次開火實際使用的砲彈（兩端確定性一致）：
+ *  - 有承諾（連線真人）：必須附上通過驗證的揭露，否則回傳 null 拒絕開火；
+ *  - 明牌配置（單機、電腦、被接手）：不在配置內就退回主彈；
+ *  - 都沒有：只接受這台坦克的砲彈池，其餘退回預設彈。
+ */
+function resolveBullet(tank: TankEntity, spec: TankBlueprint, cmd: FireActionCommand): BulletType | null {
+  if (tank.loadoutRoot) {
+    const inPool = spec.shots.includes(cmd.bulletType)
+    return inPool && verifyReveal(tank.tankId, tank.loadoutRoot, cmd.bulletType, cmd.reveal) ? cmd.bulletType : null
+  }
+  const allowed = tank.loadout ?? spec.shots
+  return allowed.includes(cmd.bulletType) ? cmd.bulletType : allowed[0]
+}
+
 export function prepareFireTrajectory(
   state: BattleState,
   cmd: FireActionCommand,
@@ -174,13 +190,15 @@ export function prepareFireTrajectory(
   const shooter = state.tanks[cmd.playerId]
   if (!shooter || shooter.hp <= 0) return null
 
+  const shooterSpec = getTankSpec(shooter.tankId)
+  const bulletType = resolveBullet(shooter, shooterSpec, cmd)
+  // 彈藥承諾驗證失敗（偽造或偷換）：兩端都拒絕這次開火，狀態維持不動
+  if (!bulletType) return null
+
   shooter.angle = cmd.angle
   shooter.power = cmd.power
   state.phase = 'FIRING'
 
-  const shooterSpec = getTankSpec(shooter.tankId)
-  // 只接受這台坦克的專屬砲彈，其餘一律退回預設彈（兩端確定性一致）
-  const bulletType = shooterSpec.shots.includes(cmd.bulletType) ? cmd.bulletType : shooterSpec.shots[0]
   const projSpec = PROJECTILE_REGISTRY[bulletType]
 
   const aliveOthers = Object.values(state.tanks).filter((t) => t.id !== shooter.id && t.hp > 0)
@@ -372,6 +390,11 @@ export function takeOverWithBot(state: BattleState, id: PlayerId, level: BotLeve
   if (!tank || tank.hp <= 0 || state.phase === 'GAME_OVER' || tank.isBot) return false
   tank.isBot = true
   tank.botLevel = level
+  // 接手的電腦沒有真人的承諾原文，改用預設的明牌配置（PLAYER_LEFT 兩端都會執行，結果一致）
+  if (tank.loadoutRoot) {
+    delete tank.loadoutRoot
+    tank.loadout = defaultLoadout(tank.tankId)
+  }
   if (!tank.name.startsWith('🤖')) tank.name = `🤖 ${tank.name}`
   return true
 }
