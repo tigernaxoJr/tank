@@ -159,6 +159,7 @@ const {
   isCharging,
   facingLeft,
   elevation,
+  worldElevation,
   holdMove,
   holdAngle,
   onPointerDownPowerGauge,
@@ -174,11 +175,12 @@ const {
   onPass: () => emit('pass'),
 })
 
-// 儀表盤依砲口實際朝向畫：朝左時指針在左半邊
-const dialAngle = computed(() => (facingLeft.value ? 180 - elevation.value : elevation.value))
+// 儀表盤顯示「相對地面」的實際仰角（水平線 = 0°）：朝左時指針在左半邊；砲管可用範圍（灰段）隨車體傾斜一起轉
+const dialAngle = computed(() => (facingLeft.value ? 180 - worldElevation.value : worldElevation.value))
 const dialNeedle = computed(() => dialPoint(dialAngle.value, DIAL_R - 10))
+const tankSlope = computed(() => panelTank.value?.slopeDeg ?? 0)
 const dialSweep = computed(() => {
-  const end = dialPoint(dialAngle.value, DIAL_R)
+  const end = dialPoint(Math.max(0, Math.min(180, dialAngle.value)), DIAL_R)
   const startX = facingLeft.value ? DIAL_CX - DIAL_R : DIAL_CX + DIAL_R
   const sweepFlag = facingLeft.value ? 1 : 0
   return `M ${startX} ${DIAL_CY} A ${DIAL_R} ${DIAL_R} 0 0 ${sweepFlag} ${end.x} ${end.y}`
@@ -383,8 +385,8 @@ onUnmounted(() => {
           <svg viewBox="0 0 24 24" class="h-6 w-6" :class="dir > 0 ? 'scale-x-[-1]' : ''" fill="none" stroke="currentColor" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5 8 12l7 7" /></svg>
         </button>
         <div class="col-start-2 row-start-2 flex flex-col items-center justify-center rounded-full border-[3px] border-ink bg-paper leading-none">
-          <b class="font-num text-base">{{ elevation }}°</b>
-          <svg viewBox="0 0 12 12" class="h-3 w-3" :class="facingLeft ? 'scale-x-[-1]' : ''"><path d="M2 2l6 4-6 4z" fill="var(--color-ink)" /></svg>
+          <b class="font-num text-[13px]" title="相對地面的實際仰角">{{ worldElevation }}°</b>
+          <span class="font-num text-[8px] font-bold text-ink-soft" title="砲管相對車體的角度">車{{ elevation }}</span>
         </div>
         <button
           type="button"
@@ -577,19 +579,23 @@ onUnmounted(() => {
           <div class="cockpit-cell flex items-center gap-2">
             <div class="flex flex-col items-center">
               <svg viewBox="0 0 100 56" class="h-12 w-[5.5rem]">
+                <defs><clipPath id="dial-clip"><rect x="0" y="0" width="100" :height="DIAL_CY + 2" /></clipPath></defs>
                 <path :d="dialTrack" fill="none" stroke="var(--color-ink)" stroke-width="13" stroke-linecap="round" />
                 <path :d="dialTrack" fill="none" stroke="var(--color-paper)" stroke-width="8" stroke-linecap="round" />
                 <path :d="dialSweep" fill="none" stroke="var(--color-sun)" stroke-width="8" stroke-linecap="round" />
-                <path v-for="(d, i) in dialBlocked" :key="i" :d="d" fill="none" stroke="var(--color-ink)" stroke-width="8" stroke-linecap="butt" opacity=".35" />
+                <g :transform="`rotate(${tankSlope} ${DIAL_CX} ${DIAL_CY})`" clip-path="url(#dial-clip)">
+                  <path v-for="(d, i) in dialBlocked" :key="i" :d="d" fill="none" stroke="var(--color-ink)" stroke-width="8" stroke-linecap="butt" opacity=".35" />
+                </g>
                 <line v-for="t in dialTicks" :key="t.deg" :x1="t.a.x" :y1="t.a.y" :x2="t.b.x" :y2="t.b.y" stroke="var(--color-ink)" stroke-width="2" stroke-linecap="round" opacity=".35" />
                 <line :x1="DIAL_CX" :y1="DIAL_CY" :x2="dialNeedle.x" :y2="dialNeedle.y" stroke="var(--color-ink)" stroke-width="4.5" stroke-linecap="round" />
                 <circle :cx="DIAL_CX" :cy="DIAL_CY" r="6" fill="var(--color-coral)" stroke="var(--color-ink)" stroke-width="3" />
               </svg>
               <span class="-mt-0.5 flex items-center gap-1 leading-none">
                 <svg v-if="facingLeft" viewBox="0 0 12 12" class="h-3 w-3"><path d="M10 2 4 6l6 4z" fill="var(--color-ink)" /></svg>
-                <b class="font-num text-xl">{{ elevation }}°</b>
+                <b class="font-num text-xl" title="相對地面（水平線）的實際發射仰角">{{ worldElevation }}°</b>
                 <svg v-if="!facingLeft" viewBox="0 0 12 12" class="h-3 w-3"><path d="M2 2l6 4-6 4z" fill="var(--color-ink)" /></svg>
               </span>
+              <span class="font-num mt-0.5 text-xs font-bold leading-none text-ink-soft" title="砲管相對車體的角度（可用範圍依機種而異）">車體 {{ elevation }}°</span>
             </div>
             <div class="flex flex-col gap-1.5">
               <button

@@ -155,7 +155,10 @@ tank/
      - **多指操作互不干擾**：按住移動、仰角、力道條與發射鈕都只認按下的那根手指（`pointerId`），另一隻手放開不會停止動作或提早開火。手把按鈕一律 `touch-action: none`、禁止長按選單與選字。
      - 版面避開瀏海與圓角（`env(safe-area-inset-*)`，`viewport-fit=cover`）；窄螢幕時記分板下移一列、雷達收成右上角按鈕，點開才顯示。
      - 雷達小地圖可點擊或拖曳移動鏡頭（手指也行）。
-   * **手機只支援橫向**：觸控裝置直拿時（`orientation: portrait` 且 `pointer: coarse`）由 `index.html` 的 `#rotate-hint` 蓋上「請把手機轉成橫向」提示；安裝成 App 時 manifest `orientation: landscape`，全螢幕下也嘗試 `screen.orientation.lock('landscape')`。新的手機版面只需要設計橫向。
+   * **戰場鏡頭依畫面高度縮放（2026-10-23）**：畫面高度低於 `VIEW_TARGET_H`（640 px）時，`BattleScene.layoutBackdrop` 把主鏡頭拉遠（`zoom = clamp(高度 / 640, MIN_ZOOM 0.5, 1)`），手機橫拿看到的範圍約是 1:1 的 1.8 倍；桌面與平板（高度 ≥ 640）維持 1:1、不放大。注意事項：① 背景（天空、太陽、三層視差）是 `scrollFactor 0`，鏡頭縮放會連它們一起縮，所以以 `backdropX/Y` 反向放大並以畫面中心換算位置；② `BattleCameraManager.notifyMoved` 回報的是世界座標中實際看得到的矩形（寬高 = 畫布 / zoom），雷達視野框依此畫；③ 拖曳鏡頭的位移除以 zoom；④ 追焦時坦克略低於視野中心 0.08 個視野高（以縮放後視野高換算）。
+   * **手機底部資訊列壓成單行**：矮螢幕（高度 ≤ 420px）中間的狀態面板只留血量 / 燃料小條、我的 / 回合切換、力道條與數值（隱藏頭像與車名），半透明，避免遮住戰場。
+   * **仰角顯示相對地面**：儀表盤與方向鍵中央的主要數字是「對地」仰角（水平線 = 0°，可為負），副數字是砲管相對車體的角度；儀表盤上機種打不出去的角度段（灰色）隨車體傾斜一起轉。規則見 `docs/06` §三之五.6。
+   * **手機只支援橫向**：觸控裝置直拿時（`orientation: portrait` 且 `pointer: coarse`）由 `index.html` 的 `#rotate-hint` 蓋上「請把手機轉成橫向」提示；manifest **不宣告** `orientation`（Android WebAPK 直拿時被強制橫向啟動會卡住、點桌面圖示沒反應），改在安裝成 App（standalone / fullscreen）啟動後由 `main.ts` 呼叫 `screen.orientation.lock('landscape')`，直拿時由提示畫面處理。新的手機版面只需要設計橫向。
 6. **PWA（可安裝、離線）**：
    * `vite-plugin-pwa`（`vite.config.ts`）產生 manifest 與 Workbox service worker：`display: fullscreen`、`orientation: landscape`、`registerType: autoUpdate`（`main.ts` 的 `registerSW`），程式與 `public/` 素材全部預先快取，單機練習可離線玩；連線對戰仍需網路。
    * **圖示與啟動畫面**由 `tools/assets/paint_pwa.mjs`（`pnpm run paint:pwa`）用原創卡通粗描邊美術繪製到 `public/icons/`：一般圖示（圓角框、透明角）、maskable 圖示（滿版，主體在中央 80% 安全區）、`apple-touch-icon`、`favicon.svg`，以及 iOS `apple-touch-startup-image`（**只有橫向**，常見 iPhone / iPad 尺寸，在 `index.html` 以 media query 對應）。改圖要改腳本重畫，不要手改 PNG。

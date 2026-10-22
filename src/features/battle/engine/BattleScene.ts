@@ -48,6 +48,9 @@ const BACKDROP_FILES = ['clouds_far', 'mountains', 'hills_far', 'hills_near'] as
 const COMMON_PROPS = ['crateWood', 'crateAmmo', 'barrelRed', 'barrelGrey'] as const
 /** 瞄準預覽只畫出彈道前段，保留判斷落點的技術含量（偵察狀態下畫完整彈道） */
 const AIM_PREVIEW_STEPS = 60
+/** 戰場鏡頭縮放：畫面高度低於 VIEW_TARGET_H 時拉遠（手機橫拿），最遠縮到 MIN_ZOOM；高度足夠就維持 1:1 */
+const VIEW_TARGET_H = 640
+const MIN_ZOOM = 0.5
 /** 坦克車身底部相對容器原點的位移（容器原點 = 地表上方 TANK_GROUND_OFFSET） */
 const HULL_BASE_Y = 14
 
@@ -269,8 +272,9 @@ export class BattleScene extends Phaser.Scene {
     } else if (!this.cameraManager.manualCamera && this.battleState.phase === 'AIMING') {
       const active = this.battleState.tanks[this.battleState.activePlayer]
       if (active) {
+        // 坦克略低於視野中心（0.08 個視野高）；縮放後視野高 = 畫布高 / zoom
         const targetX = active.x - cam.width / 2
-        const targetY = active.y - cam.height * 0.58
+        const targetY = active.y - cam.height / 2 - (0.08 * cam.height) / cam.zoom
         cam.scrollX += (targetX - cam.scrollX) * 0.1
         cam.scrollY += (targetY - cam.scrollY) * 0.1
         this.cameraManager.notifyMoved()
@@ -282,26 +286,43 @@ export class BattleScene extends Phaser.Scene {
     for (const layer of this.layers) {
       const drift = layer.file === 'clouds_far' ? this.cloudDrift : 0
       layer.tile.tilePositionX = cam.scrollX * layer.factorX - drift
-      layer.tile.y = layer.baseY - cam.scrollY * layer.factorY
-      layer.fill.y = layer.tile.y + 399
+      layer.tile.y = this.backdropY(layer.baseY - cam.scrollY * layer.factorY)
+      layer.fill.y = layer.tile.y + 399 / cam.zoom
     }
 
     this.syncTanksVisuals(time)
     this.drawAimPreview()
-    this.onCameraMoved?.(cam.scrollX, cam.scrollY, cam.width, cam.height)
+    this.cameraManager.notifyMoved()
   }
 
   /** 畫布尺寸隨視窗改變 (Scale.RESIZE)，背景圖層跟著撐滿寬高 */
   private layoutBackdrop(): void {
     const { width, height } = this.scale
-    this.sky.setDisplaySize(width, height)
+    // 手機畫面矮：鏡頭拉遠，讓視野高度約 VIEW_TARGET_H 個世界 px（桌面維持 1:1，不放大）
+    const zoom = Math.max(MIN_ZOOM, Math.min(1, height / VIEW_TARGET_H))
+    this.cameras.main.setZoom(zoom)
+    // 背景全部固定在螢幕座標（scrollFactor 0），但鏡頭縮放會連它們一起縮：反向放大並以畫面中心換算位置，視覺上維持不縮
+    const inv = 1 / zoom
+    this.sky.setDisplaySize(width * inv, height * inv).setPosition(this.backdropX(0), this.backdropY(0))
     const mapId = this.battleState?.mapId
     const celestial = THEME_REGISTRY[(mapId && MAP_REGISTRY[mapId]?.theme) || 'harvest_farm'].celestial
-    this.sun.setPosition(width * celestial.x, celestial.y)
+    this.sun.setPosition(this.backdropX(width * celestial.x), this.backdropY(celestial.y)).setScale((celestial.kind === 'sun' ? 1.3 : 1) * inv)
     for (const layer of this.layers) {
-      layer.tile.setSize(width, layer.file === 'clouds_far' ? 220 : 400)
-      layer.fill.setSize(width, height)
+      layer.tile.setSize(width, layer.file === 'clouds_far' ? 220 : 400).setScale(inv).setX(this.backdropX(0))
+      layer.fill.setSize(width, height).setScale(inv).setX(this.backdropX(0))
     }
+    this.cameraManager?.notifyMoved()
+  }
+
+  /** 螢幕座標 → 鏡頭縮放後仍顯示在原位的物件座標（只適用 scrollFactor 0 的背景） */
+  private backdropX(x: number): number {
+    const cx = this.scale.width / 2
+    return cx + (x - cx) / this.cameras.main.zoom
+  }
+
+  private backdropY(y: number): number {
+    const cy = this.scale.height / 2
+    return cy + (y - cy) / this.cameras.main.zoom
   }
 
   private readPixels(key: string): Uint8ClampedArray | null {
@@ -354,7 +375,7 @@ export class BattleScene extends Phaser.Scene {
     }
     const celestial = THEME_REGISTRY[mapSpec.theme].celestial
     this.sun.setVisible(celestial.kind !== 'none')
-    if (celestial.kind !== 'none') this.sun.setTexture(celestial.kind).setScale(celestial.kind === 'sun' ? 1.3 : 1)
+    if (celestial.kind !== 'none') this.sun.setTexture(celestial.kind)
     this.layoutBackdrop()
     this.rebuildAbyss(mapSpec, worldW, worldH)
 

@@ -6,7 +6,7 @@ import {
   ref,
   type ComputedRef,
 } from 'vue'
-import { quantizePower, type TankEntity } from '../../domain/battleState'
+import { quantizePower, worldAimAngle, type TankEntity } from '../../domain/battleState'
 import { clampAim, getTankSpec } from '../../domain/tankRegistry'
 import type { ProjectileBlueprint } from '../../domain/projectileRegistry'
 import type { BulletType } from '@/shared/kernel/types'
@@ -45,6 +45,14 @@ export function useBattleInput(ctx: BattleInputContext) {
   const elevation = computed(() => {
     const a = ctx.activeTank.value?.angle ?? 45
     return a > 90 ? 180 - a : a
+  })
+
+  /** 相對地面（水平線）的實際發射仰角：車體傾斜時與 elevation 不同，可為負（砲口朝下） */
+  const worldElevation = computed(() => {
+    const tank = ctx.activeTank.value
+    if (!tank) return 45
+    const world = worldAimAngle(tank.angle, tank.slopeDeg)
+    return Math.round(world > 90 ? 180 - world : world)
   })
 
   /** delta 為仰角變化（+ 抬高、- 壓低），朝左時換算成相反方向的角度變化 */
@@ -277,6 +285,7 @@ export function useBattleInput(ctx: BattleInputContext) {
     isCharging,
     facingLeft,
     elevation,
+    worldElevation,
     adjustAngle,
     turnToward,
     handleMove,

@@ -45,8 +45,8 @@ export class BattleCameraManager {
 
     input.on('pointermove', (pointer: Phaser.Input.Pointer) => {
       if (!this.isDragging) return
-      const dx = (pointer.x - this.dragStartX) * 1.35
-      const dy = (pointer.y - this.dragStartY) * 1.35
+      const dx = ((pointer.x - this.dragStartX) * 1.35) / this.cam.zoom
+      const dy = ((pointer.y - this.dragStartY) * 1.35) / this.cam.zoom
       this.cam.scrollX = this.camStartX - dx
       this.cam.scrollY = this.camStartY - dy
       this.notifyMoved()
@@ -86,11 +86,15 @@ export class BattleCameraManager {
   }
 
   notifyMoved(): void {
+    // 回報世界座標中實際看得到的矩形（縮放後視野比畫布大）；scroll 是以鏡頭中心換算的
+    const z = this.cam.zoom
+    const viewW = this.cam.width / z
+    const viewH = this.cam.height / z
     this.onCameraMoved?.(
-      this.cam.scrollX,
-      this.cam.scrollY,
-      this.cam.width,
-      this.cam.height,
+      this.cam.scrollX + (this.cam.width - viewW) / 2,
+      this.cam.scrollY + (this.cam.height - viewH) / 2,
+      viewW,
+      viewH,
     )
   }
 
