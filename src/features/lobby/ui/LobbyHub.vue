@@ -107,8 +107,8 @@ function tap(fn: () => void): void {
       </div>
       <button
         type="button"
-        title="作戰指南"
-        aria-label="作戰指南"
+        title="作戰手冊"
+        aria-label="作戰手冊"
         class="toon-btn toon-btn--sky h-11 w-11 rounded-full p-0 text-xl"
         @click="tap(() => emit('guide'))"
       >

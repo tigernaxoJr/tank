@@ -1,4 +1,8 @@
 <script setup lang="ts">
+/**
+ * 地圖圖庫：地圖卡「全部地圖」打開的彈窗。卡通粗描邊風格，與地圖卡（MapPickerCard）同一套縮圖與標籤；
+ * z-50，疊在開房彈窗（z-40）之上。
+ */
 import { onMounted, onUnmounted } from 'vue'
 import {
   MAP_LIST,
@@ -7,6 +11,7 @@ import {
 } from '@/features/battle'
 import { soundController } from '@/features/audio'
 import type { MapPresetId } from '@/shared/kernel/types'
+import { splitDisplayName } from './displayNames'
 
 const props = defineProps<{
   open: boolean
@@ -43,106 +48,65 @@ onUnmounted(() => {
   <Teleport to="body">
     <div
       v-if="open"
-      class="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6 bg-slate-950/80 backdrop-blur-md animate-fade-in"
+      class="fixed inset-0 z-50 flex items-center justify-center bg-ink/50 p-4 font-toon text-ink sm:p-6"
       @click.self="emit('close')"
     >
-      <div
-        class="relative flex max-h-[90vh] w-full max-w-5xl flex-col rounded-3xl border-2 border-amber-400/50 bg-slate-900/95 p-6 shadow-[0_0_50px_rgba(245,158,11,0.25)] text-slate-100 overflow-hidden"
-      >
-        <!-- Modal 頂部標題列 -->
-        <div class="flex items-center justify-between border-b border-slate-700/80 pb-4">
-          <div class="flex items-center gap-3">
-            <span class="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-amber-400 to-orange-500 text-slate-950 shadow-lg text-xl font-black">
-              🗺️
-            </span>
-            <div>
-              <h2 class="text-lg font-black tracking-wide text-white drop-shadow">
-                作戰空域與地形圖庫 (STAGE SELECT)
-              </h2>
-              <p class="text-xs text-amber-300/80">
-                點擊任一空島或峽谷戰場即可指派為本次對戰舞台
-              </p>
-            </div>
-          </div>
+      <div class="toon-panel pop relative flex max-h-[calc(100dvh-2rem)] w-full max-w-5xl flex-col p-5 pt-8">
+        <span class="toon-ribbon absolute -top-5 left-1/2 -translate-x-1/2 px-6 text-xl" style="background: var(--color-grass); color: var(--color-ink); text-shadow: none">
+          全部地圖
+        </span>
+        <button
+          type="button"
+          aria-label="關閉圖庫"
+          class="toon-btn absolute right-3 top-3 h-9 w-9 rounded-full p-0"
+          @click="emit('close')"
+        >
+          <svg viewBox="0 0 24 24" class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="3.5" stroke-linecap="round">
+            <path d="M6 6l12 12M18 6 6 18" />
+          </svg>
+        </button>
+        <p class="text-center text-sm text-ink-soft">點一張地圖就會換成這個戰場</p>
 
+        <!-- 地圖卡片網格 -->
+        <div class="mt-3 grid min-h-0 grid-cols-1 gap-4 overflow-y-auto overflow-x-hidden p-2 pb-3 sm:grid-cols-2 lg:grid-cols-4">
           <button
-            type="button"
-            class="flex h-9 w-9 items-center justify-center rounded-xl border border-slate-700/80 bg-slate-800/80 text-slate-300 hover:border-rose-400 hover:bg-rose-500/20 hover:text-white transition cursor-pointer"
-            @click="emit('close')"
-          >
-            ✕
-          </button>
-        </div>
-
-        <!-- 8 張地圖網格 (3 或 4 欄，遊戲卡片式呈現) -->
-        <div class="mt-4 grid grid-cols-1 gap-3.5 sm:grid-cols-2 lg:grid-cols-4 overflow-y-auto pr-1 py-1">
-          <button
-            v-for="m in MAP_LIST"
+            v-for="(m, i) in MAP_LIST"
             :key="m.id"
             type="button"
-            class="group relative flex flex-col overflow-hidden rounded-2xl border-2 text-left transition-all duration-200 cursor-pointer"
-            :class="
-              selectedMapId === m.id
-                ? 'border-amber-400 bg-slate-800 shadow-[0_0_20px_rgba(251,191,36,0.35)] scale-[1.02] ring-2 ring-amber-400/40'
-                : 'border-slate-700/70 bg-slate-800/60 hover:border-sky-400 hover:bg-slate-800/90 hover:scale-[1.01]'
-            "
+            class="map-tile group flex flex-col text-left"
+            :aria-pressed="selectedMapId === m.id"
             @click="onSelect(m)"
           >
-            <!-- 當前選中角標 -->
-            <div
-              v-if="selectedMapId === m.id"
-              class="absolute top-2 right-2 z-10 rounded-full bg-amber-400 px-2 py-0.5 text-[10px] font-black text-slate-950 shadow"
-            >
-              ✓ 選擇中
-            </div>
-
-            <!-- 地圖縮圖即時渲染 -->
-            <div class="relative h-28 w-full overflow-hidden bg-slate-950">
+            <div class="relative overflow-hidden rounded-[13px] border-b-[3px] border-ink bg-mist">
               <img
                 :src="renderMapPreview(m, 280, 140)"
                 :alt="m.name"
-                class="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
+                class="aspect-[5/2] w-full object-cover transition-transform duration-300 group-hover:scale-105"
               />
-              <div class="absolute inset-x-0 bottom-0 h-10 bg-gradient-to-t from-slate-900 to-transparent" />
-              <!-- 風速標籤 -->
-              <span class="absolute bottom-2 left-2 rounded-md bg-slate-950/80 px-2 py-0.5 font-mono text-[10px] font-bold text-sky-300 border border-sky-400/30 backdrop-blur-sm">
-                💨 風速 ≤ {{ m.maxWind }}
+              <span class="font-num toon-pill absolute left-2 top-2 bg-paper text-xs font-extrabold">{{ i + 1 }}</span>
+              <span class="toon-pill absolute right-2 top-2 bg-paper text-xs">風 ≤ <b class="font-num">{{ m.maxWind }}</b></span>
+              <span
+                v-if="selectedMapId === m.id"
+                class="toon-pill absolute bottom-2 left-2 bg-sun text-xs shadow-[0_2px_0_var(--color-ink)]"
+              >
+                <svg viewBox="0 0 12 12" class="h-3 w-3" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m2.5 6.5 2.5 2.5 4.5-6" /></svg>
+                使用中
               </span>
             </div>
-
-            <!-- 地圖內容資訊 -->
-            <div class="flex flex-1 flex-col justify-between p-3 space-y-1.5">
-              <div>
-                <div class="flex items-center justify-between gap-1">
-                  <h3 class="truncate text-xs font-black text-white group-hover:text-amber-300 transition">
-                    {{ m.name }}
-                  </h3>
-                </div>
-                <div class="mt-0.5 text-[10px] font-bold text-amber-400/90">
-                  {{ m.badge }}
-                </div>
-                <p class="mt-1 line-clamp-2 text-[10px] text-slate-300 leading-relaxed">
-                  {{ m.description }}
-                </p>
+            <div class="flex flex-1 flex-col gap-1 px-3 pb-3 pt-2">
+              <div class="min-w-0 leading-tight">
+                <div class="truncate text-lg">{{ splitDisplayName(m.name).zh }}</div>
+                <div class="font-num truncate text-sm font-bold text-ink-soft">{{ splitDisplayName(m.name).en }}</div>
               </div>
-
-              <div class="pt-1 border-t border-slate-700/50 flex items-center justify-between text-[9px] text-slate-400 font-mono">
-                <span>尺寸: {{ m.width }}×{{ m.height }}</span>
-                <span class="text-amber-400 group-hover:underline">確認指派 ➔</span>
-              </div>
+              <span v-if="m.badge" class="truncate text-xs text-ink-soft" :title="m.badge">{{ m.badge }}</span>
+              <p class="line-clamp-2 text-sm leading-snug text-ink-soft">{{ m.description }}</p>
             </div>
           </button>
         </div>
 
-        <!-- 底部快速提示 -->
-        <div class="mt-4 flex items-center justify-between border-t border-slate-700/80 pt-3 text-[11px] text-slate-400">
-          <span>💡 提示：點擊任何地圖即可立即套用，戰場背景將隨之切換</span>
-          <button
-            type="button"
-            class="rounded-xl border border-slate-700 bg-slate-800/80 px-4 py-1.5 font-bold text-slate-200 hover:bg-slate-700 transition cursor-pointer"
-            @click="emit('close')"
-          >
-            關閉圖庫 (Esc)
+        <div class="mt-3 flex justify-end">
+          <button type="button" class="toon-btn rounded-xl px-4 py-1.5 text-base" @click="emit('close')">
+            關閉 <kbd>Esc</kbd>
           </button>
         </div>
       </div>
@@ -151,17 +115,46 @@ onUnmounted(() => {
 </template>
 
 <style scoped>
-@keyframes fadeIn {
-  from {
-    opacity: 0;
-    transform: scale(0.98);
-  }
-  to {
-    opacity: 1;
-    transform: scale(1);
-  }
+.pop {
+  animation: pop 0.18s cubic-bezier(0.2, 1.4, 0.4, 1);
 }
-.animate-fade-in {
-  animation: fadeIn 0.15s cubic-bezier(0.16, 1, 0.3, 1);
+@keyframes pop {
+  from { transform: scale(0.9); opacity: 0; }
+  to { transform: scale(1); opacity: 1; }
+}
+
+.map-tile {
+  border: 3px solid var(--color-ink);
+  border-radius: 18px;
+  background: var(--color-paper);
+  box-shadow: 0 4px 0 var(--color-ink);
+  cursor: pointer;
+  transition: transform 0.12s ease, box-shadow 0.12s ease;
+}
+.map-tile:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 7px 0 var(--color-ink);
+}
+.map-tile:active {
+  transform: translateY(3px);
+  box-shadow: 0 1px 0 var(--color-ink);
+}
+.map-tile[aria-pressed='true'] {
+  background: #fffbe0;
+  box-shadow: 0 0 0 4px var(--color-sun), 0 4px 0 4px var(--color-ink);
+}
+
+kbd {
+  display: inline-flex;
+  min-width: 1.6rem;
+  justify-content: center;
+  padding: 0 0.35rem;
+  border: 2px solid var(--color-ink);
+  border-radius: 7px;
+  background: var(--color-cream);
+  box-shadow: 0 2px 0 var(--color-ink);
+  font-family: var(--font-num);
+  font-size: 0.8rem;
+  line-height: 1.4;
 }
 </style>
