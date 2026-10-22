@@ -168,5 +168,7 @@ tank/
 | 2026-10-22 | 型別檢查 | `npx vue-tsc -b` | ✅ 通過 | 疾風電漿彈調整後（見下列平衡列） |
 | 2026-10-22 | 前端 + server 單元測試 | `pnpm test` | ✅ Vitest 42 / 42、server node:test 4 / 4 | 疾風電漿彈調整後，未 commit |
 | 2026-10-22 | Rust 核心 | `cargo test --manifest-path crates/tank-core/Cargo.toml` | ✅ 9 + 1 通過 | 最近一次執行（調整前）；Rust 未變動 |
-| 2026-10-22 | 平衡模擬（σ = 25 / 45 / 70 px） | `node tools/balance/duel_sim.mjs` | ✅ 各配對在 40%~59%；疾風 σ=70 時改選電漿彈，對 goliath 為 42% | 疾風電漿彈傷害半徑 30→40、吸附 26→22（`projectileRegistry.ts` 與 `duel_sim.mjs` 同步）；未 commit |
+| 2026-10-22 | 平衡模擬（σ = 25 / 45 / 70 px） | `node tools/balance/duel_sim.mjs` | ✅ 各配對在 40%~59%；疾風 σ=70 時改選電漿彈，對 goliath 為 42% | 疾風電漿彈傷害半徑 30→40、吸附 26→22（`projectileRegistry.ts` 與 `duel_sim.mjs` 同步）；未 commit。**註：此列的選彈結果已被下列確定性版本取代（當時仍為取樣選彈）** |
+| 2026-10-22 | 平衡模擬（確定性版本，σ = 25 / 45 / 70 px，種子 20261022，每組 20000 場） | `node tools/balance/duel_sim.mjs` | ✅ 各配對在 41%~59%；三種精度都選 RAILGUN（疾風），無翻面；連跑兩次輸出逐字相同 | 改為固定種子 PRNG、選彈用期望傷害的確定性積分；未 commit |
+| 2026-10-22 | 平衡模擬（加入 σ = 5 px 近似精準，參考用） | `node tools/balance/duel_sim.mjs` | ✅ 執行成功；σ=25 / 45 / 70 仍在 41%~59%；σ=5 為 0% / 100%（aegis 對所有對手 0%，疾風對 aegis 與 goliath 100%） | 不納入 40%~60% 目標，待決定是否調整數值；未 commit |
 | 2026-10-22 | CI（main，commit `9c5da5b`） | GitHub Actions `Deploy to GitHub Pages` | ✅ 成功（含 `pnpm test`、型別檢查、建置、部署） | run [39736386678](https://github.com/tigernaxoJr/tank/actions/runs/39736386678) |
