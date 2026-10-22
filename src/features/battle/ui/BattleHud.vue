@@ -26,6 +26,8 @@ interface Props {
   roomLabel?: string
   /** 回合剩餘秒數；電腦回合為 null（不顯示） */
   turnSecondsLeft?: number | null
+  /** 每回合總秒數（倒數條比例用） */
+  turnTotalSeconds?: number
 }
 
 const props = defineProps<Props>()
@@ -166,15 +168,25 @@ const lastFiredPower = computed(() => lastFiredPowerByPlayer[props.state.activeP
             <span class="rounded-full bg-teal-600 px-2 py-0.5 font-mono text-[11px] font-black text-white">TURN {{ state.turnId }}</span>
             <span
               v-if="turnSecondsLeft != null && state.phase === 'AIMING'"
-              class="rounded-full border-2 px-2 py-0.5 font-mono text-[11px] font-black"
-              :class="turnSecondsLeft <= 3 ? 'animate-pulse border-rose-500 bg-rose-500 text-white' : 'border-emerald-500/60 bg-emerald-100 text-emerald-800'"
-              :title="turnSecondsLeft <= 3 ? '時間快到了！時間歸零將自動 PASS' : '回合剩餘時間（預設 10 秒）'"
+              class="rounded-full border-2 px-2 py-0.5 font-mono font-black"
+              :class="[canControl ? 'text-base' : 'text-[11px]', turnSecondsLeft <= 3 ? 'animate-pulse border-rose-500 bg-rose-500 text-white' : 'border-emerald-500/60 bg-emerald-100 text-emerald-800']"
+              :title="turnSecondsLeft <= 3 ? '時間快到了！時間歸零將自動 PASS' : '回合剩餘時間'"
             >
               ⏱ {{ String(turnSecondsLeft).padStart(2, '0') }}
             </span>
             <span v-if="activeTank" class="text-xs font-extrabold" :class="activeTank.team === 'A' ? 'text-amber-700' : 'text-sky-700'">
               {{ state.phase === 'FIRING' ? '🚀 砲彈飛行中...' : isBotTurn ? `${activeTank.name} 瞄準中...` : `${activeTank.name} 行動` }}
             </span>
+          </div>
+          <div
+            v-if="canControl && turnSecondsLeft != null && state.phase === 'AIMING'"
+            class="h-2 w-full overflow-hidden rounded-full border-2 border-emerald-500/50 bg-emerald-100"
+          >
+            <div
+              class="h-full rounded-full transition-all duration-300"
+              :class="turnSecondsLeft <= 3 ? 'bg-rose-500' : turnSecondsLeft <= 7 ? 'bg-amber-400' : 'bg-emerald-500'"
+              :style="{ width: `${Math.min(100, (turnSecondsLeft / (turnTotalSeconds ?? 15)) * 100)}%` }"
+            />
           </div>
           <div class="flex items-center gap-2">
             <span class="text-[11px] font-black text-teal-800">風</span>

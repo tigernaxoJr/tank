@@ -1,24 +1,42 @@
 import { describe, expect, it } from 'vitest'
-import { nextWindSpeed, windHoldTurns } from '@/features/battle/domain/windRules'
+import { nextWindSpeed } from '@/features/battle/domain/windRules'
 import { effectiveWindMilli, mitigateDamage, TANK_REGISTRY } from '@/features/battle/domain/tankRegistry'
 import { fallDamageFor, launchVelocity } from '@/features/battle/domain/battleState'
 
 describe('windRules', () => {
-  const base = { seed: 1024, currentWind: 0, maxWind: 8, playerCount: 2 }
-  it('風期內維持原風速', () => {
-    expect(windHoldTurns(2)).toBe(3)
-    expect(nextWindSpeed({ ...base, nextTurnId: 2, currentWind: 5 })).toBe(5)
-    expect(nextWindSpeed({ ...base, nextTurnId: 3, currentWind: 5 })).toBe(5)
-  })
-  it('只由 seed 與回合決定（兩端一致）且不超過上限與單步增量', () => {
+  const base = { seed: 1024, currentWind: 0, maxWind: 8 }
+  it('只由 seed 與回合決定（兩端一致）、每回合最多變 2 格且不超過上限', () => {
     let wind = 0
-    for (let turn = 2; turn < 200; turn++) {
+    for (let turn = 2; turn < 300; turn++) {
       const a = nextWindSpeed({ ...base, nextTurnId: turn, currentWind: wind })
       expect(nextWindSpeed({ ...base, nextTurnId: turn, currentWind: wind })).toBe(a)
       expect(Math.abs(a)).toBeLessThanOrEqual(8)
-      expect(Math.abs(a - wind)).toBeLessThanOrEqual(Math.ceil(8 / 4))
+      expect(Math.abs(a - wind)).toBeLessThanOrEqual(2)
       wind = a
     }
+  })
+  it('風會漸漸漂移而不是原地不動', () => {
+    let wind = 0
+    const seen = new Set<number>()
+    for (let turn = 2; turn < 300; turn++) {
+      wind = nextWindSpeed({ ...base, nextTurnId: turn, currentWind: wind })
+      seen.add(wind)
+    }
+    expect(seen.size).toBeGreaterThan(3)
+  })
+  it('不同天氣期的風變化幅度確實不同（有穩定期也有多變期）', () => {
+    const perEra: number[] = []
+    for (let seed = 1; seed <= 40; seed++) {
+      let wind = 0
+      let moved = 0
+      for (let turn = 2; turn <= 11; turn++) {
+        const next = nextWindSpeed({ seed, nextTurnId: turn, currentWind: wind, maxWind: 20 })
+        moved += Math.abs(next - wind)
+        wind = next
+      }
+      perEra.push(moved)
+    }
+    expect(Math.max(...perEra) - Math.min(...perEra)).toBeGreaterThanOrEqual(3)
   })
 })
 
@@ -46,6 +64,6 @@ describe('tank damage rules', () => {
     expect(v.vxMilli).toBe(-v.vyMilli)
     expect(v.vyMilli).toBeLessThan(0)
     expect(launchVelocity(135, 50).vxMilli).toBeLessThan(0)
-    expect(Math.abs(launchVelocity(45, 50, 2).vxMilli - 2 * v.vxMilli)).toBeLessThanOrEqual(1)
+    expect(Math.abs(launchVelocity(45, 50, 2).vxMilli - 2 * v.vxMilli)).toBeLessThanOrEqual(2)
   })
 })

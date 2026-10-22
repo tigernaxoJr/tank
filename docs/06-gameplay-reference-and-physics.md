@@ -210,7 +210,7 @@
 
 ### 1. 砲彈吸附與直擊加成
 - `ProjectileBlueprint.magnetRadius`（px）與 `directHitMultiplier`；`prepareFireTrajectory` 中，砲彈進入**任何存活的非射手坦克**（含隊友，**友傷是刻意的技術風險**）吸附範圍且路徑無地形遮擋（`hasClearLine`），
-  後段彈道以 6 步彎向坦克中心並判定直接命中；進入坦克本體碰撞半徑（22 px）直接命中。`magnetRadius: 0` 為「純技術彈」。
+  後段彈道以 6 步彎向坦克中心並判定直接命中；進入坦克本體碰撞半徑（18 px）直接命中。`magnetRadius: 0` 為「純技術彈」。
 - **設計原則：威力越大、導引越少**。吸附把「落點衰減」壓平成全額傷害，所以它等於控制力折價；高單發威力的砲彈吸附半徑要接近 0。
 - 現況：標準彈 30 px、重型彈 22 px、電漿彈 22 px（與碰撞半徑相同，等於只保留直擊，無超出碰撞半徑的導引；`damageRadius` 40、`terrainRadius` 30，為平衡調整後的數值，見 §三之一的平衡紀錄）、穿甲狙擊彈 `MISSILE_RAILGUN` 0（不導引，`maxDamage` 75、`damageRadius` 18、`terrainRadius` 8，無精靈圖時畫發光核心）。
   `directHitMultiplier` 目前皆為 1，保留作為日後調整旋鈕。

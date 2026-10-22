@@ -9,7 +9,7 @@ export default defineProjectile({
   damageRadius: 40,
   terrainRadius: 30,
   maxDamage: 52,
-  magnetRadius: 22,
+  magnetRadius: 20,
   directHitMultiplier: 1,
   speedMultiplier: 1,
   // 特殊彈：能量彈受重力較小，彈道刻意比一般彈平直

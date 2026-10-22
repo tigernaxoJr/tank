@@ -88,7 +88,7 @@ const bulletType = computed<BulletType>(() => {
 })
 
 // --- 回合倒數：輪到真人時開始計時，歸零就跳過回合（走一般 PASS 流程，P2P 會同步廣播） ---
-const TURN_TIME_SEC = 10
+const TURN_TIME_SEC = 15
 const turnSecondsLeft = ref(TURN_TIME_SEC)
 let turnDeadline = Date.now() + TURN_TIME_SEC * 1000
 const turnClock = setInterval(() => {
@@ -556,6 +556,7 @@ defineExpose({
         :is-muted="isMuted"
         :sync-status="syncStatus"
         :turn-seconds-left="isBotTurn ? null : turnSecondsLeft"
+        :turn-total-seconds="TURN_TIME_SEC"
         @move="handleMove"
         @update-aim="handleUpdateAim"
         @change-bullet="(b) => (bulletChoice[state.activePlayer] = b)"

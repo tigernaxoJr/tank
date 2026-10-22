@@ -89,7 +89,7 @@ export function syncAllTanksToTerrain(state: BattleState, core: TankCorePort): v
  * 第一階段：計算確定性彈道並將狀態切為 'FIRING'，此時尚未挖坑或扣血（等待砲彈飛抵目標）
  */
 /** 砲彈吸附：吸附半徑與直擊倍率由各砲彈 blueprint 決定；此為坦克本體碰撞半徑與吸附彎折步數 */
-const TANK_HIT_RADIUS_PX = 22
+const TANK_HIT_RADIUS_PX = 18
 const MAGNET_PULL_STEPS = 6
 
 /** 兩點間是否沒有地形遮擋（每 3px 取樣，略過終點附近 8px 以免誤判坦克所貼的地面） */
@@ -299,7 +299,6 @@ export function finalizeTurnAfterHold(state: BattleState): void {
     nextTurnId: state.turnId + 1,
     currentWind: state.wind,
     maxWind,
-    playerCount: state.turnOrder.length,
   })
   advanceTurn(state, nextWind)
 }

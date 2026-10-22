@@ -9,7 +9,7 @@ export default defineProjectile({
   damageRadius: 40,
   terrainRadius: 40,
   maxDamage: 34,
-  magnetRadius: 30,
+  magnetRadius: 24,
   directHitMultiplier: 1,
   speedMultiplier: 1,
   gravityMilli: STANDARD_GRAVITY_MILLI,
