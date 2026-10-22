@@ -18,7 +18,7 @@ import {
 import { PROJECTILE_REGISTRY } from './projectileRegistry'
 import { availableShots } from './loadout'
 import { traceShell } from './shellFlight'
-import { effectiveWindMilli, getTankSpec } from './tankRegistry'
+import { clampAim, effectiveWindMilli, getTankSpec } from './tankRegistry'
 
 export interface BotShotPlan {
   readonly targetId: PlayerId
@@ -137,7 +137,9 @@ export function planBotShot(
     score += power * 0.01
     if (!found.best || score < found.best.score) found.best = { angle, power, score }
   }
-  for (let elev = 20; elev <= 84; elev += 4) {
+  // 只搜尋這台車打得出去的仰角（世界仰角 = 相對仰角 - 坡度的方向；粗搜以相對仰角為準）
+  const botSpec = getTankSpec(bot.tankId)
+  for (let elev = Math.max(20, botSpec.aimMinDeg); elev <= Math.min(84, botSpec.aimMaxDeg); elev += 4) {
     for (let power = 18; power <= 100; power += 2) consider(facingRight ? elev : 180 - elev, power)
   }
   const level = BOT_LEVEL_SPECS[bot.botLevel ?? 'hard']
@@ -157,7 +159,8 @@ export function planBotShot(
   const jitter = (range: number) => Math.round((random() * 2 - 1) * range)
   return {
     targetId: target.id,
-    angle: Math.max(15, Math.min(165, aim.angle + jitter(level.angle))),
+    // 搜尋用的是世界角度；換回相對車體的砲管角（車體傾斜時兩者不同）
+    angle: clampAim(botSpec, aim.angle + bot.slopeDeg + jitter(level.angle)),
     power: quantizePower(Math.max(10, Math.min(100, aim.power + jitter(level.power)))),
     bulletType,
     score: aim.score,

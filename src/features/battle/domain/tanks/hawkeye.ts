@@ -13,6 +13,8 @@ export default defineTank({
   damageMultiplier: 1,
   climbPerPx: 3,
   fallSafePx: 30,
+  aimMinDeg: 8,
+  aimMaxDeg: 55,
   windSensitivity: 0.7,
   armor: 0,
   shield: 0,

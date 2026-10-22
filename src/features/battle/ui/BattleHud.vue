@@ -139,6 +139,18 @@ function dialPoint(deg: number, r: number) {
   return { x: DIAL_CX + Math.cos(rad) * r, y: DIAL_CY - Math.sin(rad) * r }
 }
 const dialTrack = `M ${DIAL_CX - DIAL_R} ${DIAL_CY} A ${DIAL_R} ${DIAL_R} 0 0 1 ${DIAL_CX + DIAL_R} ${DIAL_CY}`
+/** 這台車打不出去的仰角段（灰掉）：下限以下、上限以上，左右對稱 */
+function dialArc(from: number, to: number): string {
+  const a = dialPoint(from, DIAL_R)
+  const b = dialPoint(to, DIAL_R)
+  return `M ${a.x} ${a.y} A ${DIAL_R} ${DIAL_R} 0 0 1 ${b.x} ${b.y}`
+}
+const dialBlocked = computed(() => {
+  const spec = getTankSpec(panelTank.value?.tankId)
+  const arcs = [dialArc(180, 180 - spec.aimMinDeg), dialArc(spec.aimMinDeg, 0)]
+  if (spec.aimMaxDeg < 90) arcs.push(dialArc(180 - spec.aimMaxDeg, spec.aimMaxDeg))
+  return arcs
+})
 const dialTicks = [0, 30, 60, 90, 120, 150, 180].map((deg) => ({ deg, a: dialPoint(deg, DIAL_R - 6), b: dialPoint(deg, DIAL_R - 1) }))
 
 const {
@@ -568,6 +580,7 @@ onUnmounted(() => {
                 <path :d="dialTrack" fill="none" stroke="var(--color-ink)" stroke-width="13" stroke-linecap="round" />
                 <path :d="dialTrack" fill="none" stroke="var(--color-paper)" stroke-width="8" stroke-linecap="round" />
                 <path :d="dialSweep" fill="none" stroke="var(--color-sun)" stroke-width="8" stroke-linecap="round" />
+                <path v-for="(d, i) in dialBlocked" :key="i" :d="d" fill="none" stroke="var(--color-ink)" stroke-width="8" stroke-linecap="butt" opacity=".35" />
                 <line v-for="t in dialTicks" :key="t.deg" :x1="t.a.x" :y1="t.a.y" :x2="t.b.x" :y2="t.b.y" stroke="var(--color-ink)" stroke-width="2" stroke-linecap="round" opacity=".35" />
                 <line :x1="DIAL_CX" :y1="DIAL_CY" :x2="dialNeedle.x" :y2="dialNeedle.y" stroke="var(--color-ink)" stroke-width="4.5" stroke-linecap="round" />
                 <circle :cx="DIAL_CX" :cy="DIAL_CY" r="6" fill="var(--color-coral)" stroke="var(--color-ink)" stroke-width="3" />

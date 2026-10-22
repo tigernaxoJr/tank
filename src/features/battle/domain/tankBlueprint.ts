@@ -56,6 +56,9 @@ export interface TankBlueprint {
   readonly climbPerPx: number
   /** 摔落抗性：下墜超過此高度 (px) 才開始受摔落傷害 */
   readonly fallSafePx: number
+  /** 可發射的仰角範圍（度，相對車體、左右對稱，0 = 水平、90 = 朝天）；範圍寬 = 控制力高，見 docs/06 §三之五 */
+  readonly aimMinDeg: number
+  readonly aimMaxDeg: number
   /** 風敏感度：該機種發射的砲彈受風影響倍率（<1 彈道穩、>1 更吃風，需要技術修正） */
   readonly windSensitivity: number
   /** 裝甲值：每次爆炸（explosion）傷害固定減免的點數，至少仍造成 1 點 */

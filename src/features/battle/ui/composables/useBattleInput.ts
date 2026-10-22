@@ -7,6 +7,7 @@ import {
   type ComputedRef,
 } from 'vue'
 import { quantizePower, type TankEntity } from '../../domain/battleState'
+import { clampAim, getTankSpec } from '../../domain/tankRegistry'
 import type { ProjectileBlueprint } from '../../domain/projectileRegistry'
 import type { BulletType } from '@/shared/kernel/types'
 
@@ -51,7 +52,7 @@ export function useBattleInput(ctx: BattleInputContext) {
     const tank = ctx.activeTank.value
     if (ctx.controlsDisabled.value || !tank) return
     const signed = facingLeft.value ? -delta : delta
-    const nextAngle = Math.max(15, Math.min(165, tank.angle + signed))
+    const nextAngle = clampAim(getTankSpec(tank.tankId), tank.angle + signed)
     ctx.onUpdateAim(nextAngle, tank.power)
   }
 

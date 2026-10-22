@@ -203,6 +203,14 @@ export function launchVelocity(
   }
 }
 
+/**
+ * 實際發射方向（世界座標角度）：tank.angle 是相對車體的砲管角，車體傾斜（站在斜坡、被炸歪）時整個砲管跟著轉。
+ * slopeDeg 為順時針為正（右側較低），所以世界角度 = 相對角 - slopeDeg；水平地面時兩者相同。
+ */
+export function worldAimAngle(angle: number, slopeDeg: number): number {
+  return angle - slopeDeg
+}
+
 /** 坦克容器原點距離地表的高度 (px)；砲彈從 tank.y - MUZZLE_RISE 射出 */
 export const TANK_GROUND_OFFSET = 12
 export const MUZZLE_RISE = 12

@@ -26,6 +26,17 @@ export function getTankSpec(id: TankArchetypeId | undefined): TankBlueprint {
   return (id && TANK_REGISTRY[id]) || TANK_LIST[0]
 }
 
+/**
+ * 把砲管角（0~180，>90 朝左）夾進這台坦克的仰角範圍；左右鏡射保持對稱。
+ * 輸入非有限數時退回範圍下限，避免連線對戰收到壞資料。
+ */
+export function clampAim(spec: TankBlueprint, angle: number): number {
+  const left = angle > 90
+  const elevation = left ? 180 - angle : angle
+  const clamped = Number.isFinite(elevation) ? Math.max(spec.aimMinDeg, Math.min(spec.aimMaxDeg, elevation)) : spec.aimMinDeg
+  return left ? 180 - clamped : clamped
+}
+
 /** 依序輪流取機種 id（預設陣容用），新增機種自動納入輪替 */
 export function tankAt(index: number): TankArchetypeId {
   return TANK_LIST[index % TANK_LIST.length].id

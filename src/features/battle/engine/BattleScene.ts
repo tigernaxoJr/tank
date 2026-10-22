@@ -13,7 +13,7 @@
 import Phaser from 'phaser'
 import type { BulletType } from '@/shared/kernel/types'
 import { BEDROCK, DeterministicRng, type DirtyRect, type TankCorePort } from '@/shared/wasm'
-import { launchVelocity, MUZZLE_RISE, type BattleState, type TankEntity } from '../domain/battleState'
+import { launchVelocity, MUZZLE_RISE, worldAimAngle, type BattleState, type TankEntity } from '../domain/battleState'
 import {
   generatedAssetUrl,
   hasAbyss,
@@ -842,7 +842,8 @@ export class BattleScene extends Phaser.Scene {
     }
 
     hull.setAlpha(1)
-    barrel.setAlpha(1).setRotation(-Phaser.Math.DegToRad(tank.angle) - slopeRad)
+    // 砲管角度相對車體：rig 已經帶著坡度旋轉，砲管只需要自己的相對角
+    barrel.setAlpha(1).setRotation(-Phaser.Math.DegToRad(tank.angle))
     actor.nameTag.setText(tank.name).setAlpha(1)
 
     // 繪製血條
@@ -896,7 +897,7 @@ export class BattleScene extends Phaser.Scene {
       wx = this.flyingProjectile.x - tank.x
       wy = this.flyingProjectile.y - (tank.y - 20)
     } else if (isActive) {
-      const a = Phaser.Math.DegToRad(tank.angle)
+      const a = Phaser.Math.DegToRad(worldAimAngle(tank.angle, tank.slopeDeg))
       wx = Math.cos(a)
       wy = -Math.sin(a)
     } else {
@@ -930,7 +931,7 @@ export class BattleScene extends Phaser.Scene {
     if (!activeTank || activeTank.hp <= 0) return
 
     const projSpec = getProjectileSpec(this.selectedBulletType)
-    const { vxMilli, vyMilli } = launchVelocity(activeTank.angle, activeTank.power, projSpec.speedMultiplier)
+    const { vxMilli, vyMilli } = launchVelocity(worldAimAngle(activeTank.angle, activeTank.slopeDeg), activeTank.power, projSpec.speedMultiplier)
     // 偵察狀態：畫出完整彈道（含跳彈、高拋穿地）與落點；平常只畫前段
     const full = hasStatusFlag(activeTank, 'fullAimPreview')
     const launch = {

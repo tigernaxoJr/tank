@@ -22,7 +22,7 @@ import {
 import { isForgedAction } from '@/features/lobby/infra/messageGuards'
 import { planBotShot } from '@/features/battle/domain/botBrain'
 import { PROJECTILE_REGISTRY } from '@/features/battle/domain/projectileRegistry'
-import { TANK_REGISTRY } from '@/features/battle/domain/tankRegistry'
+import { TANK_REGISTRY, clampAim } from '@/features/battle/domain/tankRegistry'
 import { ROSTER_1V1, setupBattle } from './helpers'
 
 const fire = (over: Partial<FireActionCommand> = {}): FireActionCommand => ({
@@ -149,6 +149,30 @@ describe('開火流程', () => {
     expect(edgeDmg).not.toBeNull()
     expect(edgeDmg!).toBeGreaterThan(0)
     expect(edgeDmg!).toBeLessThan(full)
+  })
+  it('砲管角度相對車體：車體傾斜時實際發射方向跟著轉', () => {
+    const { state, core } = setupBattle()
+    const flat = structuredClone(state)
+    flat.tanks.p1.slopeDeg = 0
+    const tilted = structuredClone(state)
+    tilted.tanks.p1.slopeDeg = 10
+    const a = prepareFireTrajectory(flat, fire({ angle: 35, power: 60 }), core)!
+    const b = prepareFireTrajectory(tilted, fire({ angle: 45, power: 60 }), core)!
+    // 傾斜 10°（右側較低）、相對角 45° = 水平地面上發射 35°
+    expect(b.shots[0].hit.path).toEqual(a.shots[0].hit.path)
+  })
+  it('仰角範圍：每台車各自夾限，左右對稱，開火時超出範圍會被夾回', () => {
+    expect(clampAim(TANK_REGISTRY.bastion, 20)).toBe(TANK_REGISTRY.bastion.aimMinDeg)
+    expect(clampAim(TANK_REGISTRY.bastion, 180 - 20)).toBe(180 - TANK_REGISTRY.bastion.aimMinDeg)
+    expect(clampAim(TANK_REGISTRY.hawkeye, 80)).toBe(TANK_REGISTRY.hawkeye.aimMaxDeg)
+    expect(clampAim(TANK_REGISTRY.zephyr, 30)).toBe(30)
+    expect(clampAim(TANK_REGISTRY.zephyr, Number.NaN)).toBe(TANK_REGISTRY.zephyr.aimMinDeg)
+    for (const t of Object.values(TANK_REGISTRY)) expect(t.aimMinDeg).toBeLessThan(t.aimMaxDeg)
+    const { state, core } = setupBattle()
+    const shooter = state.tanks[state.activePlayer]
+    const spec = TANK_REGISTRY[shooter.tankId]
+    prepareFireTrajectory(state, fire({ angle: 89, power: 60 }), core)
+    expect(shooter.angle).toBe(clampAim(spec, 89))
   })
   it('預設樣式為單發，單發傷害 = 砲彈傷害 × 機種倍率', () => {
     const { state, core } = setupBattle()
@@ -364,6 +388,15 @@ describe('走下高處', () => {
 })
 
 describe('電腦 AI', () => {
+  it('每台車當電腦都能算出射擊計畫，且仰角在自己的範圍內', () => {
+    for (const tank of Object.values(TANK_REGISTRY)) {
+      const roster: RosterSlot[] = ROSTER_1V1.map((r) => (r.id === 'p1' ? { ...r, isBot: true, botLevel: 'perfect' as const, tankId: tank.id } : r))
+      const { state, core } = setupBattle(1024, 'harvest_plains', roster)
+      const plan = planBotShot(state, core, 'p1', () => 0.5)
+      expect(plan, tank.id).not.toBeNull()
+      expect(clampAim(tank, plan!.angle), tank.id).toBe(plan!.angle)
+    }
+  })
   it('perfect 等級能找到擊中敵方的射擊參數', () => {
     const roster: RosterSlot[] = ROSTER_1V1.map((r) => (r.id === 'p1' ? { ...r, isBot: true, botLevel: 'perfect' as const } : r))
     const { state, core } = setupBattle(1024, 'harvest_plains', roster)

@@ -26,6 +26,7 @@ import {
   TANK_GROUND_OFFSET,
   syncTankToSurface,
   walkAlongTerrain,
+  worldAimAngle,
   type BattleState,
   type TankEntity,
 } from '../domain/battleState'
@@ -36,7 +37,7 @@ import { getProjectileSpec, PROJECTILE_REGISTRY, type ProjectileBlueprint } from
 import { traceShell, type TracedShell } from '../domain/shellFlight'
 import { SINGLE_SHOT } from '../domain/shotExtensions'
 import { applyStatus, mitigateForTank } from '../domain/statusEffects'
-import { effectiveWindMilli, getTankSpec, type TankBlueprint } from '../domain/tankRegistry'
+import { clampAim, effectiveWindMilli, getTankSpec, type TankBlueprint } from '../domain/tankRegistry'
 
 let defaultCore: TankCorePort | null = null
 
@@ -229,7 +230,9 @@ export function prepareFireTrajectory(
   // 彈藥承諾驗證失敗（偽造或偷換）：兩端都拒絕這次開火，狀態維持不動
   if (!bulletType) return null
 
-  shooter.angle = cmd.angle
+  // 仰角範圍由機種決定：超出範圍（外掛或舊資料）一律夾回，兩端結算一致
+  const aimAngle = clampAim(shooterSpec, cmd.angle)
+  shooter.angle = aimAngle
   shooter.power = cmd.power
   state.phase = 'FIRING'
 
@@ -244,7 +247,7 @@ export function prepareFireTrajectory(
       shooter,
       shooterSpec,
       projSpec,
-      cmd.angle + pellet.angleDelta,
+      worldAimAngle(aimAngle, shooter.slopeDeg) + pellet.angleDelta,
       cmd.power + pellet.powerDelta,
       cmd.wind,
       aliveOthers,

@@ -32,7 +32,7 @@ import { planBotMove, planBotShot } from '../domain/botBrain'
 import { MAP_REGISTRY, terrainOptionsFor } from '../domain/mapRegistry'
 import { getProjectileSpec } from '../domain/projectileRegistry'
 import { STATUS_REGISTRY } from '../domain/statusEffects'
-import { getTankSpec, tankAt } from '../domain/tankRegistry'
+import { clampAim, getTankSpec, tankAt } from '../domain/tankRegistry'
 import BattleCanvas from './BattleCanvas.vue'
 import BattleHud from './BattleHud.vue'
 
@@ -244,7 +244,7 @@ function handleUpdateAim(angle: number, power: number): void {
   if (!canControl.value) return
   const tank = state.tanks[state.activePlayer]
   if (!tank) return
-  tank.angle = angle
+  tank.angle = clampAim(getTankSpec(tank.tankId), angle)
   tank.power = power
 }
 
