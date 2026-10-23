@@ -27,8 +27,8 @@ export function useBattleInput(ctx: BattleInputContext) {
   const lastFiredPowerByPlayer = reactive<Record<string, number>>({})
 
   const isCharging = ref(false)
-  // 蓄力速度所有坦克共用同一個值（10 → 100 約 2 秒），不得依機種或砲彈改變
-  const CHARGE_RATE_PER_SEC = 45
+  // 蓄力速度所有坦克共用同一個值（10 → 100 約 3.2 秒），不得依機種或砲彈改變
+  const CHARGE_RATE_PER_SEC = 28
   const CHARGE_START_POWER = 10
   let animFrameId: number | null = null
   let chargeStartMs = 0

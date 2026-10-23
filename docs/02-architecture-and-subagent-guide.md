@@ -134,7 +134,7 @@ tank/
    * **地形塌陷傷害**：`commitFireImpact` 挖坑後所有坦克（含殘骸）貼回新地表；下墜超過 30px 起每 6px 扣 1 HP（上限 30），墜出地圖底部（深淵）直接陣亡。回傳 `ImpactResult.damageByPlayer` 供畫面跳出傷害數字與 K.O.。
    * **風速依地圖而定**：每回合風速範圍為 `±MapBlueprint.maxWind`（山谷 8、峽谷 10、冰原 14），雲層會隨風向飄移作為視覺提示。
    * **瞄準預覽只畫前段**：預覽彈道固定只模擬前 `AIM_PREVIEW_STEPS = 60` 步，保留判斷落點的技術含量。
-   * **蓄力以時間計算**：長按蓄力速度為每秒 45%（`CHARGE_RATE_PER_SEC`，10 → 100 約 2 秒），不得依賴 `requestAnimationFrame` 幀數，避免高更新率螢幕蓄力過快。按下與放開的時間一律取事件的 `timeStamp`，不用處理事件當下的 `performance.now()`，否則掉幀時放開後力道還會多漲（細節見 `docs/06` §三之四）。
+   * **蓄力以時間計算**：長按蓄力速度為每秒 28%（`CHARGE_RATE_PER_SEC`，10 → 100 約 3.2 秒；2026-10-23 由 45 調慢，因為人類對力道的控制力偏差），不得依賴 `requestAnimationFrame` 幀數，避免高更新率螢幕蓄力過快。按下與放開的時間一律取事件的 `timeStamp`，不用處理事件當下的 `performance.now()`，否則掉幀時放開後力道還會多漲（細節見 `docs/06` §三之四）。
    * **每位玩家各自記憶**：彈種選擇與「上一發力道」游標以玩家為單位保存，熱座輪流時互不覆蓋。
    * **電腦對手 (`domain/botBrain.ts`)**：純函數；`planBotShot` 以仰角 × 力道暴力搜尋最接近目標的落點並加入人性化誤差，`planBotMove` 在原地射擊被地形擋住或換位能明顯提高命中時才花燃料移動。Bot 只負責「決定參數」，實際開火仍走一般 `FireActionCommand` 流程。單機模式由 `RosterSlot.isBot` 指定（大廳預設「玩家 vs 電腦」，兩隊皆設為電腦即為觀戰模式）；連線對戰中只有「玩家斷線且房間設為電腦接手」才會出現電腦，且 AI 只在房主端運算（`runsBot`），走位與開火以 `ACTION_MOVE` / `ACTION_FIRE` 廣播（見 `06` §三之六）。
    * **平衡基準**：調整 `TankBlueprint` 數值後，以 Bot 對 Bot 在三張地圖、雙方換邊各打一場的對戰矩陣驗證，任一機種組合勝率不應明顯偏離 50%（目前 Aegis vs Goliath 約 23:25）。
