@@ -42,6 +42,12 @@ const GRID_STEP = 0.05
 const SIM_RANGE_PX = 300
 const SIM_POWER = 60
 const STANDARD_GRAVITY = 175
+/**
+ * 定時彈（fuse）的命中率：落地後對手有一個回合可以離開爆炸範圍，所以不是每發都炸得到人。
+ * 0.55 是估計值（約 45% 的情況對手成功離開、或為了躲而放棄原本的站位 / 瞄準），不是實測；
+ * 真實平衡要靠實機調整。定時彈對電腦（不會躲）與人類（會躲）差異很大，見 docs/06。
+ */
+const FUSE_HIT_RATE = 0.55
 
 // 數值直接讀自遊戲的註冊表（單一來源），不再維護副本；用 vite 的 ssrLoadModule 載入 TS。
 const vite = await createServer({ configFile: false, appType: 'custom', server: { middlewareMode: true }, logLevel: 'silent' })
@@ -74,6 +80,7 @@ const SHELLS = Object.fromEntries(
       wm: p.windMultiplier,
       offsets: pelletOffsets(p),
       cap: p.damageCapPerTank ?? Infinity,
+      fuse: p.fuse !== undefined,
       poison: p.onHit?.status === 'poison' ? { turns: p.onHit.turns, power: p.onHit.power } : null,
       corrode: p.onHit?.status === 'corrode' ? p.onHit.turns : 0,
     },
@@ -177,6 +184,7 @@ function shotOf(t, s, sigma, wind, def, corroded) {
   let total = 0
   for (const off of sh.offsets) total += applyDefense(rawDamage(t, s, Math.hypot(ex + off, ey)), def, corroded)
   total = Math.min(sh.cap, total)
+  if (sh.fuse) total = Math.round(total * FUSE_HIT_RATE)
   return [total, total > 0]
 }
 
@@ -194,7 +202,7 @@ function expected(t, s, sigma, wind) {
       const w = w1 * w2
       let total = 0
       for (const off of sh.offsets) total += rawDamage(t, s, Math.hypot(z1 * sx + off, z2 * sigma))
-      acc += w * (Math.min(sh.cap, total) + (total > 0 ? dot : 0))
+      acc += w * (Math.min(sh.cap, total) * (sh.fuse ? FUSE_HIT_RATE : 1) + (total > 0 ? dot : 0))
       wsum += w
     }
   }

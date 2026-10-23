@@ -4,6 +4,7 @@
  *  2. 飛行行為 `flight`：碰到地形後的反應（跳彈、碎裂成冰錐、上升段穿過地形的高拋彈），見 shellFlight.ts。
  *  3. 命中當下的立即效果：挖坑 / 堆土 `terrainOp`、鑽地 `terrainDepth`、擊退 `knockbackPx`。
  *  4. 狀態 `onHit` / `selfEffect`：命中後掛在坦克上的回合制狀態（中毒、冰凍、破甲、偵察），見 statusEffects.ts。
+ *  5. 定時引爆 `fuse`：落地不爆，黏在落點成為「定時彈」(`BattleState.charges`)，倒數歸零才用同一套爆炸結算引爆（蝸牛的黏殼彈）。
  *
  * 共同規則（P2P 雙端必須一致）：
  *  - 全部是純函式或純資料，不得使用 Math.random；結果只能是整數。
@@ -98,4 +99,11 @@ export interface ProjectileBehavior {
   readonly onHit?: HitEffect
   /** 開火時掛在射手自己身上的狀態（偵察照明彈） */
   readonly selfEffect?: HitEffect
+  /**
+   * 定時引爆：砲彈落地（或進入坦克判定圈）時不爆炸，也不挖坑、不扣血，而是黏在落點留下一顆定時彈，
+   * 之後每個回合結束倒數一次，`turns` 次後在原地引爆（同一套爆炸結算：挖坑、傷害、擊退、摔落）。
+   * `turns: 2` = 放置的當回合結束算第 1 次、對手的下一個回合結束算第 2 次 → 對手剛好有一個回合可以離開。
+   * 定時彈不分敵我，射手自己站在範圍內一樣會被炸；不會跟著坦克移動。
+   */
+  readonly fuse?: { readonly turns: number }
 }

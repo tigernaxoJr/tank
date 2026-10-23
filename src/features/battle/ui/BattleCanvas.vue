@@ -7,7 +7,7 @@ import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import type { BulletType } from '@/shared/kernel/types'
 import type { DirtyRect, TankCorePort } from '@/shared/wasm'
 import type { BattleState } from '../domain/battleState'
-import { BattleScene, type ProjectileFlightOptions } from '../engine/BattleScene'
+import { BattleScene, type ChargeBurstOptions, type ProjectileFlightOptions } from '../engine/BattleScene'
 import { MAP_REGISTRY } from '../domain/mapRegistry'
 import { loadThemeArt, paintMapBackdrop } from './mapPreview'
 
@@ -201,6 +201,15 @@ function playProjectileFlight(options: ProjectileFlightOptions): void {
   sceneInstance.playProjectileFlight(options)
 }
 
+function playChargeBursts(options: ChargeBurstOptions): void {
+  if (!sceneInstance) {
+    options.onImpact()
+    options.onComplete()
+    return
+  }
+  sceneInstance.playChargeBursts(options)
+}
+
 function focusActiveTank(immediate = false): void {
   sceneInstance?.focusActiveTank(immediate)
 }
@@ -293,6 +302,7 @@ defineExpose({
   onTerrainFilled,
   showDamage,
   playProjectileFlight,
+  playChargeBursts,
   focusActiveTank,
 })
 </script>

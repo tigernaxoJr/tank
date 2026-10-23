@@ -17,6 +17,7 @@ import {
 import {
   advanceTurn,
   applyDamageAndCheckWinner,
+  chargesOf,
   fallDamageFor,
   findSpawnGround,
   groundUnderTank,
@@ -28,6 +29,7 @@ import {
   walkAlongTerrain,
   worldAimAngle,
   type BattleState,
+  type Charge,
   type TankEntity,
 } from '../domain/battleState'
 import { defaultLoadout, verifyReveal } from '../domain/loadout'
@@ -82,6 +84,8 @@ export interface ImpactResult {
   readonly blasts: readonly ({ x: number; y: number } | null)[]
   /** 本次命中造成的總傷害（爆炸 + 摔落 + 墜入深淵），供畫面跳出傷害數字 */
   readonly damageByPlayer: Record<PlayerId, number>
+  /** 這次新留下的定時彈（`fuse` 砲彈落地不爆炸，只登記一顆）；一般砲彈為空陣列 */
+  readonly placed: readonly Charge[]
 }
 
 export function syncAllTanksToTerrain(state: BattleState, core: TankCorePort): void {
@@ -290,6 +294,8 @@ export function commitFireImpact(
   state: BattleState,
   plan: PreparedShotPlan,
   core?: TankCorePort,
+  /** `detonating`：定時彈倒數歸零時用同一套結算引爆，此時不再登記新的定時彈 */
+  options: { readonly detonating?: boolean } = {},
 ): ImpactResult {
   const engine = core ?? getDefaultCore(state.seed)
   const { shots, damageRadius, terrainRadius, directHitMultiplier } = plan
@@ -300,10 +306,30 @@ export function commitFireImpact(
   const carves: CarveEvent[] = []
   const blasts: ({ x: number; y: number } | null)[] = []
   const hitTanks = new Set<PlayerId>()
+  const placed: Charge[] = []
+  const fuse = options.detonating ? undefined : proj.fuse
 
   // 依序結算每顆彈丸；各自經過裝甲 / 抗性 / 狀態後再加總
   for (const { hit, maxDamage } of shots) {
     if (!hit.impactedTerrain && !hit.hitTank) {
+      blasts.push(null)
+      continue
+    }
+    // 定時彈：不爆炸、不挖坑，黏在落點等倒數（爆炸數值此刻定案，之後引爆時直接用）
+    if (fuse) {
+      const charge: Charge = {
+        id: `${state.turnId}-${placed.length}`,
+        x: hit.hitX,
+        y: hit.hitY,
+        owner: plan.cmd.playerId,
+        bulletType: plan.bulletType,
+        turnsLeft: fuse.turns,
+        maxDamage,
+        damageRadius,
+        terrainRadius,
+      }
+      placed.push(charge)
+      chargesOf(state).push(charge)
       blasts.push(null)
       continue
     }
@@ -383,7 +409,47 @@ export function commitFireImpact(
   const shooter = state.tanks[plan.cmd.playerId]
   if (proj.selfEffect && shooter && shooter.hp > 0) applyStatus(shooter, proj.selfEffect)
 
-  return { carves, blasts, damageByPlayer }
+  return { carves, blasts, damageByPlayer, placed }
+}
+
+/** 一次引爆定時彈的結果：爆心與半徑供畫面演出，其餘同 `ImpactResult`（所有到期的彈合併） */
+export interface ChargeDetonation extends ImpactResult {
+  readonly bursts: readonly { readonly x: number; readonly y: number; readonly radius: number; readonly bulletType: BulletType }[]
+}
+
+/**
+ * 回合結束時結算定時彈：每顆倒數 1 次，歸零的依放置順序引爆（挖坑、傷害、擊退、摔落都走 `commitFireImpact` 的同一套）。
+ * 要在 `finalizeTurnAfterHold` 之前呼叫；兩端在同一個時間點呼叫（開火結算完、跳過回合），結果才會一致。
+ * 沒有定時彈或沒有到期時 `bursts` 為空，狀態除了倒數數字之外不變。
+ */
+export function detonateDueCharges(state: BattleState, core?: TankCorePort): ChargeDetonation {
+  const charges = chargesOf(state)
+  const result: ChargeDetonation = { carves: [], blasts: [], damageByPlayer: {}, placed: [], bursts: [] }
+  if (charges.length === 0 || state.phase === 'GAME_OVER') return result
+  for (const c of charges) c.turnsLeft -= 1
+  const due = charges.filter((c) => c.turnsLeft <= 0)
+  if (due.length === 0) return result
+  state.charges = charges.filter((c) => c.turnsLeft > 0)
+
+  const carves: CarveEvent[] = []
+  const bursts: { x: number; y: number; radius: number; bulletType: BulletType }[] = []
+  const damageByPlayer: Record<PlayerId, number> = {}
+  for (const c of due) {
+    if ((state.phase as string) === 'GAME_OVER') break
+    const plan: PreparedShotPlan = {
+      cmd: { type: 'ACTION_FIRE', turnId: state.turnId, playerId: c.owner, angle: 0, power: 0, wind: state.wind, bulletType: c.bulletType },
+      shots: [{ hit: { hitX: c.x, hitY: c.y, impactedTerrain: true, hitTank: false, stepsTaken: 0, path: [] }, maxDamage: c.maxDamage }],
+      damageRadius: c.damageRadius,
+      terrainRadius: c.terrainRadius,
+      directHitMultiplier: 1,
+      bulletType: c.bulletType,
+    }
+    const r = commitFireImpact(state, plan, core, { detonating: true })
+    carves.push(...r.carves)
+    for (const [id, dmg] of Object.entries(r.damageByPlayer)) damageByPlayer[id] = (damageByPlayer[id] ?? 0) + dmg
+    bursts.push({ x: c.x, y: c.y, radius: Math.max(c.damageRadius, c.terrainRadius), bulletType: c.bulletType })
+  }
+  return { carves, blasts: [], damageByPlayer, placed: [], bursts }
 }
 
 /**

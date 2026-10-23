@@ -11,11 +11,11 @@
 3. **[03-execution-plan.md](./03-execution-plan.md)**  
    執行與派發計畫：將 Phase 1 ~ Phase 4 拆解為鎖定單一檔案/切片的 Work Packages (`WP-1.1` ~ `WP-4.3`)，附帶驗收指令，可直接逐項派發給低階 Subagent 執行。
 4. **[04-art-asset-pipeline.md](./04-art-asset-pipeline.md)**  
-   美術素材管線與授權規範：Kenney CC0 素材來源、`tools/assets/bake_kenney_assets.py` 烘焙流程、原創地圖主題 (`paint:maps`) 與 Q 版坦克/砲彈美術風格 (`paint:units`，§六；含角色優先畫風、`cartoon_kit.mjs`、臉部參數 `FaceSpec` 與石塊眉、貼地陰影、大廳立繪 `TankPortrait`)、戰場圖層/地形著色/裝飾/坦克渲染規則與 `CREDITS.md` 維護要求。
+   美術素材管線與授權規範：Kenney CC0 素材來源、`tools/assets/bake_kenney_assets.py` 烘焙流程、原創地圖主題 (`paint:maps`) 與 Q 版坦克/砲彈美術風格 (`paint:units`，§六；含角色優先畫風、`cartoon_kit.mjs`、臉部參數 `FaceSpec` 與石塊眉、貼地陰影、大廳立繪 `TankPortrait`，以及 Blender 3D 路線：蝸牛迫擊的程序化建模、遊戲貼圖輸出與座標換算)、戰場圖層/地形著色/裝飾/坦克渲染規則與 `CREDITS.md` 維護要求。
 5. **[05-map-layout-design.md](./05-map-layout-design.md)**  
    地圖版型設計守則：浮空島 / 吊橋 / 雙層薄地 / 階梯台地 / 不可破壞基岩的 `layout` 特徵、多層地形貼地與行走規則，以及參考其他遊戲時的版權守則。
 6. **[06-gameplay-reference-and-physics.md](./06-gameplay-reference-and-physics.md)**  
-   玩法參考（房間準備制、每台車兩種砲彈、回合倒數）、彈道物理守則（一般彈共用重力、固定播放時鐘、版權界線）、坦克砲彈平衡、同步雜湊與自動重新同步、玩家斷線處置。
+   玩法參考（房間準備制、每台車兩種砲彈、回合倒數）、彈道物理守則（一般彈共用重力、固定播放時鐘、版權界線）、坦克砲彈平衡（含 §三之八 七台陣容）、定時彈 `fuse` 機制（§三之九，蝸牛迫擊）、同步雜湊與自動重新同步、玩家斷線處置。
 7. **[TODO-peerjs-signaling-server.md](./TODO-peerjs-signaling-server.md)**  
    自建輕量 PeerJS 信令伺服器（`server/` + `docker-compose.yml`）與前端環境變數彈性切換 / 自動 Fallback 規格，以及房間目錄 API（房間列表，僅自建伺服器可用）。
 

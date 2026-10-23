@@ -97,6 +97,15 @@ export interface ProjectileFlight {
   explosionY: number
   /** 爆炸視覺半徑 (px)，取傷害範圍與挖坑半徑較大者 */
   explosionRadius: number
+  /** 定時彈（`fuse`）：落地只濺一下、不爆炸，之後由場上的定時彈標記持續顯示倒數 */
+  charge?: boolean
+}
+
+/** 引爆定時彈的演出：鏡頭先移到第一個爆心，`onImpact` 在爆炸瞬間套用地形與傷害畫面，停留後呼叫 `onComplete` */
+export interface ChargeBurstOptions {
+  bursts: readonly { x: number; y: number; radius: number; bulletType: BulletType }[]
+  onImpact: () => void
+  onComplete: () => void
 }
 
 export interface ProjectileFlightOptions {
@@ -126,6 +135,15 @@ export class BattleScene extends Phaser.Scene {
   private aimPreviewKey = ''
 
   private tankActors = new Map<string, TankVisualActor>()
+  private chargeMarkers = new Map<
+    string,
+    {
+      container: Phaser.GameObjects.Container
+      ring: Phaser.GameObjects.Arc
+      glow: Phaser.GameObjects.Image
+      count: Phaser.GameObjects.Text
+    }
+  >()
   private props: PropActor[] = []
   /** 深淵地圖底部的雲海 / 霧氣漸層（世界座標，畫在地形後方） */
   private abyss: Phaser.GameObjects.Image | null = null
@@ -295,8 +313,89 @@ export class BattleScene extends Phaser.Scene {
     }
 
     this.syncTanksVisuals(time)
+    this.syncChargeVisuals(time)
     this.drawAimPreview()
     this.cameraManager.notifyMoved()
+  }
+
+  /** 場上的定時彈：閃爍的殼 + 剩餘回合數 + 爆炸範圍的淡色圈；清單變動時自動新增 / 移除 */
+  private syncChargeVisuals(time: number): void {
+    const charges = this.battleState.charges ?? []
+    const live = new Set<string>()
+    for (const c of charges) {
+      live.add(c.id)
+      let marker = this.chargeMarkers.get(c.id)
+      if (!marker) {
+        const proj = getProjectileSpec(c.bulletType)
+        const container = this.add.container(c.x, c.y).setDepth(9)
+        const ring = this.add.circle(0, 0, c.damageRadius, proj.visual.glowColor, 0.1).setStrokeStyle(2, proj.visual.glowColor, 0.5)
+        const glow = this.add
+          .image(0, 0, proj.visual.fx.glow)
+          .setScale((proj.visual.coreRadius * 5) / 64)
+          .setAlpha(0.7)
+          .setBlendMode(Phaser.BlendModes.ADD)
+        // 有專屬彈體圖就用圖（黏殼彈），沒有就畫發光核心
+        const shell = proj.visual.sprite
+          ? this.add.image(0, 0, proj.visual.sprite.key).setScale(proj.visual.sprite.scale * 0.9)
+          : this.add.circle(0, 0, proj.visual.coreRadius, proj.visual.coreColor, 1).setStrokeStyle(3, proj.visual.strokeColor)
+        const count = this.add
+          .text(0, 2, String(c.turnsLeft), {
+            fontFamily: 'system-ui, sans-serif',
+            fontSize: '13px',
+            fontStyle: 'bold',
+            color: '#ffffff',
+            stroke: '#1d2340',
+            strokeThickness: 3,
+          })
+          .setOrigin(0.5)
+        container.add([ring, glow, shell, count])
+        marker = { container, ring, glow, count }
+        this.chargeMarkers.set(c.id, marker)
+      }
+      marker.count.setText(String(c.turnsLeft))
+      marker.container.setPosition(c.x, c.y)
+      const pulse = 0.5 + 0.5 * Math.sin(time / (c.turnsLeft <= 1 ? 110 : 260))
+      marker.glow.setAlpha(0.45 + 0.4 * pulse)
+      marker.ring.setAlpha(c.turnsLeft <= 1 ? 0.5 + 0.4 * pulse : 0.7)
+    }
+    for (const [id, marker] of this.chargeMarkers) {
+      if (live.has(id)) continue
+      marker.container.destroy()
+      this.chargeMarkers.delete(id)
+    }
+  }
+
+  /**
+   * 引爆定時彈的演出：鏡頭平滑移到第一個爆心 → 爆炸（呼叫 `onImpact` 套用地形 / 傷害畫面）→ 停留 → `onComplete`。
+   * 場景尚未就緒時直接結算，不卡住回合。
+   */
+  playChargeBursts(options: ChargeBurstOptions): void {
+    const { bursts, onImpact, onComplete } = options
+    if (!this.scene.isActive() || !this.cameraManager || bursts.length === 0) {
+      onImpact()
+      onComplete()
+      return
+    }
+    const cam = this.cameras.main
+    const first = bursts[0]
+    const from = { x: cam.midPoint.x, y: cam.midPoint.y }
+    const state = { t: 0 }
+    this.cameraManager.manualCamera = true
+    this.tweens.add({
+      targets: state,
+      t: 1,
+      duration: 650,
+      ease: 'Sine.InOut',
+      onUpdate: () => this.cameraManager.centerOn(from.x + (first.x - from.x) * state.t, from.y + (first.y - from.y) * state.t),
+      onComplete: () => {
+        onImpact()
+        for (const b of bursts) this.triggerExplosionVisual(b.x, b.y, b.radius, b.bulletType)
+        this.time.delayedCall(getProjectileSpec(first.bulletType).postImpactHoldMs, () => {
+          this.cameraManager.manualCamera = false
+          onComplete()
+        })
+      },
+    })
   }
 
   /** 畫布尺寸隨視窗改變 (Scale.RESIZE)，背景圖層跟著撐滿寬高 */
@@ -741,7 +840,7 @@ export class BattleScene extends Phaser.Scene {
 
         const hpBarGraphics = this.add.graphics()
         const nameTag = this.add
-          .text(0, -62, tank.name, {
+          .text(0, -62 - (spec.sprite.labelLift ?? 0), tank.name, {
             fontFamily: 'system-ui, sans-serif',
             fontSize: '11px',
             fontStyle: 'bold',
@@ -752,10 +851,10 @@ export class BattleScene extends Phaser.Scene {
           .setOrigin(0.5, 0.5)
 
         const turnArrow = this.add
-          .triangle(0, -84, 0, 10, -7, 0, 7, 0, 0xfacc15)
+          .triangle(0, -84 - (spec.sprite.labelLift ?? 0), 0, 10, -7, 0, 7, 0, 0xfacc15)
           .setStrokeStyle(2, 0x0f172a)
         const statusTag = this.add
-          .text(0, -76, '', {
+          .text(0, -76 - (spec.sprite.labelLift ?? 0), '', {
             fontFamily: 'system-ui, sans-serif',
             fontSize: '11px',
             fontStyle: 'bold',
@@ -876,7 +975,8 @@ export class BattleScene extends Phaser.Scene {
     const barW = 54
     const barH = 7
     const barX = -barW / 2
-    const barY = -48
+    const lift = spec.sprite.labelLift ?? 0
+    const barY = -48 - lift
     const hpPct = Math.max(0, Math.min(1, tank.hp / tank.maxHp))
     const fillColor = hpPct > 0.5 ? 0x22c55e : hpPct > 0.25 ? 0xfacc15 : 0xef4444
 
@@ -909,7 +1009,7 @@ export class BattleScene extends Phaser.Scene {
     // 行動回合跳動箭頭（有狀態圖示時往上讓位）
     actor.turnArrow.setVisible(isActive)
     if (isActive) {
-      actor.turnArrow.y = (statuses.length > 0 ? -96 : -84) + Math.sin(time / 150) * 4
+      actor.turnArrow.y = (statuses.length > 0 ? -96 : -84) - lift + Math.sin(time / 150) * 4
     }
   }
 
@@ -1019,7 +1119,15 @@ export class BattleScene extends Phaser.Scene {
     const { shooterId, flights, bulletType, onArriveImpact, onSequenceComplete } = options
     const projSpec = getProjectileSpec(bulletType)
     const showExplosions = (): void => {
-      for (const f of flights) this.triggerExplosionVisual(f.explosionX, f.explosionY, f.explosionRadius, bulletType)
+      for (const f of flights) {
+        if (f.charge) {
+          // 黏住：小小一團濺開，不爆炸
+          this.spawnPuff(f.explosionX, f.explosionY - 4, 0.34, 'fx_puff', 21)
+          this.flashGlow(f.explosionX, f.explosionY, projSpec.visual.fx.glow, 0.7, 260)
+        } else {
+          this.triggerExplosionVisual(f.explosionX, f.explosionY, f.explosionRadius, bulletType)
+        }
+      }
     }
 
     if (!this.scene.isActive() || flights.length === 0 || flights.some((f) => f.path.length < 2)) {

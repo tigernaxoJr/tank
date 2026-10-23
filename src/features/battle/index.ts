@@ -51,9 +51,11 @@ export {
   executePassAction,
   prepareFireTrajectory,
   commitFireImpact,
+  detonateDueCharges,
   finalizeTurnAfterHold,
   moveActiveTank,
   syncAllTanksToTerrain,
+  type ChargeDetonation,
   type ImpactResult,
   type PreparedShotPlan,
 } from './application/useBattleTurn'

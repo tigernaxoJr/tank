@@ -46,6 +46,22 @@ export interface TankEntity {
   movedThisTurn: boolean
 }
 
+/** 黏在地形上等待引爆的定時彈（`ProjectileBehavior.fuse`）；爆炸所需的數值在放置當下就定案，之後不再讀藍圖 */
+export interface Charge {
+  /** 放置時的 `${turnId}-${第幾顆}`，兩端確定性一致 */
+  readonly id: string
+  readonly x: number
+  readonly y: number
+  /** 放置的人（引爆時當作射手；自己也會被炸） */
+  readonly owner: PlayerId
+  readonly bulletType: BulletType
+  /** 還要再經過幾次回合結束才引爆 */
+  turnsLeft: number
+  readonly maxDamage: number
+  readonly damageRadius: number
+  readonly terrainRadius: number
+}
+
 export interface BattleState {
   turnId: number
   activePlayer: PlayerId
@@ -60,6 +76,13 @@ export interface BattleState {
   lastExplosion: { x: number; y: number; radius: number; timestamp: number } | null
   /** 最近一次換回合時，狀態造成的持續傷害（供畫面跳傷害數字）；換回合時重設 */
   lastStatusDamage: Record<PlayerId, number>
+  /** 場上的定時彈；舊快照可能沒有這個欄位，一律用 `chargesOf()` 讀取 */
+  charges?: Charge[]
+}
+
+/** 取（必要時建立）定時彈清單，相容沒有 `charges` 欄位的舊快照 */
+export function chargesOf(state: BattleState): Charge[] {
+  return (state.charges ??= [])
 }
 
 const DEFAULT_ROSTER: RosterSlot[] = [
@@ -181,6 +204,7 @@ export function createInitialBattleState(
     lastShotPath: [],
     lastExplosion: null,
     lastStatusDamage: {},
+    charges: [],
   }
 }
 
@@ -446,6 +470,12 @@ export function battleStateHash(state: BattleState, terrainHash: number): number
       mix(s.turnsLeft)
       mix(s.power)
     }
+  }
+  for (const c of chargesOf(state)) {
+    mix(c.x)
+    mix(c.y)
+    mix(c.turnsLeft)
+    mix(c.maxDamage)
   }
   return h
 }

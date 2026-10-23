@@ -6,6 +6,7 @@
 import type { BotLevel, BulletType, PlayerId } from '@/shared/kernel/types'
 import type { TankCorePort, TrajectoryHit } from '@/shared/wasm'
 import {
+  chargesOf,
   groundUnderTank,
   launchVelocity,
   MUZZLE_RISE,
@@ -167,6 +168,32 @@ export function planBotShot(
   }
 }
 
+/** 定時彈引爆前要退到爆炸半徑外多遠 (px) 才算安全 */
+const CHARGE_SAFE_MARGIN_PX = 14
+
+/**
+ * 站在場上定時彈（`fuse`）的爆炸範圍內時，朝離它最遠的方向逃出範圍。
+ * 走得出去就回傳要移動的 deltaX；沒有威脅回傳 null（交給一般走位）；有威脅但燃料不夠走出範圍，仍盡力往外走。
+ */
+function planFleeFromCharges(state: BattleState, core: TankCorePort, bot: TankEntity): number | null {
+  const threats = chargesOf(state).filter((c) => Math.abs(c.x - bot.x) < c.damageRadius + CHARGE_SAFE_MARGIN_PX)
+  if (threats.length === 0) return null
+  // 往威脅較少的一側走：兩側各算一次需要走多遠才能離開所有威脅，選走得出去且最近的
+  const need = (dir: 1 | -1): number =>
+    Math.max(...threats.map((c) => c.x + dir * (c.damageRadius + CHARGE_SAFE_MARGIN_PX) - bot.x).map((d) => Math.max(0, dir * d)))
+  const originGround = groundUnderTank(core, bot)
+  let best: { dx: number; clear: boolean } | null = null
+  for (const dir of [1, -1] as const) {
+    const want = Math.min(bot.moveFuel, Math.ceil(need(dir)))
+    const dest = walkAlongTerrain(core, bot.x, originGround, dir * want, false, getTankSpec(bot.tankId).climbPerPx)
+    const dx = dest.x - bot.x
+    const clear = threats.every((c) => Math.abs(dest.x - c.x) >= c.damageRadius + 2)
+    if (dx === 0) continue
+    if (!best || (clear && !best.clear) || (clear === best.clear && Math.abs(dx) < Math.abs(best.dx))) best = { dx, clear }
+  }
+  return best ? best.dx : null
+}
+
 /**
  * 決定這回合要不要先移動：在燃料範圍內試算幾個站位的最佳射擊，
  * 只有在原地被地形擋住、或換位置能明顯提高命中率時才移動。回傳要移動的 deltaX（0 = 不動）。
@@ -181,6 +208,8 @@ export function planBotMove(
   if (!bot || bot.hp <= 0 || bot.moveFuel <= 0) return 0
   if (!BOT_LEVEL_SPECS[bot.botLevel ?? 'hard'].repositions) return 0
   const fuel = bot.moveFuel
+  const flee = planFleeFromCharges(state, core, bot)
+  if (flee !== null) return flee
   const origin = { x: bot.x, y: bot.y }
   const candidates = [0, -fuel, fuel, -Math.round(fuel / 2), Math.round(fuel / 2)]
   const originGround = groundUnderTank(core, bot)

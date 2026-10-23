@@ -18,6 +18,7 @@ import type {
 import { createTankCore, DEFAULT_WORLD_HEIGHT, DEFAULT_WORLD_WIDTH } from '@/shared/wasm'
 import {
   commitFireImpact,
+  detonateDueCharges,
   executePassAction,
   finalizeTurnAfterHold,
   forfeitPlayer,
@@ -284,36 +285,70 @@ function applyFireCommand(cmd: FireActionCommand, isLocal: boolean): void {
       explosionX: hit.hitX,
       explosionY: hit.hitTank ? hit.hitY : hit.hitY + depth,
       explosionRadius: Math.max(plan.damageRadius, plan.terrainRadius),
+      charge: getProjectileSpec(plan.bulletType).fuse !== undefined,
     })),
     bulletType: plan.bulletType,
     onArriveImpact: () => {
       const { carves, damageByPlayer } = commitFireImpact(state, plan, core)
-      for (const c of carves) {
-        carveLog.push(c.x, c.y, c.op === 'fill' ? -c.radius : c.radius)
-        if (c.op === 'fill') {
-          canvasRef.value?.onTerrainFilled(c.x, c.y, c.radius, c.dirty)
-        } else {
-          canvasRef.value?.redrawTerrain(c.dirty)
-          canvasRef.value?.onTerrainCarved(c.x, c.y, c.radius)
-        }
-      }
-      if (carves.length > 0) emitBattleSound('explosion')
-      for (const [pid, dmg] of Object.entries(damageByPlayer)) {
-        const tank = state.tanks[pid]
-        if (tank && dmg > 0) canvasRef.value?.showDamage(tank.x, tank.y - 48, dmg, tank.hp <= 0)
-      }
+      showImpactResult(carves, damageByPlayer)
     },
     onSequenceComplete: () => {
-      finalizeTurnAfterHold(state)
-      afterTurnSettled()
-      if (props.mode === 'p2p' && isLocal) {
-        const hashMsg: SyncHashEvent = {
-          type: 'SYNC_HASH',
-          turnId: state.turnId,
-          stateHash: battleStateHash(state, core.getStateHash()),
+      // 回合結束：先結算定時彈（倒數、到期引爆），再換下一位
+      runChargeDetonations(() => {
+        finalizeTurnAfterHold(state)
+        afterTurnSettled()
+        if (props.mode === 'p2p' && isLocal) {
+          const hashMsg: SyncHashEvent = {
+            type: 'SYNC_HASH',
+            turnId: state.turnId,
+            stateHash: battleStateHash(state, core.getStateHash()),
+          }
+          emit('outgoing-message', hashMsg)
         }
-        emit('outgoing-message', hashMsg)
-      }
+      })
+    },
+  })
+}
+
+/** 把一次爆炸結算的結果畫出來：地形挖坑 / 堆土、爆炸音效、傷害數字（砲彈命中與定時彈引爆共用） */
+function showImpactResult(
+  carves: ReturnType<typeof commitFireImpact>['carves'],
+  damageByPlayer: Record<PlayerId, number>,
+): void {
+  for (const c of carves) {
+    carveLog.push(c.x, c.y, c.op === 'fill' ? -c.radius : c.radius)
+    if (c.op === 'fill') {
+      canvasRef.value?.onTerrainFilled(c.x, c.y, c.radius, c.dirty)
+    } else {
+      canvasRef.value?.redrawTerrain(c.dirty)
+      canvasRef.value?.onTerrainCarved(c.x, c.y, c.radius)
+    }
+  }
+  if (carves.length > 0) emitBattleSound('explosion')
+  for (const [pid, dmg] of Object.entries(damageByPlayer)) {
+    const tank = state.tanks[pid]
+    if (tank && dmg > 0) canvasRef.value?.showDamage(tank.x, tank.y - 48, dmg, tank.hp <= 0)
+  }
+}
+
+/**
+ * 回合結束時結算場上的定時彈（`fuse`）：倒數、到期的引爆。演出期間把階段切成 FIRING，擋住操作與電腦出手；
+ * 演出結束再還原並呼叫 `done`。開火結算完與跳過回合兩條路徑都要經過這裡，兩端才會同一時間點結算。
+ */
+function runChargeDetonations(done: () => void): void {
+  const wasAiming = state.phase === 'AIMING'
+  const result = detonateDueCharges(state, core)
+  if (result.bursts.length === 0) {
+    done()
+    return
+  }
+  if (wasAiming) state.phase = 'FIRING'
+  canvasRef.value?.playChargeBursts({
+    bursts: result.bursts,
+    onImpact: () => showImpactResult(result.carves, result.damageByPlayer),
+    onComplete: () => {
+      if (wasAiming && state.phase === 'FIRING') state.phase = 'AIMING'
+      done()
     },
   })
 }
@@ -329,23 +364,26 @@ function handlePass(): void {
 }
 
 function applyPassCommand(cmd: PassActionCommand, isLocal: boolean): void {
-  const ok = executePassAction(state, cmd)
-  if (!ok) return
+  if (state.phase !== 'AIMING' || cmd.turnId !== state.turnId || cmd.playerId !== state.activePlayer) return
 
   emitBattleSound('ui_click')
   if (props.mode === 'p2p' && isLocal) {
     emit('outgoing-message', cmd)
   }
 
-  afterTurnSettled()
-  if (props.mode === 'p2p' && isLocal) {
-    const hashMsg: SyncHashEvent = {
-      type: 'SYNC_HASH',
-      turnId: state.turnId,
-      stateHash: battleStateHash(state, core.getStateHash()),
+  // 回合結束先結算定時彈；引爆讓對局結束時 executePassAction 會回傳 false，什麼都不做
+  runChargeDetonations(() => {
+    executePassAction(state, cmd)
+    afterTurnSettled()
+    if (props.mode === 'p2p' && isLocal) {
+      const hashMsg: SyncHashEvent = {
+        type: 'SYNC_HASH',
+        turnId: state.turnId,
+        stateHash: battleStateHash(state, core.getStateHash()),
+      }
+      emit('outgoing-message', hashMsg)
     }
-    emit('outgoing-message', hashMsg)
-  }
+  })
 }
 
 /** 回合結算完（沒有砲彈在飛）時：套用延後的快照、補送欠的快照、比對對手雜湊 */

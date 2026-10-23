@@ -77,6 +77,8 @@ export interface TankBlueprint {
     readonly pivotX: number
     readonly pivotY: number
     readonly face: FaceSpec
+    /** 名牌、血條、狀態圖示與回合箭頭整體上移 (px)，貼圖特別高的機種用（預設 0；蝸牛迫擊的殼頂與旗子比一般坦克高約 20px） */
+    readonly labelLift?: number
   }
   getSprites(team: TeamId): {
     readonly hullUrl: string

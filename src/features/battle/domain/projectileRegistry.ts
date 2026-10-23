@@ -15,6 +15,7 @@ import type { ProjectileBlueprint } from './projectileBlueprint'
 
 export * from './projectileBlueprint'
 
+// 新增彈種只需新增 projectiles/<name>.ts，不必改這裡
 const modules = import.meta.glob<{ default: ProjectileBlueprint }>('./projectiles/*.ts', { eager: true })
 
 export const PROJECTILE_LIST: ProjectileBlueprint[] = Object.values(modules)

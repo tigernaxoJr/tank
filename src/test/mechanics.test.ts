@@ -3,13 +3,15 @@ import type { BulletType, FireActionCommand, RosterSlot } from '@/shared/kernel/
 import type { TrajectoryHit } from '@/shared/wasm'
 import {
   commitFireImpact,
+  detonateDueCharges,
   executeFireAction,
   finalizeTurnAfterHold,
   moveActiveTank,
   prepareFireTrajectory,
   type PreparedShotPlan,
 } from '@/features/battle/application/useBattleTurn'
-import { battleStateHash, TANK_GROUND_OFFSET, type BattleState, type TankEntity } from '@/features/battle/domain/battleState'
+import { battleStateHash, chargesOf, TANK_GROUND_OFFSET, type BattleState, type TankEntity } from '@/features/battle/domain/battleState'
+import { planBotMove } from '@/features/battle/domain/botBrain'
 import { PROJECTILE_REGISTRY } from '@/features/battle/domain/projectileRegistry'
 import { traceShell } from '@/features/battle/domain/shellFlight'
 import { hasStatusFlag } from '@/features/battle/domain/statusEffects'
@@ -223,6 +225,106 @@ describe('地形效果', () => {
     expect(carves).toHaveLength(0)
     expect(core.getStateHash()).toBe(hash)
     expect(victim.x).toBeGreaterThan(x0)
+  })
+})
+
+describe('定時彈（fuse）', () => {
+  const sticky = 'SNAILER_STICKY'
+
+  it('定時黏殼彈落地不爆炸、不挖坑、不扣血，只在落點登記一顆定時彈', () => {
+    const { state, core } = setupBattle(1024, 'harvest_plains', duel('snailer', 'hawkeye'))
+    const victim = state.tanks.p2
+    const x = victim.x - 10
+    const y = victim.y + TANK_GROUND_OFFSET
+    const hash = core.getStateHash()
+    const hp = victim.hp
+    const { carves, damageByPlayer, placed } = commitFireImpact(state, groundPlan(state, x, y, sticky), core)
+    expect(carves).toHaveLength(0)
+    expect(core.getStateHash()).toBe(hash)
+    expect(damageByPlayer).toEqual({})
+    expect(victim.hp).toBe(hp)
+    expect(placed).toHaveLength(1)
+    expect(chargesOf(state)).toEqual([expect.objectContaining({ x, y, owner: 'p1', bulletType: sticky, turnsLeft: 2 })])
+  })
+
+  it('放置當回合結束倒數 1，對手回合結束再倒數到 0 才引爆：挖坑、扣血、移除定時彈', () => {
+    const { state, core } = setupBattle(1024, 'harvest_plains', duel('snailer', 'hawkeye'))
+    const victim = state.tanks.p2
+    commitFireImpact(state, groundPlan(state, victim.x, victim.y + TANK_GROUND_OFFSET, sticky), core)
+
+    // 放置者的回合結束：還沒到期
+    const first = detonateDueCharges(state, core)
+    expect(first.bursts).toHaveLength(0)
+    expect(chargesOf(state)[0].turnsLeft).toBe(1)
+    endTurn(state)
+    expect(state.activePlayer).toBe('p2')
+
+    // 對手的回合結束：到期引爆
+    const hp = victim.hp
+    const hash = core.getStateHash()
+    const second = detonateDueCharges(state, core)
+    expect(second.bursts).toHaveLength(1)
+    expect(second.carves).toHaveLength(1)
+    expect(core.getStateHash()).not.toBe(hash)
+    expect(victim.hp).toBeLessThan(hp)
+    expect(second.damageByPlayer.p2).toBeGreaterThan(0)
+    expect(chargesOf(state)).toHaveLength(0)
+  })
+
+  it('對手離開爆炸範圍就毫髮無傷；放置者自己站在範圍內一樣會被炸', () => {
+    const { state, core } = setupBattle(1024, 'harvest_plains', duel('snailer', 'hawkeye'))
+    const owner = state.tanks.p1
+    const victim = state.tanks.p2
+    const radius = PROJECTILE_REGISTRY[sticky].damageRadius
+    // 放在放置者自己腳邊；對手離得遠
+    commitFireImpact(state, groundPlan(state, owner.x + 5, owner.y + TANK_GROUND_OFFSET, sticky), core)
+    expect(Math.abs(victim.x - owner.x)).toBeGreaterThan(radius)
+    const hp = { p1: owner.hp, p2: victim.hp }
+    detonateDueCharges(state, core)
+    endTurn(state)
+    detonateDueCharges(state, core)
+    expect(victim.hp).toBe(hp.p2)
+    expect(owner.hp).toBeLessThan(hp.p1)
+  })
+
+  it('定時彈納入同步雜湊；沒有 charges 欄位的舊快照也能運作', () => {
+    const a = setupBattle(1024, 'harvest_plains', duel('snailer', 'hawkeye'))
+    const b = setupBattle(1024, 'harvest_plains', duel('snailer', 'hawkeye'))
+    const base = battleStateHash(a.state, a.core.getStateHash())
+    commitFireImpact(a.state, groundPlan(a.state, a.state.tanks.p2.x, a.state.tanks.p2.y + TANK_GROUND_OFFSET, sticky), a.core)
+    expect(battleStateHash(a.state, a.core.getStateHash())).not.toBe(base)
+    delete (b.state as { charges?: unknown }).charges
+    expect(() => detonateDueCharges(b.state, b.core)).not.toThrow()
+    expect(battleStateHash(b.state, b.core.getStateHash())).toBe(base)
+  })
+
+  it('電腦站在定時彈的爆炸範圍內會走出範圍；範圍外不受影響', () => {
+    const { state, core } = setupBattle(1024, 'harvest_plains', duel('snailer', 'zephyr'))
+    const bot = state.tanks.p2
+    bot.isBot = true
+    bot.botLevel = 'hard'
+    const radius = PROJECTILE_REGISTRY[sticky].damageRadius
+    commitFireImpact(state, groundPlan(state, bot.x, bot.y + TANK_GROUND_OFFSET, sticky), core)
+    const charge = chargesOf(state)[0]
+    const dx = planBotMove(state, core, 'p2')
+    expect(dx).not.toBe(0)
+    expect(Math.abs(bot.x + dx - charge.x)).toBeGreaterThanOrEqual(radius)
+
+    // 離得夠遠就沿用一般走位（這裡只確認不會因為定時彈而被推著走：結果與沒有定時彈時相同）
+    state.charges = []
+    const normal = planBotMove(state, core, 'p2')
+    chargesOf(state).push({ ...charge, x: bot.x + radius + 200 })
+    expect(planBotMove(state, core, 'p2')).toBe(normal)
+  })
+
+  it('兩端以相同指令模擬：放置、倒數、引爆後狀態雜湊一致', () => {
+    const run = () => {
+      const b = setupBattle(77, 'harvest_plains', duel('snailer', 'bastion'))
+      executeFireAction(b.state, fire(sticky, { angle: 55, power: 62 }), b.core)
+      detonateDueCharges(b.state, b.core)
+      return battleStateHash(b.state, b.core.getStateHash())
+    }
+    expect(run()).toBe(run())
   })
 })
 
