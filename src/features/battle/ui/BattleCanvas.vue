@@ -55,9 +55,25 @@ watch(
 const INK = '#1d2340'
 const TEAM_COLOR = { A: '#ff9a1f', B: '#3d8bff' } as const
 
+/** 雷達最高重畫頻率：脈動圈與坦克位置不需要 60fps，手機上每幀縮放整張地形太吃主執行緒 */
+const MINI_MIN_INTERVAL_MS = 100
+let miniLastDraw = 0
+let miniTrailing: ReturnType<typeof setTimeout> | undefined
+/** 縮好的地形快取，地形沒變就直接貼這張 */
+let miniTerrain: HTMLCanvasElement | null = null
+let miniTerrainVersion = -1
+
 function updateMinimap(camX: number, camY: number, viewW: number, viewH: number): void {
   const mini = minimapCanvas.value
   if (!mini) return
+  const now = performance.now()
+  if (now - miniLastDraw < MINI_MIN_INTERVAL_MS) {
+    // 鏡頭停下來前最後一次回報可能被略過，補一次，雷達框才不會停在舊位置
+    if (miniTrailing) clearTimeout(miniTrailing)
+    miniTrailing = setTimeout(() => updateMinimap(camX, camY, viewW, viewH), MINI_MIN_INTERVAL_MS)
+    return
+  }
+  miniLastDraw = now
   const mctx = mini.getContext('2d')
   if (!mctx) return
 
@@ -72,9 +88,20 @@ function updateMinimap(camX: number, camY: number, viewW: number, viewH: number)
 
   const terrainCanvas = sceneInstance?.getTerrainCanvasSource()
   if (terrainCanvas) {
-    mctx.imageSmoothingEnabled = true
-    mctx.imageSmoothingQuality = 'high'
-    mctx.drawImage(terrainCanvas, 0, 0, mw, mh)
+    const version = sceneInstance?.terrainVersion ?? 0
+    if (!miniTerrain || miniTerrain.width !== mw || miniTerrain.height !== mh || miniTerrainVersion !== version) {
+      miniTerrain ??= document.createElement('canvas')
+      miniTerrain.width = mw
+      miniTerrain.height = mh
+      const tctx = miniTerrain.getContext('2d')
+      if (tctx) {
+        tctx.imageSmoothingEnabled = true
+        tctx.imageSmoothingQuality = 'high'
+        tctx.drawImage(terrainCanvas, 0, 0, mw, mh)
+      }
+      miniTerrainVersion = version
+    }
+    mctx.drawImage(miniTerrain, 0, 0)
   }
 
   const scaleX = mw / props.core.width
@@ -252,6 +279,7 @@ onMounted(() => {
 })
 
 onUnmounted(() => {
+  clearTimeout(miniTrailing)
   if (game) {
     game.destroy(true)
     game = null

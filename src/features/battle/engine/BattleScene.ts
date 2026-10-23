@@ -120,6 +120,10 @@ export class BattleScene extends Phaser.Scene {
   private terrainCanvasTex: Phaser.Textures.CanvasTexture | null = null
   private terrainImage: Phaser.GameObjects.Image | null = null
   private aimGraphics!: Phaser.GameObjects.Graphics
+  /** 地形每重畫一次就 +1，雷達縮圖與瞄準預覽靠它判斷快取是否過期 */
+  terrainVersion = 0
+  /** 上一次畫出的瞄準預覽參數；相同就不重算彈道，空字串代表目前沒有預覽 */
+  private aimPreviewKey = ''
 
   private tankActors = new Map<string, TankVisualActor>()
   private props: PropActor[] = []
@@ -490,6 +494,7 @@ export class BattleScene extends Phaser.Scene {
 
     ctx.putImageData(imgData, minX, minY)
     this.terrainCanvasTex.refresh()
+    this.terrainVersion++
   }
 
   /** 不可破壞基岩：取主題的 bedrock 紋理（缺圖時退回程式石磚紋），外露頂面加高光、底面背光 */
@@ -943,18 +948,28 @@ export class BattleScene extends Phaser.Scene {
   }
 
   private drawAimPreview(): void {
-    this.aimGraphics.clear()
-    if (this.battleState.phase !== 'AIMING' || this.flyingProjectile || !this.core) {
+    const activeTank = this.battleState.tanks[this.battleState.activePlayer]
+    const visible = this.battleState.phase === 'AIMING' && !this.flyingProjectile && !!this.core && !!activeTank && activeTank.hp > 0
+    if (!visible) {
+      if (this.aimPreviewKey !== '') {
+        this.aimGraphics.clear()
+        this.aimPreviewKey = ''
+      }
       return
     }
 
-    const activeTank = this.battleState.tanks[this.battleState.activePlayer]
-    if (!activeTank || activeTank.hp <= 0) return
-
     const projSpec = getProjectileSpec(this.selectedBulletType)
-    const { vxMilli, vyMilli } = launchVelocity(worldAimAngle(activeTank.angle, activeTank.slopeDeg), activeTank.power, projSpec.speedMultiplier)
     // 偵察狀態：畫出完整彈道（含跳彈、高拋穿地）與落點；平常只畫前段
     const full = hasStatusFlag(activeTank, 'fullAimPreview')
+    const key = [
+      activeTank.id, activeTank.x, activeTank.y, activeTank.angle, activeTank.power, activeTank.slopeDeg,
+      this.battleState.wind, this.selectedBulletType, full, this.terrainVersion,
+    ].join('|')
+    if (key === this.aimPreviewKey) return
+    this.aimPreviewKey = key
+    this.aimGraphics.clear()
+
+    const { vxMilli, vyMilli } = launchVelocity(worldAimAngle(activeTank.angle, activeTank.slopeDeg), activeTank.power, projSpec.speedMultiplier)
     const launch = {
       startX: activeTank.x,
       startY: activeTank.y - MUZZLE_RISE,
