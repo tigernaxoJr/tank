@@ -170,25 +170,16 @@ pnpm run paint:units   # node tools/assets/paint_units.mjs
 * 車身圖在遊戲中以**圖片寬度中央**對齊 rig 原點，所以加寬零件（尾羽、駐鋤、大螯）時 `box` 要左右對稱擴張，維持原本的中心，錨點才不會偏。
 * 與地圖主題相同：輸出固定可重現，SVGO 壓縮原始檔（`tools/assets/unit-art/`），ImageMagick 去 metadata。
 
-### Blender 3D 路線（蝸牛迫擊 Snailer，2026-10-23，第一台由使用者設計圖 + Blender 建模的坦克）
+### Blender 3D 路線（蝸牛迫擊 Snailer）
 
-Snailer 不是用 `tools/assets/tanks/<id>.mjs` 的 SVG 手繪，而是**使用者自己用生圖工具產出的設計圖（原創、非其他遊戲的素材）→ 對照原圖在 Blender 程序化建模 → 算繪成遊戲貼圖**。
-美術風格仍遵守上面的卡通粗墨線、硬陰影、左上光與逐材質手工紋理規則；這條路線只是產圖方法不同，不取代 SVG 手繪（其餘六台維持 SVG）。
-
-| 檔案 | 用途 |
-|---|---|
-| `tools/blender/snailer.py` | 模型本體（全程序化）：履帶、螺旋殼、身體、頭頸、眼柄、砲管 + 金色托架、旗子；卡通材質（Diffuse → ShaderToRGB 色階 × 底色）+ 每種材料各一套手工程序紋理（藍漆崩角 / 黃銅拉絲 / 橘皮革 / 深藍橡膠龜裂 / 帆布補丁編織 / 白鋼污垢…）；Freestyle 墨線（鉚釘獨立 collection、用細線）。`blender -b -P tools/blender/snailer.py` 輸出 `out/snailer/*.png` 六視角預覽。隊伍色由環境變數 `SNAILER_TEAM`（`a` 或 `b`）決定（`TEAM_ACCENT`：琥珀橘 / 皇家藍，套在履帶側板、砲管環箍、旗子） |
-| `tools/blender/snailer_game.py` + `snailer_game_pack.py` | 遊戲貼圖輸出（兩步：Blender 算繪大畫布 → 系統 Python 用 PIL 裁切、縮回、補邊，因為 Blender 內建 Python 沒有 PIL）。產出 `public/assets/units/tanks/snailer_<a 或 b>_<hull 或 barrel>.png` 並印出 `pivotX / pivotY / face` 座標 |
-| `tools/blender/export_snailer_glb.py` | 匯出 GLB 給臨時 3D 檢視頁（three.js，純色卡通 + 墨線，只在本機看造型用，不進專案依賴） |
-| `tools/blender/refs/snailer/` | 使用者的設計圖（`snailer_tank.jpg`、`snailer_projectile.jpg`）、TRELLIS.2 高模與降面成品；舊的轉面圖 `sheet.webp`、彈體設計圖 `shells.jpg` 已移除 |
+蝸牛現有的遊戲貼圖（`public/assets/units/tanks/snailer_<a|b>_<hull|barrel>.png`、專屬彈 `shell_snailer.png` / `shell_sticky.png`）原本由 Blender 程序化建模腳本產生；該批腳本（`snailer.py`、`snailer_game.py`、`snailer_game_pack.py`、`export_snailer_glb.py`）已於 2026-10 移除，**這批舊圖預定整批替換**，新的 3D 原型改走第八節的 Colab TRELLIS.2 流程（高模 → 10k qcb GLB，`tools/blender/refs/snailer/`）。舊圖在新圖完成前仍留在 `public/` 供遊戲載入。
+下面的**換算規格**是遊戲貼圖本身的規格（與 SVG 路線一致），之後用 GLB 算繪新圖時照樣適用；與舊腳本綁定的細節（Freestyle 墨線、螺旋殼幾何）已刪除。
 
 **換算規格**（與 SVG 路線一致，砲彈 / 臉 / 隊伍色規則照舊）：
 
 * 1 個 Blender 單位 = 20 遊戲像素；輸出貼圖 = 50 像素 / 單位（2.5 倍）、`sprite.scale = 0.4`。先以 2 倍超取樣算繪再縮回。
 * 車身圖：朝右、底邊 = 履帶接地面、水平以圖片中心為準（Phaser `origin(0.5, 1)`）。**砲管零件不進車身圖**；砲管圖水平朝右，轉軸在寬度 8%、垂直置中（砲管零件繞轉軸放平後再算繪）。
 * **臉不畫進貼圖**：`eye_* / pupil_* / glint* / mouth` 在算繪時隱藏，眼柄頂端留金色圓頭，眼睛由 `tankFace.ts` 疊上去。座標換算：`pivotX = (轉軸x − 圖中心x) × 20`、`pivotY = 14 − (轉軸z − 底邊z) × 20`（`HULL_BASE_Y = 14`），臉中心同理。**不要直接讀 Blender 物件的 `location`**：`transform_apply` 會把位置烘進頂點，要用包圍盒中心。
-* 墨線粗細不能照螢幕預覽的數值：Freestyle 的線寬會隨解析度放大，遊戲貼圖用 `1.7 × 超取樣倍率` 這個量級，縮回 0.4 倍後才不會太粗。
-* 螺旋殼的幾何：用**等距螺線**（每圈半徑增量固定、管半徑固定，外輪廓才是圓），**順時針**向外、殼口在前下方（照原圖量測：外圈半徑 底 < 左 < 上 < 右，右 = 前方最大）；管子分段交替金 / 藍，每段 72°（每圈 5 段，奇數段使相鄰圈同角度顏色相反）。等角螺線（每圈縮小）會讓外輪廓變成蛋形、殼底浮空，做過一次不要再用。
 * 標籤：貼圖比一般坦克高時用 `sprite.labelLift`（px）把名牌、血條、狀態圖示、回合箭頭整體抬高；Snailer 為 20。
 * **專屬彈體圖是一次性裁切**：`shell_snailer.png`（80×55）、`shell_sticky.png`（56×70）由使用者當時的設計圖 `shells.jpg`（原圖已從 repo 移除）以顏色距離去背（背景是均勻淺灰）、邊緣內縮 1 px 去灰邊、柔化 alpha 後縮小而成，沒有進 `paint_units.mjs`，所以 `pnpm run paint:units` 不會覆蓋它們；遊戲內 `sprite.scale = 0.45`。黏殼彈同時是場上定時彈標記的圖。
 
@@ -230,6 +221,8 @@ pnpm run paint:ui   # node tools/assets/paint_ui.mjs
      - 單一車體、嚴禁多視角拼貼、無複雜地面陰影與文字浮水印，確保 3D 擴散演算法能精確重建幾何體。
    - **第 2 張：砲彈本體**（`tools/blender/refs/<id>/<id>_projectile.jpg`）：
      - 獨立單一投射物特寫、3/4 視角、高對比淺灰純色背景。
+   - **砲管設計要「可幾何分割」**：遊戲的砲管是獨立旋轉的圖，而 TRELLIS 輸出的是單一 mesh，所以要在生成後依座標把砲管切出來。設計時讓砲管是從車身伸出、朝前、與車身有明顯分界的獨立圓筒；**生成時不要把砲管與車身分開生成**（TRELLIS 每次都把輸出縮放到同一個方框，兩份模型的相對大小與位置會丟失，之後要手動對齊）。備案：實際切不乾淨時，才改畫「無砲管車身」與「單獨砲管」兩張圖分別生成、在 Blender 手動組合。（切割做法由 `tools/blender/sprites/` 的 GLB → 精靈圖腳本處理，2026-10 驗證中。）
+   - **砲彈不生成 GLB**：砲彈在遊戲裡很小且持續旋轉，沿用 2D 做法 —— 直接從 `<id>_projectile.jpg` 以顏色距離去背、縮小成彈體圖（作法見 §六「專屬彈體圖是一次性裁切」）。因此 `tools/colab/stage.sh` 只放 `<id>_tank.jpg`；批次筆記本會把資料夾內所有圖片都轉成 3D，不要把 `_projectile.jpg` 放進 Colab 作業資料夾。
    - **可請 agy（Antigravity CLI）代為生圖**：本機已安裝 `agy`（`C:\Users\naxo\AppData\Local\agy\bin\agy`），Agent 可用非互動模式委派生圖，例如 `agy -p "<提示>" --mode accept-edits`，在提示中指定絕對輸出路徑與檔名。
      - 提示須包含：本節的視角 / 背景 / 單一物件規範、色彩限制（嚴禁濁青色）、與 `refs/beetle`、`refs/seahorse` 既有 `*_tank.jpg` 對齊的畫風（光滑 3D 渲染卡通質感、蒸汽龐克黃銅鉚釘、單顆大眼、車頭朝左），以及「不得使用任何現有遊戲的美術」。
      - 一次請它產出 3 張不同方案（存成 `refs/<id>/concepts/concept_a/b/c.jpg`），由使用者挑選後，選定者再改名為 `<id>_tank.jpg`。
