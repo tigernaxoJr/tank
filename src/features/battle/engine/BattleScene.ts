@@ -189,6 +189,8 @@ export class BattleScene extends Phaser.Scene {
         this.load.image(`${tank.id}_${team}_hull`, sprites.hullUrl)
         this.load.image(`${tank.id}_${team}_barrel`, sprites.barrelUrl)
       }
+      const atlas = tank.sprite.face.atlas
+      if (atlas) this.load.image(atlas.key, atlas.url)
     }
     for (const theme of MAP_THEMES) {
       for (const file of [...BACKDROP_FILES, 'terrain_cap', 'terrain_fill']) {
@@ -836,7 +838,7 @@ export class BattleScene extends Phaser.Scene {
         // 貼地陰影：畫在地表上、跟著坡度轉，腳少、底盤高的機種（毒蠍）才不會看起來浮空
         const shadowW = hull.width * spec.sprite.scale * 0.82
         const shadow = this.add.ellipse(0, HULL_BASE_Y - 1.5, shadowW, 7, 0x241e33, 0.24)
-        rig.add([shadow, barrel, hull, face.gfx])
+        rig.add([shadow, barrel, hull, ...face.objects])
 
         const hpBarGraphics = this.add.graphics()
         const nameTag = this.add
@@ -942,7 +944,7 @@ export class BattleScene extends Phaser.Scene {
     })
     rig.setRotation(slopeRad + pose.rot)
     rig.y = pose.y
-    actor.face.gfx.setAlpha(isDead ? 0.75 : 1)
+    actor.face.setAlpha(isDead ? 0.75 : 1)
 
     hull.setTexture(`${spec.id}_${tank.team}_hull`).setScale(spec.sprite.scale).setFlipX(facingLeft)
     barrel

@@ -9,7 +9,7 @@
  */
 import Phaser from 'phaser'
 import type { TurnPhase } from '../domain/battleState'
-import type { FaceSpec } from '../domain/tankRegistry'
+import type { FaceAtlas, FaceSpec } from '../domain/tankRegistry'
 
 export type FaceEvent = 'turnStart' | 'fire' | 'hurt' | 'smug' | 'oops'
 
@@ -63,6 +63,12 @@ const HALO = 0xffffff
 
 export class TankFace {
   readonly gfx: Phaser.GameObjects.Graphics
+  /** 要加進 rig 的所有物件（貼圖表情的圖片在下、Graphics 在上） */
+  readonly objects: Phaser.GameObjects.GameObject[]
+  private readonly atlas: FaceAtlas | null
+  private eyeImgs: Phaser.GameObjects.Image[] = []
+  private pupilImgs: Phaser.GameObjects.Image[] = []
+  private mouthImg: Phaser.GameObjects.Image | null = null
   private reaction: { kind: Reaction; start: number } | null = null
   private nextBlinkAt = 0
   private blinkUntil = 0
@@ -79,9 +85,24 @@ export class TankFace {
     private readonly spec: FaceSpec,
   ) {
     this.gfx = scene.add.graphics()
+    this.atlas = spec.atlas ?? null
+    this.objects = [this.gfx]
+    if (this.atlas) {
+      const tex = scene.textures.get(this.atlas.key)
+      for (const [name, f] of Object.entries(this.atlas.frames)) if (!tex.has(name)) tex.add(name, 0, f[0], f[1], f[2], f[3])
+      const mk = () => scene.add.image(0, 0, this.atlas!.key, 'eye_closed').setVisible(false)
+      this.eyeImgs = [mk(), mk()]
+      this.pupilImgs = [mk(), mk()]
+      this.mouthImg = mk()
+      this.objects.unshift(...this.eyeImgs, ...this.pupilImgs, this.mouthImg)
+    }
     const iris = Phaser.Display.Color.IntegerToColor(spec.iris)
     this.irisDark = iris.clone().darken(30).color
     this.irisLight = iris.clone().lighten(25).color
+  }
+
+  setAlpha(a: number): void {
+    for (const o of this.objects) (o as Phaser.GameObjects.Image).setAlpha(a)
   }
 
   private get rest(): number {
@@ -213,8 +234,71 @@ export class TankFace {
 
   // ───────────────────────────── drawing ─────────────────────────────
 
+  /** 圖集影格：eye_* 近側眼（含眼柄頂球與表情）、far_wide 無瞳孔的白眼球、pupil_*、mouth_* */
+  private drawTextured(e: Expression, dir: number, time: number): void {
+    const a = this.atlas!
+    const { eyeGap, eyeSize } = this.spec
+    const far = this.spec.farScale ?? 1
+    const cx = this.spec.x * dir
+    const cy = this.spec.y
+    const lidOpen = e.open > 1 ? 1 : e.open * this.rest
+    let frame: string
+    let withPupil = false
+    switch (e.eyes) {
+      case 'x': frame = 'eye_dead'; break
+      case 'happy': frame = 'eye_happy'; break
+      case 'squeeze': frame = 'eye_hurt'; break
+      case 'spiral': frame = 'far_wide'; break
+      default:
+        if (lidOpen < 0.1) frame = 'eye_closed'
+        else if (lidOpen < 0.5) frame = 'eye_sleepy'
+        else if (lidOpen < 0.85) frame = 'eye_half'
+        else { frame = 'far_wide'; withPupil = true }
+    }
+    const spiral = e.eyes === 'spiral'
+    ;[-1, 1].forEach((side, i) => {
+      const k = (side === dir ? far : 1) * a.scale
+      const ex = cx + (side * eyeGap) / 2
+      this.eyeImgs[i].setFrame(frame).setPosition(ex, cy).setScale(k).setFlipX(dir < 0).setVisible(true)
+      const p = this.pupilImgs[i]
+      if (withPupil || spiral) {
+        const r = (a.frames.far_wide[2] * k) / 2
+        const reach = r * 0.3
+        p.setFrame(spiral ? 'pupil_dizzy' : 'pupil_normal')
+          .setPosition(spiral ? ex : ex + this.lookX * reach, spiral ? cy : cy + this.lookY * reach + r * 0.04)
+          .setScale(k * (spiral ? 0.95 : 0.55 * e.pupil))
+          .setRotation(spiral ? time / 140 : 0)
+          .setVisible(true)
+      } else p.setVisible(false)
+    })
+    const mouth: Record<MouthShape, string> = {
+      smile: 'mouth_smile', grin: 'mouth_laugh', flat: 'mouth_flat', frown: 'mouth_frown',
+      o: 'mouth_open', shout: 'mouth_open', wavy: 'mouth_flat', smirk: 'mouth_tongue',
+    }
+    if (this.spec.noMouth) {
+      this.mouthImg!.setVisible(false)
+      return
+    }
+    this.mouthImg!
+      .setFrame(mouth[e.mouth])
+      .setPosition(cx + dir * 1.5, cy + (this.spec.mouthDy ?? eyeSize + 4.5))
+      .setScale(a.scale * (e.mouth === 'shout' ? 1.5 : 1))
+      .setFlipX(dir < 0)
+      .setVisible(true)
+  }
+
   private draw(e: Expression, dir: number, time: number): void {
     const g = this.gfx
+    if (this.atlas) {
+      g.clear()
+      this.drawTextured(e, dir, time)
+      const { eyeGap, eyeSize } = this.spec
+      const cx = this.spec.x * dir
+      const cy = this.spec.y
+      if (e.sweat) this.drawSweat(cx - dir * (eyeGap / 2 + eyeSize + 3), cy - eyeSize * 0.4, time)
+      if (e.stars) this.drawStars(cx, cy - eyeSize - 11, eyeGap * 0.9 + 4, time)
+      return
+    }
     const { eyeGap, eyeSize } = this.spec
     const far = this.spec.farScale ?? 1
     const cx = this.spec.x * dir

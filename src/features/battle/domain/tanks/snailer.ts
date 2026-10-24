@@ -1,4 +1,5 @@
 import { defineTank } from '../tankBlueprint'
+import { SNAILER_FACE } from '../faceAtlases/snailer'
 
 export default defineTank({
   id: 'snailer',
@@ -23,10 +24,10 @@ export default defineTank({
   shots: ['SNAILER_SHELL', 'SNAILER_STICKY'],
   sprite: {
     scale: 0.4,
-    labelLift: 20,
-    pivotX: 15.6,
-    pivotY: -37.2,
-    // 眼睛長在金色眼柄頂端（貼圖不畫眼睛，遊戲疊上去）：眼皮 = 眼柄金色，微微下垂的憨厚表情
-    face: { x: 33.4, y: -29.4, eyeGap: 6, eyeSize: 6, lid: 0xedb63a, iris: 0x2a3b7a, farScale: 0.85, rest: 0.9, mouthDy: 10, restMouth: 'smile' },
+    labelLift: 32,
+    pivotX: 35.2,
+    pivotY: -34,
+    // 臉是貼圖（2D 生圖的眼白 / 眼皮 / 嘴，瞳孔仍由程式追視線）：x / y = 兩眼柄頂球的中點，eyeGap = 兩球中心距
+    face: { x: 26.4, y: -59.8, eyeGap: 12.7, eyeSize: 5.6, lid: 0xd9a98a, iris: 0x2a3b7a, farScale: 0.9, rest: 0.9, mouthDy: 14, restMouth: 'smile', atlas: SNAILER_FACE, noMouth: true },
   },
 })

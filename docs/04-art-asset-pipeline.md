@@ -172,7 +172,7 @@ pnpm run paint:units   # node tools/assets/paint_units.mjs
 
 ### Blender 3D 路線（蝸牛迫擊 Snailer）
 
-蝸牛現有的遊戲貼圖（`public/assets/units/tanks/snailer_<a|b>_<hull|barrel>.png`、專屬彈 `shell_snailer.png` / `shell_sticky.png`）原本由 Blender 程序化建模腳本產生；該批腳本（`snailer.py`、`snailer_game.py`、`snailer_game_pack.py`、`export_snailer_glb.py`）已於 2026-10 移除，**這批舊圖預定整批替換**，新的 3D 原型改走第八節的 Colab TRELLIS.2 流程（高模 → 10k qcb GLB，`tools/blender/refs/snailer/`）。舊圖在新圖完成前仍留在 `public/` 供遊戲載入。
+蝸牛現有的遊戲貼圖（`public/assets/units/tanks/snailer_<a|b>_<hull|barrel>.png`、專屬彈 `shell_snailer.png` / `shell_sticky.png`）原本由 Blender 程序化建模腳本產生；該批腳本（`snailer.py`、`snailer_game.py`、`snailer_game_pack.py`、`export_snailer_glb.py`）已於 2026-10 移除，**這批舊圖已整批替換為下一小節的 2D 生圖路線**（Colab TRELLIS.2 的 3D 高模 → 10k qcb GLB 仍保留在 `tools/blender/refs/snailer/`，做為 3D 原型來源，見第八節）。
 下面的**換算規格**是遊戲貼圖本身的規格（與 SVG 路線一致），之後用 GLB 算繪新圖時照樣適用；與舊腳本綁定的細節（Freestyle 墨線、螺旋殼幾何）已刪除。
 
 **換算規格**（與 SVG 路線一致，砲彈 / 臉 / 隊伍色規則照舊）：
@@ -182,6 +182,18 @@ pnpm run paint:units   # node tools/assets/paint_units.mjs
 * **臉不畫進貼圖**：`eye_* / pupil_* / glint* / mouth` 在算繪時隱藏，眼柄頂端留金色圓頭，眼睛由 `tankFace.ts` 疊上去。座標換算：`pivotX = (轉軸x − 圖中心x) × 20`、`pivotY = 14 − (轉軸z − 底邊z) × 20`（`HULL_BASE_Y = 14`），臉中心同理。**不要直接讀 Blender 物件的 `location`**：`transform_apply` 會把位置烘進頂點，要用包圍盒中心。
 * 標籤：貼圖比一般坦克高時用 `sprite.labelLift`（px）把名牌、血條、狀態圖示、回合箭頭整體抬高；Snailer 為 20。
 * **專屬彈體圖是一次性裁切**：`shell_snailer.png`（80×55）、`shell_sticky.png`（56×70）由使用者當時的設計圖 `shells.jpg`（原圖已從 repo 移除）以顏色距離去背（背景是均勻淺灰）、邊緣內縮 1 px 去灰邊、柔化 alpha 後縮小而成，沒有進 `paint_units.mjs`，所以 `pnpm run paint:units` 不會覆蓋它們；遊戲內 `sprite.scale = 0.45`。黏殼彈同時是場上定時彈標記的圖。
+
+### 2D 生圖路線（蝸牛迫擊 Snailer 現行貼圖）
+
+蝸牛現在的車身、砲管與臉都來自**網頁版 Gemini 生圖**（參考圖 `tools/blender/refs/snailer/snailer_tank.jpg`），再由 `tools/sprites2d/` 的腳本切成遊戲貼圖；3D 算繪成寫實貼圖的路線因風格與其他坦克落差大，已不採用。
+
+1. **出圖**（人工；`agy` 的生圖額度常耗盡，改走網頁版）：一次生 2～3 張候選、挑最好的，下載**原圖**（不要截圖）。
+   * **車身 + 砲管 sheet**：洋紅 `#FF00FF` 純色底；左為朝右側視、**不含砲管與眼睛**的車身，眼柄頂端留光滑圓頭，車身砲口位置只畫一塊**圓形凹座圓盤（無孔、無管）**；右為水平砲管，**後端是球形關節**（球心在砲管中軸上、直徑比圓盤略大，轉動時能完全蓋住圓盤），管身單純錐形、不要伸縮節或寬環箍。曾試過「車身砲座管 + 砲管後環箍」，兩邊圓的大小對不上、轉動時露縫，所以改用球形關節。
+   * **表情 sheet**：洋紅底、8 欄 × 4 列：第 1 列近側眼（睜、瞇、半睜、閉、瞪大、開心 ^、受擊 ><、陣亡 X；每格含眼柄頂球），第 2 列遠側眼（同上、無瞳孔），第 3 列瞳孔（普通、小、大、暈眩螺旋），第 4 列嘴與符號。
+2. **去背切割**：`python -I tools/sprites2d/slice_sheet.py <sheet> <out> --ball` 洋紅去背（洋紅度 `min(R,B)−G` 設門檻、邊緣去色邊並內縮 1 px）、依空白欄切成車身與砲管、縮放到車身寬 240、藍殼轉紅橘做隊伍 A、右側補透明讓球心落在砲管圖寬度 8%（引擎 `origin(0.08, 0.5)`）。`python -I tools/sprites2d/slice_expr.py <sheet> <out> --ball-px 56` 把表情 sheet 切成 28 個零件，`pack_face_atlas.py <dir> <id>` 打包成 `public/assets/units/tanks/<id>_face.png` 與 `src/features/battle/domain/faceAtlases/<id>.ts`（影格表）。
+3. **人工檢查**（一定要做）：在白、深、灰三種背景上看去背邊緣有沒有洋紅色邊；轉軸（球心）與臉座標要用肉眼在遊戲或檢視頁上確認，不要請 AI 決定。
+4. **貼圖表情**：`FaceSpec.atlas` 有值時，`TankFace` 用圖集畫眼睛與嘴（眼白 / 眼皮 / 表情用貼圖，**瞳孔貼圖仍由程式移動以追視線**，冷汗與暈眩星星仍用程式畫）；`noMouth: true` 則不畫嘴（蝸牛）。`face.x / y` 是兩個眼柄頂球的中點、`eyeGap` 是兩球中心距，眼睛貼圖會蓋住車身貼圖上的光滑圓頭。沒有 `atlas` 的坦克維持原本的程序化畫法。需要的影格見 `tankFace.ts` 的 `drawTextured`（`eye_*`、`far_wide`、`pupil_normal / dizzy`、`mouth_*`）。大廳靜態臉（`faceSvg.ts`）同樣支援。
+5. 蝸牛座標：`pivotX 35.2 / pivotY −34`、`face {x 26.4, y −59.8, eyeGap 12.7}`、`labelLift 32`。
 
 ## 七、大廳與 HUD 紋理：`tools/assets/paint_ui.mjs`
 
@@ -221,7 +233,7 @@ pnpm run paint:ui   # node tools/assets/paint_ui.mjs
      - 單一車體、嚴禁多視角拼貼、無複雜地面陰影與文字浮水印，確保 3D 擴散演算法能精確重建幾何體。
    - **第 2 張：砲彈本體**（`tools/blender/refs/<id>/<id>_projectile.jpg`）：
      - 獨立單一投射物特寫、3/4 視角、高對比淺灰純色背景。
-   - **砲管設計要「可幾何分割」**：遊戲的砲管是獨立旋轉的圖，而 TRELLIS 輸出的是單一 mesh，所以要在生成後依座標把砲管切出來。設計時讓砲管是從車身伸出、朝前、與車身有明顯分界的獨立圓筒；**生成時不要把砲管與車身分開生成**（TRELLIS 每次都把輸出縮放到同一個方框，兩份模型的相對大小與位置會丟失，之後要手動對齊）。備案：實際切不乾淨時，才改畫「無砲管車身」與「單獨砲管」兩張圖分別生成、在 Blender 手動組合。（切割做法由 `tools/blender/sprites/` 的 GLB → 精靈圖腳本處理，2026-10 驗證中。）
+   - **砲管設計要「可幾何分割」**：遊戲的砲管是獨立旋轉的圖，而 TRELLIS 輸出的是單一 mesh，所以要在生成後依座標把砲管切出來。設計時讓砲管是從車身伸出、朝前、與車身有明顯分界的獨立圓筒；**生成時不要把砲管與車身分開生成**（TRELLIS 每次都把輸出縮放到同一個方框，兩份模型的相對大小與位置會丟失，之後要手動對齊）。備案：實際切不乾淨時，才改畫「無砲管車身」與「單獨砲管」兩張圖分別生成、在 Blender 手動組合。（GLB 切割成精靈圖的實驗腳本已移除；蝸牛改走上面的 2D 生圖路線，車身與砲管本來就分開畫。）
    - **砲彈不生成 GLB**：砲彈在遊戲裡很小且持續旋轉，沿用 2D 做法 —— 直接從 `<id>_projectile.jpg` 以顏色距離去背、縮小成彈體圖（作法見 §六「專屬彈體圖是一次性裁切」）。因此 `tools/colab/stage.sh` 只放 `<id>_tank.jpg`；批次筆記本會把資料夾內所有圖片都轉成 3D，不要把 `_projectile.jpg` 放進 Colab 作業資料夾。
    - **可請 agy（Antigravity CLI）代為生圖**：本機已安裝 `agy`（`C:\Users\naxo\AppData\Local\agy\bin\agy`），Agent 可用非互動模式委派生圖，例如 `agy -p "<提示>" --mode accept-edits`，在提示中指定絕對輸出路徑與檔名。
      - 提示須包含：本節的視角 / 背景 / 單一物件規範、色彩限制（嚴禁濁青色）、與 `refs/beetle`、`refs/seahorse` 既有 `*_tank.jpg` 對齊的畫風（光滑 3D 渲染卡通質感、蒸汽龐克黃銅鉚釘、單顆大眼、車頭朝左），以及「不得使用任何現有遊戲的美術」。

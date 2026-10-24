@@ -10,7 +10,7 @@
 import type { TankArchetypeId } from '@/shared/kernel/types'
 import type { DamageType, TankBlueprint } from './tankBlueprint'
 
-export type { DamageType, FaceSpec, TankBlueprint } from './tankBlueprint'
+export type { DamageType, FaceAtlas, FaceSpec, TankBlueprint } from './tankBlueprint'
 
 const modules = import.meta.glob<{ default: TankBlueprint }>('./tanks/*.ts', { eager: true })
 

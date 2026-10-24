@@ -67,6 +67,6 @@
 | 測試 | Vitest（`pnpm test`，測試在 `src/test/`；Rust 核心用 `pnpm run test:rust`） |
 | 連線 | PeerJS (WebRTC P2P) + 輕量信令伺服器 (`server/`, Node.js)；`@noble/hashes`（SHA-256，連線對戰的彈藥承諾 / 揭露） |
 | 核心運算 | Rust → WebAssembly (`crates/tank-core`, `wasm-pack`) |
-| 美術資產管線 | Blender 算繪 (`tools/blender`)、Kenney 烘焙 (`tools/assets/bake_kenney_assets.py`, Pillow)、原創地圖主題、Q 版坦克/砲彈與大廳/HUD 紋理程式繪製 (`tools/assets/paint_map_themes.mjs`、`tools/assets/paint_units.mjs`、`tools/assets/paint_ui.mjs`, `@resvg/resvg-js` devDependency)、vtracer / magick / svgo / rembg、TRELLIS.2（Colab 批次生成帶貼圖高模，`tools/colab`）、pymeshlab（`tools/blender/lowpoly` 降面烘焙，uv + Python 3.12 的 `.venv`）（見 [`docs/04-art-asset-pipeline.md`](./docs/04-art-asset-pipeline.md)） |
+| 美術資產管線 | Blender 算繪 (`tools/blender`)、Kenney 烘焙 (`tools/assets/bake_kenney_assets.py`, Pillow)、原創地圖主題、Q 版坦克/砲彈與大廳/HUD 紋理程式繪製 (`tools/assets/paint_map_themes.mjs`、`tools/assets/paint_units.mjs`、`tools/assets/paint_ui.mjs`, `@resvg/resvg-js` devDependency)、vtracer / magick / svgo / rembg、TRELLIS.2（Colab 批次生成帶貼圖高模，`tools/colab`）、pymeshlab（`tools/blender/lowpoly` 降面烘焙，uv + Python 3.12 的 `.venv`）、網頁版 Gemini 生圖 + Pillow / OpenCV 去背切割與表情圖集（`tools/sprites2d`）（見 [`docs/04-art-asset-pipeline.md`](./docs/04-art-asset-pipeline.md)） |
 | 素材授權 | Kenney CC0 + 專案原創程式繪製美術（地圖主題、坦克、砲彈；見 `CREDITS.md`） |
 - 新增、移除或升級上述任一技術時，**必須同步更新本表**與 [`docs/README.md`](./docs/README.md)。

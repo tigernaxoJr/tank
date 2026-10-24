@@ -1,0 +1,40 @@
+import type { FaceAtlas } from '../tankBlueprint'
+
+/** tools/sprites2d/pack_face_atlas.py 產生（來源：2D 生圖表情 sheet）；影格 = [x, y, w, h] */
+export const SNAILER_FACE: FaceAtlas = {
+  key: 'snailer_face',
+  url: './assets/units/tanks/snailer_face.png',
+  size: [512, 160],
+  /** 圖集像素 → 遊戲像素（眼球直徑 56px × 0.2 ≈ 眼柄頂球 11px） */
+  scale: 0.2,
+  frames: {
+    eye_closed: [0, 0, 56, 56],
+    eye_dead: [58, 0, 56, 56],
+    eye_half: [116, 0, 56, 56],
+    eye_happy: [174, 0, 56, 56],
+    eye_hurt: [232, 0, 56, 56],
+    eye_open: [290, 0, 56, 56],
+    eye_sleepy: [348, 0, 56, 56],
+    eye_wide: [406, 0, 56, 56],
+    far_blank: [0, 58, 56, 56],
+    far_closed: [58, 58, 56, 56],
+    far_dead: [116, 58, 56, 56],
+    far_half: [174, 58, 56, 56],
+    far_happy: [232, 58, 56, 56],
+    far_hurt: [290, 58, 56, 56],
+    far_sleepy: [348, 58, 56, 56],
+    far_wide: [406, 58, 56, 56],
+    fx_star: [92, 116, 41, 43],
+    fx_sweat: [464, 58, 31, 46],
+    mouth_flat: [442, 116, 52, 13],
+    mouth_frown: [364, 116, 55, 21],
+    mouth_laugh: [135, 116, 56, 43],
+    mouth_open: [287, 116, 20, 30],
+    mouth_smile: [309, 116, 53, 30],
+    mouth_tongue: [193, 116, 53, 38],
+    pupil_big: [0, 116, 44, 44],
+    pupil_dizzy: [46, 116, 44, 44],
+    pupil_normal: [248, 116, 37, 37],
+    pupil_small: [421, 116, 19, 19],
+  },
+}

@@ -5,6 +5,17 @@
 import type { BulletType, TankArchetypeId, TeamId } from '@/shared/kernel/types'
 import type { HitEffect } from './shotExtensions'
 
+/** 貼圖表情圖集（單張 PNG + 影格表）；有它的坦克用貼圖畫眼睛與嘴，瞳孔仍由程式追視線 */
+export interface FaceAtlas {
+  readonly key: string
+  readonly url: string
+  readonly size: readonly [number, number]
+  /** 圖集像素 → 遊戲像素 */
+  readonly scale: number
+  /** 影格 = [x, y, w, h]；必要影格見 tankFace.ts 的 drawTextured */
+  readonly frames: Readonly<Record<string, readonly [number, number, number, number]>>
+}
+
 /** 表情臉部位置（rig 區域座標，以面向右為準；面向左時自動鏡像） */
 export interface FaceSpec {
   readonly x: number
@@ -31,6 +42,10 @@ export interface FaceSpec {
   readonly blush?: boolean
   /** 眉毛畫法：line = 墨線（預設），block = 車身色石塊眉骨（鐵壁堡壘） */
   readonly brow?: 'line' | 'block'
+  /** 貼圖表情：有的話眼睛 / 嘴改用圖集（eyeSize 仍用來排版冷汗、星星），eyeGap 與 x / y 為眼球中心 */
+  readonly atlas?: FaceAtlas
+  /** 不畫嘴（蝸牛：脖子上沒有嘴的位置）；只對貼圖表情有效 */
+  readonly noMouth?: boolean
 }
 
 /** 傷害類型：explosion / fall / poison 已啟用；burn / movement 為預留 */

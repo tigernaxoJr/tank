@@ -52,7 +52,31 @@ const circle = (x: number, y: number, r: number, fill: string, op = 1) =>
 const inked = (d: string, w: number) =>
   `<path d="${d}" fill="none" stroke="${HALO}" stroke-opacity="0.4" stroke-width="${n(w + 2.2)}"/><path d="${d}" fill="none" stroke="${INK}" stroke-width="${n(w)}"/>`
 
+/** 貼圖表情的待機臉：圖集影格以巢狀 <svg viewBox> 裁出來，位置同 tankFace.drawTextured */
+function atlasRestFaceSvg(spec: FaceSpec): string {
+  const a = spec.atlas!
+  const far = spec.farScale ?? 1
+  const img = (frame: string, x: number, y: number, k: number, rot = 0) => {
+    const [fx, fy, fw, fh] = a.frames[frame]
+    const w = fw * k
+    const h = fh * k
+    return `<svg x="${n(x - w / 2)}" y="${n(y - h / 2)}" width="${n(w)}" height="${n(h)}" viewBox="${fx} ${fy} ${fw} ${fh}" overflow="hidden"><image href="${a.url}" width="${a.size[0]}" height="${a.size[1]}"${rot ? ` transform="rotate(${rot})"` : ''}/></svg>`
+  }
+  let s = ''
+  for (const side of [-1, 1]) {
+    const k = (side === 1 ? far : 1) * a.scale
+    const ex = spec.x + (side * spec.eyeGap) / 2
+    const reach = ((a.frames.far_wide[2] * k) / 2) * 0.3
+    s += img('far_wide', ex, spec.y, k)
+    s += img('pupil_normal', ex + LOOK_X * reach, spec.y + reach * 0.13, k * 0.55)
+  }
+  if (spec.noMouth) return s
+  const mouth = { smile: 'mouth_smile', flat: 'mouth_flat', smirk: 'mouth_tongue' }[spec.restMouth ?? 'smile']
+  return s + img(mouth, spec.x + 1.5, spec.y + (spec.mouthDy ?? spec.eyeSize + 4.5), a.scale)
+}
+
 export function restFaceSvg(spec: FaceSpec): string {
+  if (spec.atlas) return atlasRestFaceSvg(spec)
   const { eyeGap, eyeSize } = spec
   const far = spec.farScale ?? 1
   const rest = spec.rest ?? 1
