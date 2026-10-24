@@ -215,3 +215,24 @@ pnpm run paint:ui   # node tools/assets/paint_ui.mjs
   * 天空上的暖色光暈只用白 / 極淡奶油色，黃色疊在藍天上會變成果青色（禁用色，見 AGENTS.md）；丘陵用黃綠，不用薄荷綠。
   * 元件上色改 `background-color`，不要用 `background` 簡寫蓋掉紋理圖層（見 `docs/02` 視覺系統）。
   * 檢視：先把 SVG 用 resvg 放大 2 倍看細節，再到瀏覽器大廳 / 戰鬥畫面確認實際大小下的效果。
+
+## 八、AI 生圖 + Modly 3D 原型標準流程 (AI Image to 3D Pipeline)
+
+為維持「一檔一模組」與高效率的原型開發，新坦克的立體原型採「**AI 生圖 → Modly 生成 3D Mesh → Blender 二次減面與白模整理 → 納入 Repo 待作業**」標準工作流：
+
+1. **主題與機制討論**：
+   - 確定生物 / 載具主題、戰鬥定位、射擊樣式與專屬砲彈特性（遵守 `docs/06` 平衡預算與數值四維度）。
+2. **AI 生圖規範（兩張圖）**：
+   - **第 1 張：坦克本體**（`tools/blender/refs/<id>/<id>_tank.jpg`）：
+     - 採 3/4 視角、大頭 Q 版比例、粗墨線或圓潤硬邊、淺灰單色背景（`#e0e0e0`）。
+     - 單一車體、嚴禁多視角拼貼、無複雜地面陰影與文字浮水印，確保 3D 擴散演算法能精確重建幾何體。
+   - **第 2 張：砲彈本體**（`tools/blender/refs/<id>/<id>_projectile.jpg`）：
+     - 獨立單一投射物特寫、3/4 視角、高對比淺灰純色背景。
+3. **Modly 後端生成 3D 幾何 (TripoSG)**：
+   - 透過本地 Modly API（`http://127.0.0.1:8765/generate/from-image`），呼叫 `triposg/generate` 擴散重建。
+   - 產出原始高面數 GLB（約 100~200 萬面、30MB+）。
+4. **Blender / PyMeshLab 二次減面與乾淨白模化**：
+   - 將幾何減面至約 3.5 萬面（Decimate target 約 0.02~0.035），檔案壓縮至約 **0.8MB**。
+   - 清除頂點顏色（Vertex Color）與多餘材質槽，保留純白 Clay Mesh。
+   - 產出 `.glb` 與 `.blend` 儲存於 `tools/blender/refs/<id>/<id>_raw_0.8mb.glb` 及 `<id>_raw_0.8mb.blend`，供後續拆件、綁定、渲染遊戲 2.5D Sprite Sheet 或後續作業。
+
