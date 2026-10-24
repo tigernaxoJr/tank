@@ -22,3 +22,10 @@ src/shared/wasm/pkg/
 # Blender 產出（算繪預覽、.blend、3D 檢視頁與 three.js 副本），可由 tools/blender/*.py 重新產生
 tools/blender/out/
 *.blend1
+
+# 降面流程的虛擬環境與中間檔（可由 tools/blender/lowpoly/ 重新產生）
+tools/blender/lowpoly/.venv/
+tools/blender/lowpoly/work/
+
+# Colab 作業用的暫存資料夾（設計圖副本與筆記本副本；由 tools/colab/stage.sh 產生）
+tools/colab/inbox/

@@ -180,7 +180,7 @@ Snailer 不是用 `tools/assets/tanks/<id>.mjs` 的 SVG 手繪，而是**使用�
 | `tools/blender/snailer.py` | 模型本體（全程序化）：履帶、螺旋殼、身體、頭頸、眼柄、砲管 + 金色托架、旗子；卡通材質（Diffuse → ShaderToRGB 色階 × 底色）+ 每種材料各一套手工程序紋理（藍漆崩角 / 黃銅拉絲 / 橘皮革 / 深藍橡膠龜裂 / 帆布補丁編織 / 白鋼污垢…）；Freestyle 墨線（鉚釘獨立 collection、用細線）。`blender -b -P tools/blender/snailer.py` 輸出 `out/snailer/*.png` 六視角預覽。隊伍色由環境變數 `SNAILER_TEAM`（`a` 或 `b`）決定（`TEAM_ACCENT`：琥珀橘 / 皇家藍，套在履帶側板、砲管環箍、旗子） |
 | `tools/blender/snailer_game.py` + `snailer_game_pack.py` | 遊戲貼圖輸出（兩步：Blender 算繪大畫布 → 系統 Python 用 PIL 裁切、縮回、補邊，因為 Blender 內建 Python 沒有 PIL）。產出 `public/assets/units/tanks/snailer_<a 或 b>_<hull 或 barrel>.png` 並印出 `pivotX / pivotY / face` 座標 |
 | `tools/blender/export_snailer_glb.py` | 匯出 GLB 給臨時 3D 檢視頁（three.js，純色卡通 + 墨線，只在本機看造型用，不進專案依賴） |
-| `tools/blender/refs/snailer/` | 使用者的設計圖與對照用裁圖：`sheet.webp`（坦克轉面圖）、`shells.jpg`（兩顆專屬彈的設計圖） |
+| `tools/blender/refs/snailer/` | 使用者的設計圖（`snailer_tank.jpg`、`snailer_projectile.jpg`）、TRELLIS.2 高模與降面成品；舊的轉面圖 `sheet.webp`、彈體設計圖 `shells.jpg` 已移除 |
 
 **換算規格**（與 SVG 路線一致，砲彈 / 臉 / 隊伍色規則照舊）：
 
@@ -190,7 +190,7 @@ Snailer 不是用 `tools/assets/tanks/<id>.mjs` 的 SVG 手繪，而是**使用�
 * 墨線粗細不能照螢幕預覽的數值：Freestyle 的線寬會隨解析度放大，遊戲貼圖用 `1.7 × 超取樣倍率` 這個量級，縮回 0.4 倍後才不會太粗。
 * 螺旋殼的幾何：用**等距螺線**（每圈半徑增量固定、管半徑固定，外輪廓才是圓），**順時針**向外、殼口在前下方（照原圖量測：外圈半徑 底 < 左 < 上 < 右，右 = 前方最大）；管子分段交替金 / 藍，每段 72°（每圈 5 段，奇數段使相鄰圈同角度顏色相反）。等角螺線（每圈縮小）會讓外輪廓變成蛋形、殼底浮空，做過一次不要再用。
 * 標籤：貼圖比一般坦克高時用 `sprite.labelLift`（px）把名牌、血條、狀態圖示、回合箭頭整體抬高；Snailer 為 20。
-* **專屬彈體圖是一次性裁切**：`shell_snailer.png`（80×55）、`shell_sticky.png`（56×70）由使用者的設計圖 `refs/snailer/shells.jpg` 以顏色距離去背（背景是均勻淺灰）、邊緣內縮 1 px 去灰邊、柔化 alpha 後縮小而成，沒有進 `paint_units.mjs`，所以 `pnpm run paint:units` 不會覆蓋它們；遊戲內 `sprite.scale = 0.45`。黏殼彈同時是場上定時彈標記的圖。
+* **專屬彈體圖是一次性裁切**：`shell_snailer.png`（80×55）、`shell_sticky.png`（56×70）由使用者當時的設計圖 `shells.jpg`（原圖已從 repo 移除）以顏色距離去背（背景是均勻淺灰）、邊緣內縮 1 px 去灰邊、柔化 alpha 後縮小而成，沒有進 `paint_units.mjs`，所以 `pnpm run paint:units` 不會覆蓋它們；遊戲內 `sprite.scale = 0.45`。黏殼彈同時是場上定時彈標記的圖。
 
 ## 七、大廳與 HUD 紋理：`tools/assets/paint_ui.mjs`
 
@@ -216,9 +216,11 @@ pnpm run paint:ui   # node tools/assets/paint_ui.mjs
   * 元件上色改 `background-color`，不要用 `background` 簡寫蓋掉紋理圖層（見 `docs/02` 視覺系統）。
   * 檢視：先把 SVG 用 resvg 放大 2 倍看細節，再到瀏覽器大廳 / 戰鬥畫面確認實際大小下的效果。
 
-## 八、AI 生圖 + Modly 3D 原型標準流程 (AI Image to 3D Pipeline)
+## 八、AI 生圖 + Colab TRELLIS.2 3D 原型標準流程 (AI Image to 3D Pipeline)
 
-為維持「一檔一模組」與高效率的原型開發，新坦克的立體原型採「**AI 生圖 → Modly 生成 3D Mesh → Blender 二次減面與白模整理 → 納入 Repo 待作業**」標準工作流：
+為維持「一檔一模組」與高效率的原型開發，新坦克的立體原型採「**AI 生圖 → Colab 上的 TRELLIS.2 批次生成帶貼圖高模 → 本機降面烘焙 → 納入 Repo 待作業**」標準工作流（舊的 Modly / TripoSG 素模流程已於 2026-10 廢棄，不再使用）：
+
+> **關卡互動與逐步確認守則**：建立坦克時，每個關卡（階段）Agent 每次僅能提供 2~3 種具體建議或方向供使用者挑選或微調，禁止一次輸出全部流程與所有細節；必須在使用者確認該階段決策後，才能推進到下一關。
 
 1. **主題與機制討論**：
    - 確定生物 / 載具主題、戰鬥定位、射擊樣式與專屬砲彈特性（遵守 `docs/06` 平衡預算與數值四維度）。
@@ -228,11 +230,46 @@ pnpm run paint:ui   # node tools/assets/paint_ui.mjs
      - 單一車體、嚴禁多視角拼貼、無複雜地面陰影與文字浮水印，確保 3D 擴散演算法能精確重建幾何體。
    - **第 2 張：砲彈本體**（`tools/blender/refs/<id>/<id>_projectile.jpg`）：
      - 獨立單一投射物特寫、3/4 視角、高對比淺灰純色背景。
-3. **Modly 後端生成 3D 幾何 (TripoSG)**：
-   - 透過本地 Modly API（`http://127.0.0.1:8765/generate/from-image`），呼叫 `triposg/generate` 擴散重建。
-   - 產出原始高面數 GLB（約 100~200 萬面、30MB+）。
-4. **Blender / PyMeshLab 二次減面與乾淨白模化**：
-   - 將幾何減面至約 3.5 萬面（Decimate target 約 0.02~0.035），檔案壓縮至約 **0.8MB**。
-   - 清除頂點顏色（Vertex Color）與多餘材質槽，保留純白 Clay Mesh。
-   - 產出 `.glb` 與 `.blend` 儲存於 `tools/blender/refs/<id>/<id>_raw_0.8mb.glb` 及 `<id>_raw_0.8mb.blend`，供後續拆件、綁定、渲染遊戲 2.5D Sprite Sheet 或後續作業。
+   - **可請 agy（Antigravity CLI）代為生圖**：本機已安裝 `agy`（`C:\Users\naxo\AppData\Local\agy\bin\agy`），Agent 可用非互動模式委派生圖，例如 `agy -p "<提示>" --mode accept-edits`，在提示中指定絕對輸出路徑與檔名。
+     - 提示須包含：本節的視角 / 背景 / 單一物件規範、色彩限制（嚴禁濁青色）、與 `refs/beetle`、`refs/seahorse` 既有 `*_tank.jpg` 對齊的畫風（光滑 3D 渲染卡通質感、蒸汽龐克黃銅鉚釘、單顆大眼、車頭朝左），以及「不得使用任何現有遊戲的美術」。
+     - 一次請它產出 3 張不同方案（存成 `refs/<id>/concepts/concept_a/b/c.jpg`），由使用者挑選後，選定者再改名為 `<id>_tank.jpg`。
+     - 不要加 `--dangerously-skip-permissions`（會被權限分類器拒絕）；以背景方式執行，產生期間 `-p` 不會顯示進度，圖出現在 `concepts/` 後再給使用者看。
+3. **Colab 上的 TRELLIS.2 生成帶貼圖高模**（使用者自己操作，Agent 不在本機生成）：
+   1. 使用者把參考圖（第 2 步的 `<id>_tank.jpg`）**上傳到 Google Drive**。
+   2. 使用者在 Colab（L4 / A100，需 24GB 以上顯存；左側「密鑰」要有 `HF_TOKEN`）執行 [`tools/colab/trellis2_batch_folder.ipynb`](../tools/colab/trellis2_batch_folder.ipynb)：把 Drive 資料夾內**所有圖片**依序轉成 `<檔名>.glb`（約 100 萬面、4096 貼圖的高模）存回同一資料夾；`TARGETS` 預設 `[10000]`，會多輸出一份 Colab 內直接降到 1 萬面的 `<檔名>_10000.glb`（只當對照用，正式以第 4 步為準），設 `[]` 則只輸出高模。單張版是 [`trellis2_image_to_glb.ipynb`](../tools/colab/trellis2_image_to_glb.ipynb)。
+   3. 使用者把高模 GLB **從 Drive 下載到本機**，放進 `tools/blender/refs/<id>/`，再由 Agent 接手第 4 步的降面（高模約 36MB，不能直接進遊戲；只想存放省空間可用 `gltfpack -cc` 做 meshopt 壓縮，約 9.8MB，Blender 5.2 可直接匯入，降面流程實測可照跑）。
+   - Agent 協助時不要假設能直接存取 Colab 或 Drive；需要使用者把下載好的 GLB 放到上述資料夾後再繼續。
+3.5. **作業流程（使用者與 Agent 分工，2026-10 起固定如此）**：
+   1. **Agent 備料**：`bash tools/colab/stage.sh`，把 `refs/<id>/` 裡**還沒有高模**的 `<id>_tank.jpg`（只放坦克圖，不放 `_projectile.jpg`，因為批次筆記本會把資料夾內所有圖片都轉成 3D）連同 `trellis2_batch_folder.ipynb` **複製**到 `tools/colab/inbox/`（已列入 `.gitignore`，不進版控）；`refs/` 的設計圖原地保留。使用者把整個 `inbox/` 上傳 Drive、在 Colab 跑筆記本。
+   2. **使用者做完，指定放有 GLB 的資料夾**，Agent 執行 `bash tools/colab/collect.sh <資料夾>`：把 `<id>_tank.glb` 搬回 `refs/<id>/`（`refs/<id>/` 不存在、或目的地已有同名高模就略過不覆蓋；Colab 順手輸出的 `<id>_tank_<面數>.glb` 對照檔不搬）。可先加 `--dry` 預覽。
+   3. **Agent 補 10k**：`bash tools/blender/lowpoly/run_missing.sh`，替所有「有高模、還沒有 `<id>_tank_10000.glb`」的坦克產出 10k qcb；沒有 `boost.txt` 的坦克會提示（見下方）。
 
+4. **降面**：
+   - **最終交付規格：每台坦克的遊戲用模型 = 10k qcb**（`refs/<id>/<id>_tank_10000.glb`，約 1 萬三角面、2048 貼圖，含顏色、金屬粗糙度 ORM、切線空間法線）。
+     - **qcb 的定義**（「qcb」是 2026-10 降面研究時的版本代號，字母含意為依參數名推測：QEC + 貼圖對比 `cgain` + boost）：焊接頂點後做 MeshLab Quadric Edge Collapse，並用**逐頂點權重**分配面數預算 —— 貼圖對比高處（金色飾帶、鉚釘邊緣）與細薄結構（兩者由 `weights.py` 依模型自動算出，參數 `cgain=2 tcap=2`），再加上**眼睛、砲口這類小而圓、最影響觀感的特徵**（球形區域重要度 ×4，即 boost）。只有前兩項、沒有 boost 的是 qu 版，品質略差（蝸牛 10k 的 SSIM 0.83 vs 0.85）。
+     - **boost 座標是每台坦克各自的**：存成 `refs/<id>/boost.txt`（一行：`x,y,z,r,f;x,y,z,r,f`，座標為 Blender 匯入後的 Z-up、車頭朝 -Y，r 為半徑、f 為倍數），`run.sh` / `run_missing.sh` 會自動讀取；沒有這個檔就只能得到 qu 版。新坦克的高模進來後，Agent 要先找出眼睛與砲口的座標、請使用者確認後寫入 `boost.txt`，再補 10k。蝸牛的範例見 `refs/snailer/boost.txt`。
+   - **用 `tools/blender/lowpoly/run.sh`（2026-10 驗證的標準做法）**：
+     ```bash
+     bash tools/blender/lowpoly/setup_venv.sh                      # 一次：建立 .venv（uv + Python 3.12 + pymeshlab）
+     bash tools/blender/lowpoly/run.sh tools/blender/refs/<id>/<id>_tank.glb 10000   # 輸出 <id>_tank_10000.glb（同資料夾）
+     ```
+     流程：焊接頂點 → MeshLab Quadric Edge Collapse（兩段降、保持法線 / 邊界、貼圖對比與細薄結構加權）→ Smart UV 重拆 → Cycles 烘焙顏色、金屬粗糙度（ORM）、切線空間法線（OpenGL Y+，glTF 標準）。全程約 1 分鐘；蝸牛 10k 比舊的 Blender Collapse 平均幾何誤差減半（0.17% vs 0.36%）、算圖 SSIM 0.85 vs 0.65。
+     - **為什麼不能直接用 Blender 的 Decimate（Collapse）對成品 GLB 降面**：TRELLIS 的 GLB 在 UV 接縫處把頂點拆開（蝸牛 645,893 個頂點，焊接後只剩 481,845），Collapse 把接縫當開放邊，網格會碎；而降完面若直接重拆 UV，原貼圖會全毀，所以必須「焊接 → 降面 → 重拆 UV → 從高模烘焙」。
+     - **TRELLIS 高模是雙層薄殼**（壁厚約 0.002，約 53% 的面是外面看不到的內層），所以需要「乾淨單層表面」的 Voxel Remesh、QuadriFlow、Instant Meshes 全部失敗，不要再試；MeshLab QEC 對雙層殼不敏感。
+     - **分部件預算**：見上方 qcb 定義；也可臨時用環境變數 `BOOST="x,y,z,r,f;..."` 覆蓋 `boost.txt`。
+     - 烘焙參數：2048 貼圖、cage 外擴 0.015、最遠射線 0.05。實測加大反而變差（5k 的 SSIM 0.76 → 0.72～0.74），1024 貼圖特寫會明顯變糊。
+     - **尚未驗證**：只在蝸牛一台驗證；Colab 內直接降面（`TARGETS`）的品質沒有與這套做法比較過，以本機這套為準。
+   - **品質人工確認守則（重要）**：
+     - 降面後**必須由使用者檢視輸出模型**，確認外觀輪廓、特徵細節沒有被過度壓扁或失真破面。
+     - 若細節嚴重流失，調高目標面數，或對眼睛 / 砲口等小而圓的特徵設 `BOOST` 加權後重跑，直到品質與面數取得平衡。
+   - `refs/<id>/` 只保留設計圖、高模與最終降面成品（例如 `<id>_tank_10000.glb`），中間檔（`.blend`、烘焙貼圖、實驗腳本、其他面數的測試版）不留，需要時由 `run.sh` 重新產生。
+5. **模型烘焙與遊戲實機驗證（Playwright E2E 檢驗守則）**：
+   - 烘焙貼圖／產生 2.5D Sprite Sheet 並整合進遊戲後，**Agent 必須實際上透過 Playwright E2E 截圖檢視方式，實際載入遊戲畫面檢查成品**（例如 `viewer.html`、大廳展示台「我的戰車」或戰鬥畫面實際運作狀態），嚴禁未經 E2E 截圖自檢就交付。
+   - **貼圖烘焙常見踩坑與根因防範 (Post-mortem & Best Practices)**：
+     - **自定義 Shader 與 GLTF 不相容導致全白（如 Snailer 案例）**：
+       - *根因*：模型材質若使用 Blender 專屬的自定義 Toon Shader（含 `Emission`、`ShaderToRGB` 等非標準節點），在 GLTF 匯出時無法自動轉為標準 PBR `BaseColor`，導致在 Three.js / WebGL 檢視器中直接呈現全白或自發光白模。
+       - *解決方案*：必須將幾何體的所有顏色、眼球高光、砲管與車身紋理，在 Blender 內烘焙成標準 PBR 漫反射貼圖（`Base Color Texture`），並接回標準 `Principled BSDF` 導出，確保瀏覽器環境精確還原。
+     - **模型自身座標軸向未對齊（如 Seahorse 案例）**：
+       - *根因*：AI / 擴散演算法重建 3D 模型時，產生的網格朝向可能旋轉了 90°（例如車頭砲管朝向 `-X` 而非標準的 `-Y`）。若投影烘焙腳本預設以標準朝向前進投射相機，相機會直接從「側腹肋排」斜打過去，導致正面的眼睛花紋貼到噴射口與腹部側面，造成不可挽回的嚴重錯位與扭曲。
+       - *解決方案*：在進行任何 UV 投影或烘焙前，**必須先檢驗頂點邊界座標**，確認車頭前進方向嚴格對齊 `-Y`、對稱軸對齊 `X=0`、垂直對齊 `+Z`。若軸向偏移，先在 Blender 內旋轉並強制套用旋轉變換（`bpy.ops.object.transform_apply(rotation=True)`），再進行雙向對齊烘焙。
+   - 檢查重點包括：**雙眼與五官幾何是否嚴格對齊眼窩**、輪廓描邊是否有黑邊或鋸齒、背面與側面是否有貼圖拉扯破面、砲管與車身中心軸是否對齊、實機光影與縮放尺寸是否與既有坦克協調，確認無誤後才算完成交付。
