@@ -1,0 +1,5 @@
+Generate ONE image and save it to C:/workspace/tank/tools/assets/agy-bg/volcano_rift_hills_near_raw.png (wide, about 2:1 aspect).
+Subject: a hills_near layer for a 2D artillery tank game parallax background. Scene: foreground low ridge, even simpler and larger shapes, dark basalt rock ridges with glowing orange lava cracks
+Style: cartoon with thick dark navy ink outlines (#1d2340), flat color fills with a simple hand-drawn texture, hard offset shadows, lit from upper left. Palette: charcoal brown-purple, bright lava orange, ember red. NEVER use murky teal, mint or cyan-green.
+Layout: a low band of ground whose top edge is a gentle wavy skyline; the band occupies only the lower 26% of the image and the ground fills solidly down to the bottom edge. Left and right edges must match in height so it tiles horizontally. Everything above the band must be a perfectly flat solid #ff00ff magenta, no gradient, no sky, no clouds, no text.
+Do not copy any existing game's art.

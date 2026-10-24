@@ -1,0 +1,5 @@
+Generate ONE image and save it to C:/workspace/tank/tools/assets/agy-bg/moon_ruins_far.png (wide, about 2:1 aspect).
+Subject: distant scenery layer for a 2D artillery tank game. Scene: far grey lunar crater rims with broken ancient pillars and a small dome ruin
+Style: cartoon with thick dark navy ink outlines (#1d2340), flat color fills with a simple hand-drawn texture, hard offset shadows, lit from upper left. Palette: lavender grey, soft violet, pale blue-white, warm gold accents. NEVER use murky teal or cyan-green.
+Layout: the scenery occupies only the lower 60% of the image; its left and right edges must match in height so it tiles horizontally. The ENTIRE rest of the background (sky included) must be a perfectly flat solid #ff00ff magenta with no gradient, no clouds, no sun, no text.
+Do not copy any existing game's art.
