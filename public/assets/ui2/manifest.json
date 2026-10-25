@@ -1,0 +1,365 @@
+{
+ "ui_kit": [
+  {
+   "name": "btn_gold",
+   "w": 193,
+   "h": 106
+  },
+  {
+   "name": "btn_gold_pressed",
+   "w": 192,
+   "h": 99
+  },
+  {
+   "name": "btn_gold_disabled",
+   "w": 193,
+   "h": 107
+  },
+  {
+   "name": "btn_white",
+   "w": 193,
+   "h": 106
+  },
+  {
+   "name": "btn_white_pressed",
+   "w": 192,
+   "h": 104
+  },
+  {
+   "name": "btn_white_disabled",
+   "w": 192,
+   "h": 106
+  },
+  {
+   "name": "btn_coral",
+   "w": 193,
+   "h": 106
+  },
+  {
+   "name": "btn_coral_pressed",
+   "w": 193,
+   "h": 106
+  },
+  {
+   "name": "btn_sky",
+   "w": 193,
+   "h": 106
+  },
+  {
+   "name": "btn_sky_pressed",
+   "w": 193,
+   "h": 105
+  },
+  {
+   "name": "pill",
+   "w": 192,
+   "h": 78
+  },
+  {
+   "name": "ribbon",
+   "w": 212,
+   "h": 79
+  },
+  {
+   "name": "panel",
+   "w": 167,
+   "h": 159
+  },
+  {
+   "name": "ticket",
+   "w": 206,
+   "h": 122
+  },
+  {
+   "name": "seat_empty",
+   "w": 155,
+   "h": 156
+  },
+  {
+   "name": "seat_occupied",
+   "w": 164,
+   "h": 165
+  },
+  {
+   "name": "seat_ready",
+   "w": 170,
+   "h": 165
+  },
+  {
+   "name": "seat_host",
+   "w": 163,
+   "h": 184
+  },
+  {
+   "name": "toggle_off",
+   "w": 151,
+   "h": 84
+  },
+  {
+   "name": "toggle_on",
+   "w": 151,
+   "h": 84
+  },
+  {
+   "name": "slot",
+   "w": 144,
+   "h": 146
+  },
+  {
+   "name": "slot_selected",
+   "w": 158,
+   "h": 157
+  },
+  {
+   "name": "badge",
+   "w": 133,
+   "h": 134
+  },
+  {
+   "name": "banner",
+   "w": 290,
+   "h": 90
+  }
+ ],
+ "icons": [
+  {
+   "name": "shell",
+   "w": 142,
+   "h": 144
+  },
+  {
+   "name": "arrow_left",
+   "w": 143,
+   "h": 108
+  },
+  {
+   "name": "arrow_up",
+   "w": 109,
+   "h": 145
+  },
+  {
+   "name": "skip",
+   "w": 137,
+   "h": 108
+  },
+  {
+   "name": "wind",
+   "w": 142,
+   "h": 120
+  },
+  {
+   "name": "fuel",
+   "w": 124,
+   "h": 146
+  },
+  {
+   "name": "heart",
+   "w": 139,
+   "h": 120
+  },
+  {
+   "name": "shield",
+   "w": 125,
+   "h": 145
+  },
+  {
+   "name": "poison",
+   "w": 105,
+   "h": 147
+  },
+  {
+   "name": "freeze",
+   "w": 137,
+   "h": 147
+  },
+  {
+   "name": "drench",
+   "w": 105,
+   "h": 147
+  },
+  {
+   "name": "gear",
+   "w": 146,
+   "h": 147
+  },
+  {
+   "name": "sound_on",
+   "w": 143,
+   "h": 118
+  },
+  {
+   "name": "sound_off",
+   "w": 144,
+   "h": 118
+  },
+  {
+   "name": "copy",
+   "w": 119,
+   "h": 147
+  },
+  {
+   "name": "check",
+   "w": 141,
+   "h": 115
+  },
+  {
+   "name": "crown",
+   "w": 151,
+   "h": 122
+  },
+  {
+   "name": "robot",
+   "w": 131,
+   "h": 139
+  },
+  {
+   "name": "lock",
+   "w": 109,
+   "h": 145
+  },
+  {
+   "name": "radar",
+   "w": 146,
+   "h": 146
+  },
+  {
+   "name": "pause",
+   "w": 102,
+   "h": 132
+  },
+  {
+   "name": "close",
+   "w": 134,
+   "h": 133
+  },
+  {
+   "name": "chevron_left",
+   "w": 100,
+   "h": 146
+  },
+  {
+   "name": "plus",
+   "w": 144,
+   "h": 144
+  },
+  {
+   "name": "link",
+   "w": 144,
+   "h": 145
+  },
+  {
+   "name": "trophy",
+   "w": 151,
+   "h": 145
+  },
+  {
+   "name": "skull",
+   "w": 128,
+   "h": 137
+  },
+  {
+   "name": "target",
+   "w": 146,
+   "h": 145
+  },
+  {
+   "name": "refresh",
+   "w": 131,
+   "h": 133
+  },
+  {
+   "name": "question",
+   "w": 95,
+   "h": 145
+  },
+  {
+   "name": "person",
+   "w": 134,
+   "h": 145
+  },
+  {
+   "name": "clock",
+   "w": 145,
+   "h": 145
+  }
+ ],
+ "gauges": [
+  {
+   "name": "fire_idle",
+   "w": 227,
+   "h": 229
+  },
+  {
+   "name": "fire_charging",
+   "w": 228,
+   "h": 230
+  },
+  {
+   "name": "fire_disabled",
+   "w": 228,
+   "h": 229
+  },
+  {
+   "name": "angle_dial",
+   "w": 329,
+   "h": 194
+  },
+  {
+   "name": "fuel_ring",
+   "w": 228,
+   "h": 250
+  },
+  {
+   "name": "timer_ring",
+   "w": 190,
+   "h": 213
+  },
+  {
+   "name": "wind_compass",
+   "w": 225,
+   "h": 226
+  },
+  {
+   "name": "hp_bar",
+   "w": 512,
+   "h": 106
+  },
+  {
+   "name": "move_btn",
+   "w": 213,
+   "h": 214
+  }
+ ],
+ "title": [
+  {
+   "name": "logo",
+   "w": 840,
+   "h": 311
+  },
+  {
+   "name": "flag",
+   "w": 166,
+   "h": 166
+  },
+  {
+   "name": "sandbags",
+   "w": 231,
+   "h": 148
+  },
+  {
+   "name": "cloud_big",
+   "w": 270,
+   "h": 154
+  },
+  {
+   "name": "cloud_small",
+   "w": 174,
+   "h": 100
+  },
+  {
+   "name": "starburst",
+   "w": 154,
+   "h": 155
+  }
+ ]
+}
