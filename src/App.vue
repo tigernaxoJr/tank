@@ -34,6 +34,8 @@ async function onStartGame(payload: StartGamePayload): Promise<void> {
 }
 
 function onLeaveGame(): void {
+  // handleDisconnect 在 props.inBattle 尚未更新時會再 emit leave-game，這裡擋掉重入
+  if (!inBattle.value) return
   inBattle.value = false
   lobbyRef.value?.handleDisconnect()
 }
