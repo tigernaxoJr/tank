@@ -10,6 +10,7 @@ import type { BattleState } from '../domain/battleState'
 import { BattleScene, type ChargeBurstOptions, type ProjectileFlightOptions } from '../engine/BattleScene'
 import { MAP_REGISTRY } from '../domain/mapRegistry'
 import { loadThemeArt, paintMapBackdrop } from './mapPreview'
+import { GameButton, IconGlyph } from '@/shared/ui'
 
 const VIEW_W = 1280
 const VIEW_H = 720
@@ -21,7 +22,7 @@ const props = defineProps<{
 }>()
 
 const phaserRoot = ref<HTMLDivElement | null>(null)
-/** 手機直立時雷達預設收起 */
+/** 雷達預設收起，右上角只留一顆圖示鈕，點開才顯示（戰場優先） */
 const radarOpen = ref(false)
 const minimapCanvas = ref<HTMLCanvasElement | null>(null)
 
@@ -312,23 +313,21 @@ defineExpose({
     <!-- Phaser 3 WebGL 戰場畫布 -->
     <div ref="phaserRoot" class="h-full w-full cursor-grab touch-none active:cursor-grabbing" />
 
-    <!-- 右上角：全場雷達小地圖 + 鏡頭控制（卡通粗描邊，與大廳同一套 token） -->
-    <!-- 直立的手機畫面太窄：雷達收成右上角的按鈕，點開才顯示（記分板移到第二列） -->
-    <button
-      type="button"
+    <!-- 右上角：雷達圖示鈕；點開才顯示全場小地圖 + 鏡頭控制 -->
+    <GameButton
+      variant="white"
+      round
+      class="pointer-events-auto absolute right-3 top-3 z-30"
+      :style="{ '--gb-size': '48px' }"
       :aria-label="radarOpen ? '收起雷達' : '打開雷達'"
       :aria-pressed="radarOpen"
-      class="toon-btn pointer-events-auto absolute right-3 top-3 z-30 h-11 w-11 rounded-full p-0 sm:hidden"
-      :class="radarOpen ? 'toon-btn--sun' : ''"
       @click="radarOpen = !radarOpen"
     >
-      <svg viewBox="0 0 24 24" class="h-5 w-5" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-        <rect x="3" y="6" width="18" height="12" rx="2" /><path d="M3 15l5-4 4 3 4-5 5 4" />
-      </svg>
-    </button>
+      <IconGlyph name="radar" :size="24" />
+    </GameButton>
     <div
-      class="toon-panel pointer-events-auto absolute right-3 top-3 z-20 rounded-2xl p-1.5 font-toon max-sm:top-16 max-sm:p-1"
-      :class="radarOpen ? '' : 'max-sm:hidden'"
+      v-if="radarOpen"
+      class="radar-pop pointer-events-auto absolute right-3 top-[64px] z-20 rounded-2xl p-1.5 font-toon text-ink"
     >
       <div class="mb-1 flex items-center justify-between px-1 text-sm leading-none">
         <span>戰場雷達</span>
@@ -345,30 +344,22 @@ defineExpose({
         @pointercancel="onMinimapUp"
       />
       <div class="mt-1.5 flex items-center gap-1">
-        <button
+        <GameButton
           v-for="pan in CAMERA_PANS"
           :key="pan.label"
-          type="button"
+          variant="white"
+          round
+          class="hidden lg:inline-flex"
+          :style="{ '--gb-size': '34px' }"
           :aria-label="pan.label"
           :title="pan.label"
-          class="toon-btn hidden h-8 w-8 rounded-lg p-0 [border-width:2.5px] [box-shadow:0_3px_0_var(--color-ink)] lg:inline-flex"
           @click="panCameraBy(pan.dx, pan.dy)"
         >
-          <svg viewBox="0 0 24 24" class="h-4 w-4" :style="{ transform: `rotate(${pan.rotate}deg)` }" fill="none" stroke="currentColor" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M15 5 8 12l7 7" />
-          </svg>
-        </button>
-        <button
-          type="button"
-          title="鏡頭回到出手的戰車"
-          class="toon-btn toon-btn--sun ml-auto h-8 rounded-lg px-2 text-sm [border-width:2.5px] [box-shadow:0_3px_0_var(--color-ink)]"
-          @click="focusActiveTank(false)"
-        >
-          <svg viewBox="0 0 24 24" class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
-            <circle cx="12" cy="12" r="7" /><circle cx="12" cy="12" r="2" fill="currentColor" /><path d="M12 2v4M12 18v4M2 12h4M18 12h4" />
-          </svg>
-          對準
-        </button>
+          <IconGlyph name="chevron_left" :size="16" :style="{ transform: `rotate(${pan.rotate}deg)` }" />
+        </GameButton>
+        <GameButton variant="gold" class="ml-auto text-sm" title="鏡頭回到出手的戰車" @click="focusActiveTank(false)">
+          <IconGlyph name="target" :size="16" /> 對準
+        </GameButton>
       </div>
     </div>
 
@@ -376,3 +367,10 @@ defineExpose({
     <slot />
   </div>
 </template>
+
+<style scoped>
+.radar-pop {
+  background: rgb(255 255 255 / 0.92);
+  box-shadow: 0 4px 0 rgb(29 35 64 / 0.45), inset 0 0 0 3px var(--color-ink);
+}
+</style>

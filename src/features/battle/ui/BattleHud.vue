@@ -1,16 +1,13 @@
 <script setup lang="ts">
 /**
- * BattleHud（戰鬥中疊加在全畫面 Phaser 畫布上的操作介面）
+ * BattleHud（戰鬥中疊加在全畫面 Phaser 畫布上的操作介面）— 2026-10 重寫，規格見 docs/07-ui-redesign-spec.md §二之 3。
  *
  * 設計規範：
- * - 與大廳同一套「卡通粗描邊」系統（src/style.css 的 token 與 .toon-* 類別），不用 emoji 當圖示。
- * - 嚴禁傳統 HTML 表單滑桿 (<input type="range">) 與網頁捲軸；容器 pointer-events-none，只有面板可點，
- *   中間戰場保留給滑鼠拖曳鏡頭。
- * - 頂部中央：兩隊血量記分板 + 回合倒數圓章，下掛「誰的回合」與風向牌。
- * - 底部中央：精簡駕駛艙（戰車、移動、仰角、彈種、發射 / 跳過，第二列為整排力道條）；移動與仰角按住可連續作用，力道條可拖曳。
- * - 駕駛艙可切換顯示「我的坦克」（預設）或「回合坦克」。
- * - 手機 / 觸控（pointer: coarse）或寬度 < 768px：底部改成手把式版面——左手方向鍵（左右移動、上下仰角），
- *   右手彈種與大顆發射鈕，中間是戰車狀態與力道條；直立時狀態列獨佔一列。
+ * - 手機橫放優先：戰場中央完全空出，UI 只占四個角落與上緣；尺寸由 `--u`（依視窗高度分三級）統一縮放。
+ * - 素材來自 public/assets/ui2/（gauges / icons / ui_kit），外框用圖、填色與指針由程式畫（hud/*.vue）。
+ * - 容器 pointer-events-none，只有按鈕可點；移動與仰角按住連續作用；發射環按住蓄力、放開發射。
+ * - 左上：離開 / 音效 / 駕駛艙坦克小卡；上中：兩隊血條 + 計時環 + 誰的回合；右上：風向羅盤（雷達鈕在 BattleCanvas）。
+ * - 左下：燃料 + 移動；右下：彈種 / 跳過、仰角盤與 ▲▼、發射環。
  */
 import { computed, onUnmounted, ref, watch } from 'vue'
 import type { BattleState } from '../domain/battleState'
@@ -18,7 +15,14 @@ import { PROJECTILE_REGISTRY } from '../domain/projectileRegistry'
 import { visibleStatuses } from '../domain/statusEffects'
 import { TANK_LIST, getTankSpec } from '../domain/tankRegistry'
 import type { BulletType, PlayerId, TeamId } from '@/shared/kernel/types'
+import { GameButton, IconGlyph, UiPanel, uiUrl } from '@/shared/ui'
 import { useBattleInput } from './composables/useBattleInput'
+import AngleDial from './hud/AngleDial.vue'
+import FireRing from './hud/FireRing.vue'
+import FuelGauge from './hud/FuelGauge.vue'
+import HpBar from './hud/HpBar.vue'
+import TimerRing from './hud/TimerRing.vue'
+import WindCompass from './hud/WindCompass.vue'
 
 interface Props {
   state: BattleState
@@ -75,7 +79,6 @@ const panelTank = computed(() => props.state.tanks[props.panelPlayerId])
 const panelTeam = computed<TeamId>(() => panelTank.value?.team ?? 'A')
 const panelTankSpec = computed(() => (panelTank.value ? getTankSpec(panelTank.value.tankId) : TANK_LIST[0]))
 const panelSpriteUrl = computed(() => panelTankSpec.value.getSprites(panelTeam.value).hullUrl)
-const panelTankType = computed(() => panelTankSpec.value.name.split(' ')[0])
 const panelName = computed(() => stripBotMark(panelTank.value?.name))
 /** 駕駛艙坦克身上的狀態（中毒、冰凍、破甲、紮根、偵察）與剩餘回合 */
 const panelStatuses = computed(() => (panelTank.value ? visibleStatuses(panelTank.value) : []))
@@ -108,17 +111,11 @@ const fuelPercent = computed(() =>
 )
 const power = computed(() => panelTank.value?.power ?? 65)
 
-// --- 回合倒數圓章 ---
-const RING_R = 25
-const RING_C = 2 * Math.PI * RING_R
+// --- 回合倒數 ---
 const showTimer = computed(() => props.turnSecondsLeft != null && isAiming.value)
 const timerRatio = computed(() =>
   showTimer.value ? Math.min(1, (props.turnSecondsLeft ?? 0) / (props.turnTotalSeconds ?? 15)) : 1,
 )
-const timerColor = computed(() => {
-  const s = props.turnSecondsLeft ?? 99
-  return s <= 3 ? 'var(--color-coral)' : s <= 7 ? 'var(--color-sun)' : 'var(--color-grass)'
-})
 
 const statusText = computed(() => {
   const name = activeName.value
@@ -127,42 +124,24 @@ const statusText = computed(() => {
   return `${name} 的回合`
 })
 
-// --- 風向牌：箭頭數代表風力等級 ---
-const windArrows = computed(() => Math.min(3, Math.ceil(Math.abs(props.state.wind) / 4)))
-
-// --- 仰角儀表（半圓：右側 0°、上方 90°） ---
-const DIAL_CX = 50
-const DIAL_CY = 50
-const DIAL_R = 38
-function dialPoint(deg: number, r: number) {
-  const rad = (deg * Math.PI) / 180
-  return { x: DIAL_CX + Math.cos(rad) * r, y: DIAL_CY - Math.sin(rad) * r }
-}
-const dialTrack = `M ${DIAL_CX - DIAL_R} ${DIAL_CY} A ${DIAL_R} ${DIAL_R} 0 0 1 ${DIAL_CX + DIAL_R} ${DIAL_CY}`
-/** 這台車打不出去的仰角段（灰掉）：下限以下、上限以上，左右對稱 */
-function dialArc(from: number, to: number): string {
-  const a = dialPoint(from, DIAL_R)
-  const b = dialPoint(to, DIAL_R)
-  return `M ${a.x} ${a.y} A ${DIAL_R} ${DIAL_R} 0 0 1 ${b.x} ${b.y}`
-}
-const dialBlocked = computed(() => {
+// --- 仰角盤：不同機種打不出去的角度（灰段），標準方向 右 0°、上 90°、左 180° ---
+const dialBlocked = computed<readonly (readonly [number, number])[]>(() => {
   const spec = getTankSpec(panelTank.value?.tankId)
-  const arcs = [dialArc(180, 180 - spec.aimMinDeg), dialArc(spec.aimMinDeg, 0)]
-  if (spec.aimMaxDeg < 90) arcs.push(dialArc(180 - spec.aimMaxDeg, spec.aimMaxDeg))
+  const arcs: [number, number][] = [
+    [180, 180 - spec.aimMinDeg],
+    [spec.aimMinDeg, 0],
+  ]
+  if (spec.aimMaxDeg < 90) arcs.push([180 - spec.aimMaxDeg, spec.aimMaxDeg])
   return arcs
 })
-const dialTicks = [0, 30, 60, 90, 120, 150, 180].map((deg) => ({ deg, a: dialPoint(deg, DIAL_R - 6), b: dialPoint(deg, DIAL_R - 1) }))
 
 const {
-  powerBarRef,
   lastFiredPowerByPlayer,
   isCharging,
   facingLeft,
-  elevation,
   worldElevation,
   holdMove,
   holdAngle,
-  onPointerDownPowerGauge,
   onPointerDownCharge,
 } = useBattleInput({
   activeTank: panelTank,
@@ -175,16 +154,9 @@ const {
   onPass: () => emit('pass'),
 })
 
-// 儀表盤顯示「相對地面」的實際仰角（水平線 = 0°）：朝左時指針在左半邊；砲管可用範圍（灰段）隨車體傾斜一起轉
+// 儀表盤顯示「相對地面」的實際仰角（水平線 = 0°）：朝左時指針在左半邊
 const dialAngle = computed(() => (facingLeft.value ? 180 - worldElevation.value : worldElevation.value))
-const dialNeedle = computed(() => dialPoint(dialAngle.value, DIAL_R - 10))
 const tankSlope = computed(() => panelTank.value?.slopeDeg ?? 0)
-const dialSweep = computed(() => {
-  const end = dialPoint(Math.max(0, Math.min(180, dialAngle.value)), DIAL_R)
-  const startX = facingLeft.value ? DIAL_CX - DIAL_R : DIAL_CX + DIAL_R
-  const sweepFlag = facingLeft.value ? 1 : 0
-  return `M ${startX} ${DIAL_CY} A ${DIAL_R} ${DIAL_R} 0 0 ${sweepFlag} ${end.x} ${end.y}`
-})
 
 // 每位玩家各自的「上一發力道」游標（熱座輪流時互不干擾）
 const lastFiredPower = computed(() => lastFiredPowerByPlayer[props.panelPlayerId] ?? null)
@@ -194,12 +166,10 @@ function shotSprite(key: string | undefined): string | null {
 }
 const hexColor = (n: number) => `#${n.toString(16).padStart(6, '0')}`
 
-// --- 觸控 / 窄螢幕改用手把式版面 ---
-const touchQuery = typeof window !== 'undefined' && window.matchMedia ? window.matchMedia('(pointer: coarse), (max-width: 767px)') : null
-const touchLayout = ref(touchQuery?.matches ?? false)
-const onTouchQuery = (e: MediaQueryListEvent) => (touchLayout.value = e.matches)
-touchQuery?.addEventListener('change', onTouchQuery)
-onUnmounted(() => touchQuery?.removeEventListener('change', onTouchQuery))
+const bannerPlate = `url(${uiUrl('ui_kit', 'banner')})`
+const slotImg = `url(${uiUrl('ui_kit', 'slot')})`
+const slotImgOn = `url(${uiUrl('ui_kit', 'slot_selected')})`
+const moveImg = `url(${uiUrl('gauges', 'move_btn')})`
 
 // --- 換人時的出擊橫幅 ---
 const banner = ref<{ key: number; text: string; team: TeamId } | null>(null)
@@ -220,645 +190,323 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div class="pointer-events-none absolute inset-0 select-none font-toon text-ink">
-    <!-- 左上：離開 / 音效 -->
-    <div class="pointer-events-auto absolute left-3 top-3 flex items-center gap-2">
-      <button
-        type="button"
-        aria-label="退出戰鬥"
-        title="退出戰鬥"
-        class="toon-btn toon-btn--coral h-11 w-11 rounded-full p-0"
-        @click="emit('leave-game')"
-      >
-        <svg viewBox="0 0 24 24" class="h-5 w-5" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M15 5 8 12l7 7" />
-        </svg>
-      </button>
-      <button
-        type="button"
-        :aria-label="isMuted ? '開啟音效' : '關閉音效'"
-        :title="isMuted ? '開啟音效' : '關閉音效'"
-        class="toon-btn h-11 w-11 rounded-full p-0"
-        @click="emit('toggle-mute')"
-      >
-        <svg viewBox="0 0 24 24" class="h-5 w-5" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M4 9h4l5-4v14l-5-4H4z" fill="currentColor" />
-          <template v-if="isMuted"><path d="m17 9 5 6M22 9l-5 6" /></template>
-          <template v-else><path d="M17 8.5a5 5 0 0 1 0 7M19.5 6a8.5 8.5 0 0 1 0 12" /></template>
-        </svg>
-      </button>
-    </div>
-
-    <!-- 頂部中央：記分板 + 回合圓章 -->
-    <div class="absolute left-1/2 top-3 flex -translate-x-1/2 flex-col items-center max-sm:top-16">
-      <div class="toon-panel flex items-center gap-2 rounded-full py-1.5 pl-2 pr-2 sm:gap-3">
-        <template v-for="team in (['A', 'B'] as TeamId[])" :key="team">
-          <div class="flex items-center gap-2" :class="team === 'B' ? 'order-3 flex-row-reverse' : 'order-1'">
-            <span
-              class="toon-pill px-2.5 text-sm text-white"
-              :style="{ background: TEAM_META[team].color, textShadow: '0 2px 0 rgb(29 35 64 / .35)' }"
-            >
-              {{ TEAM_META[team].label }}
-              <b class="font-num">{{ teams[team].alive }}/{{ teams[team].total }}</b>
-            </span>
-            <div class="hp-track h-4 w-14 md:w-20 lg:w-24 xl:w-40" :class="team === 'B' ? 'scale-x-[-1]' : ''">
-              <div class="h-full rounded-full transition-all duration-500" :style="{ width: `${teams[team].hpPercent}%`, background: TEAM_META[team].color }" />
-            </div>
-          </div>
-        </template>
-
-        <div class="relative order-2 -my-4 h-16 w-16 shrink-0" :class="showTimer && (turnSecondsLeft ?? 99) <= 3 ? 'timer-hurry' : ''">
-          <svg viewBox="0 0 64 64" class="absolute inset-0 h-full w-full -rotate-90">
-            <circle cx="32" cy="32" r="29.5" fill="var(--color-paper)" stroke="var(--color-ink)" stroke-width="3" />
-            <circle cx="32" cy="32" :r="RING_R" fill="none" stroke="var(--color-mist)" stroke-width="6" />
-            <circle
-              cx="32"
-              cy="32"
-              :r="RING_R"
-              fill="none"
-              :stroke="timerColor"
-              stroke-width="6"
-              stroke-linecap="round"
-              :stroke-dasharray="RING_C"
-              :stroke-dashoffset="RING_C * (1 - timerRatio)"
-              class="transition-[stroke-dashoffset] duration-300"
-            />
-          </svg>
-          <div class="relative flex h-full flex-col items-center justify-center leading-none">
-            <template v-if="showTimer">
-              <span class="font-num text-2xl font-extrabold">{{ turnSecondsLeft }}</span>
-              <span class="text-[11px] text-ink-soft">秒</span>
-            </template>
-            <template v-else>
-              <span class="text-[11px] text-ink-soft">回合</span>
-              <span class="font-num text-xl font-extrabold">{{ state.turnId }}</span>
-            </template>
-          </div>
-        </div>
+  <div class="hud pointer-events-none absolute inset-0 select-none font-toon text-ink">
+    <!-- 左上：離開 / 音效 + 駕駛艙坦克小卡 -->
+    <div class="hud-tl absolute flex flex-col items-start gap-2">
+      <div class="pointer-events-auto flex gap-2">
+        <GameButton variant="coral" round class="hud-round" aria-label="退出戰鬥" title="退出戰鬥" @click="emit('leave-game')">
+          <IconGlyph name="chevron_left" :size="22" />
+        </GameButton>
+        <GameButton variant="white" round class="hud-round" :aria-label="isMuted ? '開啟音效' : '關閉音效'" :title="isMuted ? '開啟音效' : '關閉音效'" @click="emit('toggle-mute')">
+          <IconGlyph :name="isMuted ? 'sound_off' : 'sound_on'" :size="22" />
+        </GameButton>
       </div>
 
-      <!-- 下掛：誰的回合 + 風向 -->
-      <div class="mt-2 flex items-center gap-2">
-        <span
-          v-if="activeTank && state.phase !== 'GAME_OVER'"
-          class="toon-pill bg-paper px-3 text-sm shadow-[0_3px_0_var(--color-ink)]"
-        >
-          <span class="h-2.5 w-2.5 rounded-full border-2 border-ink" :style="{ background: TEAM_META[activeTeam].color }" />
-          {{ statusText }}
-          <span v-if="state.phase === 'FIRING' || isBotTurn" class="dots" aria-hidden="true"><i /><i /><i /></span>
-        </span>
-        <span class="toon-pill bg-mist px-3 text-sm shadow-[0_3px_0_var(--color-ink)]" title="風向與風力">
-          <template v-if="state.wind === 0">無風</template>
-          <template v-else>
-            風
-            <span class="flex items-center" :class="state.wind < 0 ? 'scale-x-[-1]' : ''">
-              <svg v-for="n in windArrows" :key="n" viewBox="0 0 12 12" class="-mx-0.5 h-3.5 w-3.5 text-sky-deep">
-                <path d="M2 2l6 4-6 4z" fill="currentColor" stroke="var(--color-ink)" stroke-width="1.5" stroke-linejoin="round" />
-              </svg>
-            </span>
-            <b class="font-num">{{ Math.abs(state.wind) }}</b>
-          </template>
-        </span>
-      </div>
-    </div>
-
-    <!-- 換人出擊橫幅 -->
-    <Transition name="banner">
-      <div v-if="banner && state.phase !== 'GAME_OVER'" :key="banner.key" class="absolute inset-x-0 top-[28%] flex justify-center">
-        <span
-          class="toon-title rounded-full border-4 border-ink px-8 pb-2 pt-1 text-4xl shadow-[0_6px_0_var(--color-ink)] sm:text-5xl"
-          :style="{ background: TEAM_META[banner.team].color }"
-        >
-          {{ banner.text }}
-        </span>
-      </div>
-    </Transition>
-
-    <!-- 勝負結算 -->
-    <div v-if="state.phase === 'GAME_OVER'" class="pointer-events-auto absolute inset-0 flex items-center justify-center bg-ink/35">
-      <div class="result-pop toon-panel relative flex flex-col items-center px-10 pb-7 pt-9 text-center">
-        <span class="toon-ribbon absolute -top-4 left-1/2 -translate-x-1/2">戰鬥結束</span>
-        <div
-          class="toon-title text-5xl"
-          :style="{ color: state.winner === 'A' || state.winner === 'B' ? TEAM_META[state.winner].color : '#fff' }"
-        >
-          {{ state.winner === 'A' || state.winner === 'B' ? `${TEAM_META[state.winner].label}獲勝！` : '平手！' }}
-        </div>
-        <p class="mt-3 text-base text-ink-soft">
-          橘隊存活 <b class="font-num text-ink">{{ teams.A.alive }}</b> · 藍隊存活 <b class="font-num text-ink">{{ teams.B.alive }}</b>
-        </p>
-        <div class="mt-6 flex items-center gap-3">
-          <button type="button" class="toon-btn px-6 py-2.5 text-lg" @click="emit('leave-game')">回大廳</button>
-          <button type="button" class="toon-btn toon-btn--sun px-7 py-2.5 text-lg" @click="emit('reset-match')">再戰一局</button>
-        </div>
-      </div>
-    </div>
-
-    <!-- 手機 / 觸控：手把式版面 -->
-    <div
-      v-if="state.phase !== 'GAME_OVER' && touchLayout"
-      class="pad-root absolute inset-x-0 bottom-0 flex flex-wrap items-end justify-between gap-x-3 gap-y-2 px-3"
-    >
-      <!-- 左手：方向鍵（左右移動、上下仰角），中央顯示仰角 -->
-      <div class="dpad pointer-events-auto order-1 grid shrink-0 grid-cols-3 grid-rows-3 gap-0.5">
-        <button
-          type="button"
-          aria-label="抬高砲管"
-          :disabled="controlsDisabled"
-          class="toon-btn pad-key col-start-2 row-start-1 p-0"
-          @pointerdown="holdAngle($event, 1)"
-          @contextmenu.prevent
-        >
-          <svg viewBox="0 0 24 24" class="h-6 w-6" fill="none" stroke="currentColor" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"><path d="m5 15 7-7 7 7" /></svg>
-        </button>
-        <button
-          v-for="dir in ([-1, 1] as const)"
-          :key="dir"
-          type="button"
-          :aria-label="dir < 0 ? '往左移動' : '往右移動'"
-          :disabled="controlsDisabled"
-          class="toon-btn toon-btn--sky pad-key row-start-2 p-0"
-          :class="dir < 0 ? 'col-start-1' : 'col-start-3'"
-          @pointerdown="holdMove($event, dir)"
-          @contextmenu.prevent
-        >
-          <svg viewBox="0 0 24 24" class="h-6 w-6" :class="dir > 0 ? 'scale-x-[-1]' : ''" fill="none" stroke="currentColor" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5 8 12l7 7" /></svg>
-        </button>
-        <div class="col-start-2 row-start-2 flex flex-col items-center justify-center rounded-full border-[3px] border-ink bg-paper leading-none">
-          <b class="font-num text-[13px]" title="相對地面的實際仰角">{{ worldElevation }}°</b>
-          <span class="font-num text-[8px] font-bold text-ink-soft" title="砲管相對車體的角度">車{{ elevation }}</span>
-        </div>
-        <button
-          type="button"
-          aria-label="壓低砲管"
-          :disabled="controlsDisabled"
-          class="toon-btn pad-key col-start-2 row-start-3 p-0"
-          @pointerdown="holdAngle($event, -1)"
-          @contextmenu.prevent
-        >
-          <svg viewBox="0 0 24 24" class="h-6 w-6 rotate-180" fill="none" stroke="currentColor" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"><path d="m5 15 7-7 7 7" /></svg>
-        </button>
-      </div>
-
-      <!-- 中間：戰車狀態 + 力道條（直立時獨佔最上面一列） -->
-      <div class="pad-info toon-panel pointer-events-auto order-2 mb-1 min-w-0 flex-1 rounded-2xl px-2.5 py-1.5 portrait:order-first portrait:basis-full">
-        <div class="pad-info-row1 flex items-center gap-2 text-sm leading-tight">
-          <span class="pad-hide-short flex h-7 w-8 shrink-0 items-center justify-center rounded-lg border-[2.5px] border-ink" :style="{ background: TEAM_META[panelTeam].color }">
-            <img :src="panelSpriteUrl" alt="" class="h-4 w-auto" :class="panelTeam === 'B' ? '-scale-x-100' : ''" />
+      <div class="own-card pointer-events-auto">
+        <div class="flex items-center gap-1.5">
+          <span class="own-dot flex shrink-0 items-center justify-center" :style="{ background: TEAM_META[panelTeam].color }">
+            <img :src="panelSpriteUrl" alt="" draggable="false" class="h-3/5 w-auto" :class="panelTeam === 'B' ? '-scale-x-100' : ''" />
           </span>
-          <span class="pad-hide-short min-w-0 truncate">{{ panelName }}</span>
-          <span
-            v-for="st in panelStatuses"
-            :key="st.spec.id"
-            class="toon-pill shrink-0 px-1 text-[11px] leading-tight text-white"
-            :style="{ background: st.spec.color }"
-            :title="st.spec.description"
-          >{{ st.spec.icon }}<b class="font-num">{{ Math.max(1, st.turnsLeft) }}</b></span>
-          <div class="hp-track ml-auto h-3 w-14 shrink-0" title="血量">
-            <div class="h-full rounded-full bg-grass" :style="{ width: `${hpPercent}%` }" />
-          </div>
-          <div class="hp-track h-3 w-10 shrink-0" title="燃料">
-            <div class="h-full rounded-full bg-sun" :style="{ width: `${fuelPercent}%` }" />
-          </div>
+          <span class="min-w-0 flex-1 truncate text-sm leading-none">{{ panelName }}</span>
+          <span v-if="panelTank?.isBot" class="chip">電腦</span>
           <button
             v-if="hasOwnTank"
             type="button"
-            class="toon-pill shrink-0 bg-paper px-1.5 text-[11px]"
+            class="chip chip-btn"
             :title="shownMode === 'own' ? '改成跟著回合坦克' : '改成顯示我的坦克'"
             @click="emit('set-panel-mode', shownMode === 'own' ? 'active' : 'own')"
           >
             {{ shownMode === 'own' ? '我的' : '回合' }}
           </button>
         </div>
-        <div class="pad-info-row2 mt-1.5 flex items-center gap-2">
-          <div
-            ref="powerBarRef"
-            class="power-track relative h-7 flex-1 touch-none"
-            @pointerdown="onPointerDownPowerGauge"
-          >
-            <div class="power-fill absolute inset-y-0 left-0" :class="isCharging ? 'is-charging' : ''" :style="{ width: `${power}%`, backgroundSize: `${10000 / Math.max(1, power)}% 100%` }" />
-            <div
-              v-if="lastFiredPower !== null"
-              class="pointer-events-none absolute -inset-y-1.5 z-10 w-[3px] -translate-x-1/2 rounded bg-ink"
-              :style="{ left: `${lastFiredPower}%` }"
-            />
-          </div>
-          <b class="font-num w-14 shrink-0 text-right text-lg leading-none" :class="isCharging ? 'text-coral' : ''">{{ power.toFixed(1) }}</b>
+        <div class="mt-1 flex items-center gap-1.5">
+          <HpBar :percent="hpPercent" color="var(--color-grass)" class="hp-own" />
+          <b class="font-num text-sm leading-none">{{ panelTank?.hp }}</b>
         </div>
-        <div v-if="panelIsWaiting" class="mt-1 text-center text-xs text-ink-soft">等待 {{ activeName }}</div>
+        <div v-if="panelStatuses.length > 0" class="mt-1 flex flex-wrap gap-1">
+          <span
+            v-for="st in panelStatuses"
+            :key="st.spec.id"
+            class="chip text-white"
+            :style="{ background: st.spec.color }"
+            :title="`${st.spec.name}：${st.spec.description}`"
+          >{{ st.spec.icon }}<b class="font-num">{{ Math.max(1, st.turnsLeft) }}</b></span>
+        </div>
+        <div v-if="panelIsWaiting" class="mt-1 text-xs text-ink-soft">等待 {{ activeName }}</div>
+      </div>
+    </div>
+
+    <!-- 上中：兩隊血條 + 計時環 + 誰的回合 -->
+    <div class="hud-top absolute left-1/2 flex -translate-x-1/2 flex-col items-center">
+      <div class="flex items-center">
+        <template v-for="team in (['A', 'B'] as TeamId[])" :key="team">
+          <div class="score flex flex-col" :class="team === 'B' ? 'order-3 items-end' : 'order-1 items-start'">
+            <HpBar :percent="teams[team].hpPercent" :color="TEAM_META[team].color" :mirror="team === 'B'" class="hp-team" />
+            <span class="score-tag flex items-center gap-1 text-xs leading-none" :class="team === 'B' ? 'flex-row-reverse' : ''">
+              <i class="h-2 w-2 rounded-full" :style="{ background: TEAM_META[team].color }" />
+              {{ TEAM_META[team].label }} <b class="font-num">{{ teams[team].alive }}/{{ teams[team].total }}</b>
+            </span>
+          </div>
+        </template>
+        <TimerRing class="timer-ring order-2" :seconds="showTimer ? (turnSecondsLeft ?? null) : null" :ratio="timerRatio" :turn="state.turnId" />
+      </div>
+      <span v-if="activeTank && state.phase !== 'GAME_OVER'" class="turn-pill mt-1 flex items-center gap-1.5 text-sm leading-none">
+        <i class="h-2.5 w-2.5 rounded-full" :style="{ background: TEAM_META[activeTeam].color }" />
+        {{ statusText }}
+        <span v-if="state.phase === 'FIRING' || isBotTurn" class="dots" aria-hidden="true"><i /><i /><i /></span>
+      </span>
+    </div>
+
+    <!-- 右上：風向羅盤（雷達鈕在最右，由 BattleCanvas 提供） -->
+    <div class="hud-compass absolute"><WindCompass :wind="state.wind" /></div>
+
+    <!-- 換人出擊橫幅 -->
+    <Transition name="banner">
+      <div v-if="banner && state.phase !== 'GAME_OVER'" :key="banner.key" class="absolute inset-x-0 top-[26%] flex justify-center">
+        <span class="banner-plate flex items-center justify-center" :style="{ backgroundImage: bannerPlate }">
+          <span class="banner-text" :style="{ color: '#fff', WebkitTextStrokeColor: 'var(--color-ink)' }">
+            <i class="banner-dot" :style="{ background: TEAM_META[banner.team].color }" />{{ banner.text }}
+          </span>
+        </span>
+      </div>
+    </Transition>
+
+    <!-- 勝負結算 -->
+    <div v-if="state.phase === 'GAME_OVER'" class="pointer-events-auto absolute inset-0 flex items-center justify-center bg-ink/40">
+      <UiPanel class="result-pop flex flex-col items-center px-4 py-2 text-center">
+        <div
+          class="result-title font-num text-4xl font-extrabold"
+          :style="{ color: state.winner === 'A' || state.winner === 'B' ? TEAM_META[state.winner].color : 'var(--color-ink)' }"
+        >
+          {{ state.winner === 'A' || state.winner === 'B' ? `${TEAM_META[state.winner].label}獲勝！` : '平手！' }}
+        </div>
+        <p class="mt-2 text-base text-ink-soft">
+          橘隊存活 <b class="font-num text-ink">{{ teams.A.alive }}</b> · 藍隊存活 <b class="font-num text-ink">{{ teams.B.alive }}</b>
+        </p>
+        <div class="mt-4 flex items-center gap-3">
+          <GameButton variant="white" @click="emit('leave-game')">回大廳</GameButton>
+          <GameButton variant="gold" @click="emit('reset-match')">再戰一局</GameButton>
+        </div>
+      </UiPanel>
+    </div>
+
+    <template v-if="state.phase !== 'GAME_OVER'">
+      <!-- 左下：燃料 + 移動（按住連續） -->
+      <div class="hud-bl absolute flex flex-col items-start gap-1">
+        <FuelGauge :percent="fuelPercent" class="fuel" />
+        <div class="pointer-events-auto flex gap-2">
+          <button
+            v-for="dir in ([-1, 1] as const)"
+            :key="dir"
+            type="button"
+            class="pad-btn move-btn"
+            :aria-label="dir < 0 ? '往左移動' : '往右移動'"
+            :disabled="controlsDisabled"
+            :style="{ backgroundImage: moveImg }"
+            @pointerdown="holdMove($event, dir)"
+            @contextmenu.prevent
+          >
+            <IconGlyph name="arrow_left" :size="30" :class="dir > 0 ? '-scale-x-100' : ''" />
+          </button>
+        </div>
       </div>
 
-      <!-- 右手：彈種、跳過與發射鈕 -->
-      <div class="pointer-events-auto order-3 flex shrink-0 items-end gap-2">
-        <div class="pad-shots flex flex-col items-center gap-1.5">
+      <!-- 右下：彈種 / 跳過、仰角盤、發射環 -->
+      <div class="hud-br absolute flex flex-col items-end gap-2">
+        <div class="pointer-events-auto flex items-center gap-2">
+          <span v-if="!activeShots" class="chip" title="對手的彈藥在開火前不會揭露">彈藥未揭露</span>
           <button
             v-for="proj in activeShots ?? []"
             :key="proj.id"
             type="button"
+            class="pad-btn slot"
             :disabled="controlsDisabled"
             :aria-pressed="bulletType === proj.id"
             :aria-label="proj.name"
-            class="pad-shot"
+            :title="`${proj.name}：${proj.description}`"
+            :style="{ backgroundImage: bulletType === proj.id ? slotImgOn : slotImg }"
             @click="emit('change-bullet', proj.id)"
           >
-            <span class="flex h-8 w-8 items-center justify-center rounded-full border-2 border-ink" :style="{ background: hexColor(proj.visual.glowColor) }">
-              <img v-if="shotSprite(proj.visual.sprite?.key)" :src="shotSprite(proj.visual.sprite?.key)!" alt="" class="h-5 w-5 object-contain" />
+            <span class="slot-dot" :style="{ background: hexColor(proj.visual.glowColor) }">
+              <img v-if="shotSprite(proj.visual.sprite?.key)" :src="shotSprite(proj.visual.sprite?.key)!" alt="" draggable="false" class="h-full w-full object-contain" />
             </span>
           </button>
-          <button
-            type="button"
-            :disabled="controlsDisabled"
-            class="toon-btn pad-pass h-8 rounded-full px-2.5 text-xs"
-            @click="emit('pass')"
-          >
-            跳過
-          </button>
+          <GameButton variant="white" round class="hud-round" :disabled="controlsDisabled" aria-label="跳過本回合" title="跳過本回合（P）" @click="emit('pass')">
+            <IconGlyph name="skip" :size="22" />
+          </GameButton>
         </div>
-        <button
-          type="button"
-          :disabled="controlsDisabled"
-          class="toon-btn fire-btn pad-fire touch-none flex-col gap-0 rounded-full p-0 leading-none"
-          :class="isCharging ? 'toon-btn--coral is-charging' : 'toon-btn--sun'"
-          @pointerdown="onPointerDownCharge"
-          @contextmenu.prevent
-        >
-          <span class="text-xl">{{ isCharging ? '放開！' : '發射' }}</span>
-          <span class="mt-1 text-[11px]">{{ controlsDisabled ? '等待中' : isCharging ? '' : '按住蓄力' }}</span>
-        </button>
-      </div>
-    </div>
 
-    <!-- 底部駕駛艙 -->
-    <div
-      v-if="state.phase !== 'GAME_OVER' && !touchLayout"
-      class="pointer-events-auto absolute bottom-3 left-1/2 w-[min(1180px,calc(100%-24px))] -translate-x-1/2"
-    >
-      <div class="toon-panel toon-panel--plate relative px-3 pb-2.5 pt-5 md:px-4">
-        <!-- 面板切換：一律顯示自己的坦克，或跟著該回合出手的坦克 -->
-        <div class="absolute -top-4 left-4 flex items-center gap-2">
-          <div class="toon-segment panel-switch text-sm shadow-[0_3px_0_var(--color-ink)]" role="group" aria-label="駕駛艙顯示">
-            <button
-              type="button"
-              :aria-pressed="shownMode === 'own'"
-              :disabled="!hasOwnTank"
-              :title="hasOwnTank ? '一律顯示自己的坦克' : '沒有自己的坦克'"
-              @click="emit('set-panel-mode', 'own')"
-            >
-              我的坦克
-            </button>
-            <button type="button" :aria-pressed="shownMode === 'active'" title="跟著該回合出手的坦克" @click="emit('set-panel-mode', 'active')">回合坦克</button>
-          </div>
-          <span v-if="panelIsWaiting" class="toon-pill bg-mist px-2.5 text-sm shadow-[0_3px_0_var(--color-ink)]">
-            等待 {{ activeName }}
-          </span>
-        </div>
-        <div class="flex flex-wrap items-stretch gap-x-3 gap-y-3 md:flex-nowrap lg:gap-x-4">
-          <!-- 戰車：頭像 + 血量 + 燃料 -->
-          <div class="flex min-w-0 items-center gap-3 md:w-44 md:shrink-0 lg:w-52 xl:w-60">
-            <div
-              class="relative flex h-14 w-16 shrink-0 items-center justify-center rounded-2xl border-[3px] border-ink"
-              :style="{ background: TEAM_META[panelTeam].color }"
-            >
-              <img :src="panelSpriteUrl" alt="" class="h-9 w-auto drop-shadow-[0_2px_0_rgb(29_35_64/.35)]" :class="panelTeam === 'B' ? '-scale-x-100' : ''" />
-              <span v-if="panelTank?.isBot" class="toon-pill absolute -bottom-2.5 left-1/2 -translate-x-1/2 bg-paper px-1.5 text-[12px] leading-tight">電腦</span>
-            </div>
-            <div class="min-w-0 flex-1 space-y-1">
-              <div class="flex items-baseline gap-2 leading-tight">
-                <span class="truncate text-base">{{ panelName }}</span>
-                <span class="hidden shrink-0 text-sm text-ink-soft xl:inline">{{ panelTankType }}</span>
-              </div>
-              <div v-if="panelStatuses.length > 0" class="flex flex-wrap gap-1">
-                <span
-                  v-for="s in panelStatuses"
-                  :key="s.spec.id"
-                  class="toon-pill px-1.5 text-[12px] leading-tight text-white"
-                  :style="{ background: s.spec.color }"
-                  :title="s.spec.description"
-                >
-                  {{ s.spec.icon }} {{ s.spec.name }}<b class="font-num">{{ Math.max(1, s.turnsLeft) }}</b>
-                </span>
-              </div>
-              <div class="flex items-center gap-1.5 text-sm">
-                <span class="w-8 shrink-0">血量</span>
-                <div class="hp-track h-3.5 flex-1">
-                  <div class="h-full rounded-full bg-grass transition-all duration-300" :style="{ width: `${hpPercent}%` }" />
-                </div>
-                <b class="font-num w-8 text-right">{{ panelTank?.hp }}</b>
-              </div>
-              <div class="flex items-center gap-1.5 text-sm">
-                <span class="w-8 shrink-0">燃料</span>
-                <div class="hp-track h-3.5 flex-1">
-                  <div class="h-full rounded-full bg-sun transition-all duration-150" :style="{ width: `${fuelPercent}%` }" />
-                </div>
-                <b class="font-num w-8 text-right">{{ Math.round(fuelPercent) }}</b>
-              </div>
-            </div>
-          </div>
-
-          <!-- 移動（按住連續） -->
-          <div class="cockpit-cell flex flex-col items-center justify-center gap-1">
-            <div class="flex gap-1.5">
-              <button
-                v-for="dir in ([-1, 1] as const)"
-                :key="dir"
-                type="button"
-                :aria-label="dir < 0 ? '往左移動' : '往右移動'"
-                :disabled="controlsDisabled"
-                class="toon-btn toon-btn--sky h-10 w-11 touch-none p-0"
-                @pointerdown="holdMove($event, dir)"
-              >
-                <svg viewBox="0 0 24 24" class="h-5 w-5" :class="dir > 0 ? 'scale-x-[-1]' : ''" fill="none" stroke="currentColor" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round">
-                  <path d="M15 5 8 12l7 7" />
-                </svg>
-              </button>
-            </div>
-            <span class="text-sm text-ink-soft">移動 <kbd>←</kbd><kbd>→</kbd></span>
-          </div>
-
-          <!-- 仰角 -->
-          <div class="cockpit-cell flex items-center gap-2">
-            <div class="flex flex-col items-center">
-              <svg viewBox="0 0 100 56" class="h-12 w-[5.5rem]">
-                <defs><clipPath id="dial-clip"><rect x="0" y="0" width="100" :height="DIAL_CY + 2" /></clipPath></defs>
-                <path :d="dialTrack" fill="none" stroke="var(--color-ink)" stroke-width="13" stroke-linecap="round" />
-                <path :d="dialTrack" fill="none" stroke="var(--color-paper)" stroke-width="8" stroke-linecap="round" />
-                <path :d="dialSweep" fill="none" stroke="var(--color-sun)" stroke-width="8" stroke-linecap="round" />
-                <g :transform="`rotate(${tankSlope} ${DIAL_CX} ${DIAL_CY})`" clip-path="url(#dial-clip)">
-                  <path v-for="(d, i) in dialBlocked" :key="i" :d="d" fill="none" stroke="var(--color-ink)" stroke-width="8" stroke-linecap="butt" opacity=".35" />
-                </g>
-                <line v-for="t in dialTicks" :key="t.deg" :x1="t.a.x" :y1="t.a.y" :x2="t.b.x" :y2="t.b.y" stroke="var(--color-ink)" stroke-width="2" stroke-linecap="round" opacity=".35" />
-                <line :x1="DIAL_CX" :y1="DIAL_CY" :x2="dialNeedle.x" :y2="dialNeedle.y" stroke="var(--color-ink)" stroke-width="4.5" stroke-linecap="round" />
-                <circle :cx="DIAL_CX" :cy="DIAL_CY" r="6" fill="var(--color-coral)" stroke="var(--color-ink)" stroke-width="3" />
-              </svg>
-              <span class="-mt-0.5 flex items-center gap-1 leading-none">
-                <svg v-if="facingLeft" viewBox="0 0 12 12" class="h-3 w-3"><path d="M10 2 4 6l6 4z" fill="var(--color-ink)" /></svg>
-                <b class="font-num text-xl" title="相對地面（水平線）的實際發射仰角">{{ worldElevation }}°</b>
-                <svg v-if="!facingLeft" viewBox="0 0 12 12" class="h-3 w-3"><path d="M2 2l6 4-6 4z" fill="var(--color-ink)" /></svg>
-              </span>
-              <span class="font-num mt-0.5 text-xs font-bold leading-none text-ink-soft" title="砲管相對車體的角度（可用範圍依機種而異）">車體 {{ elevation }}°</span>
-            </div>
-            <div class="flex flex-col gap-1.5">
-              <button
+        <div class="flex items-end gap-2">
+          <div class="pointer-events-auto flex items-end gap-1">
+            <AngleDial
+              class="dial"
+              :needle-deg="dialAngle"
+              :label="worldElevation"
+              :facing-left="facingLeft"
+              :blocked="dialBlocked"
+              :slope-deg="tankSlope"
+            />
+            <div class="flex flex-col gap-1">
+              <GameButton
                 v-for="d in ([1, -1] as const)"
                 :key="d"
-                type="button"
+                variant="sky"
+                round
+                class="hud-round touch-none"
                 :aria-label="d > 0 ? '抬高砲管' : '壓低砲管'"
                 :disabled="controlsDisabled"
-                class="toon-btn h-8 w-10 touch-none rounded-xl p-0"
                 @pointerdown="holdAngle($event, d)"
               >
-                <svg viewBox="0 0 24 24" class="h-4 w-4" :class="d < 0 ? 'rotate-180' : ''" fill="none" stroke="currentColor" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round">
-                  <path d="m5 15 7-7 7 7" />
-                </svg>
-              </button>
+                <IconGlyph name="arrow_up" :size="22" :class="d < 0 ? 'rotate-180' : ''" />
+              </GameButton>
             </div>
           </div>
-
-          <!-- 彈種 -->
-          <div class="cockpit-cell flex min-w-0 flex-1 flex-col justify-center">
-            <div class="flex flex-wrap items-center gap-2">
-              <span
-                v-if="!activeShots"
-                class="toon-pill border-dashed bg-paper px-3 py-1 text-sm text-ink-soft"
-                title="對手的彈藥在開火前不會揭露"
-              >
-                彈藥未揭露
-              </span>
-              <button
-                v-for="(proj, shotIdx) in activeShots ?? []"
-                :key="proj.id"
-                type="button"
-                :disabled="controlsDisabled"
-                :aria-pressed="bulletType === proj.id"
-                :title="`${proj.name}：${proj.description}`"
-                class="shot-chip"
-                @click="emit('change-bullet', proj.id)"
-              >
-                <span class="flex h-6 w-6 items-center justify-center rounded-full border-2 border-ink" :style="{ background: hexColor(proj.visual.glowColor) }">
-                  <img v-if="shotSprite(proj.visual.sprite?.key)" :src="shotSprite(proj.visual.sprite?.key)!" alt="" class="h-4 w-4 object-contain" />
-                </span>
-                <span class="hidden whitespace-nowrap lg:inline">{{ proj.name.split(' ')[0] }}</span>
-                <kbd>{{ shotIdx + 1 }}</kbd>
-              </button>
-            </div>
-          </div>
-
-          <!-- 發射 / 跳過 -->
-          <div class="cockpit-cell flex items-center gap-2">
-            <button
-              type="button"
-              :disabled="controlsDisabled"
-              class="toon-btn fire-btn h-16 w-[6.5rem] touch-none flex-col gap-0 rounded-[20px] leading-none"
-              :class="isCharging ? 'toon-btn--coral is-charging' : 'toon-btn--sun'"
-              title="按住蓄力，放開發射（或按住空白鍵）"
-              @pointerdown="onPointerDownCharge"
-            >
-              <span class="text-2xl">{{ isCharging ? '放開！' : '發射' }}</span>
-              <span v-if="controlsDisabled" class="mt-1 text-[13px]">等待中</span>
-              <span v-else-if="!isCharging" class="mt-1 text-[13px]">按住 <kbd>Space</kbd></span>
-              <span v-else class="mt-1 text-[13px]"><kbd>Esc</kbd> 取消</span>
-            </button>
-            <button
-              type="button"
-              :disabled="controlsDisabled"
-              class="toon-btn h-16 w-14 flex-col gap-0.5 rounded-[20px] p-0 text-sm"
-              title="跳過本回合（快捷鍵 P）"
-              @click="emit('pass')"
-            >
-              <svg viewBox="0 0 24 24" class="h-5 w-5" fill="currentColor" stroke="currentColor" stroke-width="2" stroke-linejoin="round">
-                <path d="M4 5l8 7-8 7zM12 5l8 7-8 7z" />
-              </svg>
-              跳過
-            </button>
-          </div>
-        </div>
-
-        <!-- 力道：橫跨整個駕駛艙，長條才好點選與拖曳微調 -->
-        <div class="power-row mt-2 flex items-center gap-3 pt-2">
-          <span class="shrink-0 text-sm">力道</span>
-          <div
-            ref="powerBarRef"
-            class="power-track relative h-9 flex-1 touch-none"
-            :class="controlsDisabled ? 'cursor-default' : 'cursor-pointer'"
-            title="點擊或拖曳設定力道；按住空白鍵 / 發射鈕蓄力，放開開火"
-            @pointerdown="onPointerDownPowerGauge"
-          >
-            <div class="power-fill absolute inset-y-0 left-0" :class="isCharging ? 'is-charging' : ''" :style="{ width: `${power}%`, backgroundSize: `${10000 / Math.max(1, power)}% 100%` }" />
-            <span
-              v-for="n in 19"
-              :key="n"
-              class="absolute w-0.5 -translate-x-1/2 rounded"
-              :class="n % 2 === 0 ? (n === 10 ? 'inset-y-1 bg-ink/40' : 'inset-y-1.5 bg-ink/25') : 'inset-y-2.5 bg-ink/15'"
-              :style="{ left: `${n * 5}%` }"
-            />
-            <div
-              v-if="lastFiredPower !== null"
-              class="pointer-events-none absolute -inset-y-2 z-10 flex -translate-x-1/2 flex-col items-center"
-              :style="{ left: `${lastFiredPower}%` }"
-              title="上一發的力道"
-            >
-              <svg viewBox="0 0 12 8" class="h-2 w-3"><path d="M1 1h10L6 7z" fill="var(--color-coral)" stroke="var(--color-ink)" stroke-width="1.5" stroke-linejoin="round" /></svg>
-              <span class="w-[3px] flex-1 rounded bg-ink" />
-            </div>
-          </div>
-          <b class="font-num w-[4.5rem] shrink-0 text-right text-2xl leading-none" :class="isCharging ? 'text-coral' : ''">{{ power.toFixed(2) }}</b>
+          <FireRing
+            class="pointer-events-auto fire-ring"
+            :power="power"
+            :charging="isCharging"
+            :disabled="controlsDisabled"
+            :last-fired="lastFiredPower"
+            @pointerdown="onPointerDownCharge"
+          />
         </div>
       </div>
-    </div>
+    </template>
   </div>
 </template>
 
 <style scoped>
-.pad-root {
-  padding-bottom: max(0.75rem, env(safe-area-inset-bottom));
-  padding-left: max(0.75rem, env(safe-area-inset-left));
-  padding-right: max(0.75rem, env(safe-area-inset-right));
+/* 尺寸單位：依視窗高度分三級（手機橫放 ≈ 390px 最小） */
+.hud {
+  --u: 1;
+  --edge: 12px;
+  --gb-size: calc(44px * var(--u));
 }
-.pad-root button {
-  touch-action: none;
-  -webkit-touch-callout: none;
-  -webkit-user-select: none;
-  user-select: none;
+@media (min-height: 541px) { .hud { --u: 1.2; } }
+@media (min-height: 761px) { .hud { --u: 1.45; } }
+
+.hud-tl { left: max(var(--edge), env(safe-area-inset-left)); top: max(var(--edge), env(safe-area-inset-top)); }
+.hud-top { top: max(6px, env(safe-area-inset-top)); }
+.hud-bl {
+  left: max(var(--edge), env(safe-area-inset-left));
+  bottom: max(var(--edge), env(safe-area-inset-bottom));
 }
-.dpad {
-  width: 9rem;
-  height: 9rem;
+.hud-br {
+  right: max(var(--edge), env(safe-area-inset-right));
+  bottom: max(var(--edge), env(safe-area-inset-bottom));
 }
-.pad-key {
+.hud-compass {
+  width: calc(54px * var(--u));
+  top: max(var(--edge), env(safe-area-inset-top));
+  right: calc(max(var(--edge), env(safe-area-inset-right)) + 56px * var(--u) + 6px);
+  filter: drop-shadow(0 3px 0 rgb(29 35 64 / 0.4));
+}
+
+.hp-team { width: calc(150px * var(--u)); }
+.timer-ring { width: calc(58px * var(--u)); margin: 0 calc(-4px * var(--u)); z-index: 1; }
+.hp-own { width: calc(110px * var(--u)); }
+.score { filter: drop-shadow(0 3px 0 rgb(29 35 64 / 0.35)); }
+.score-tag {
+  padding: 1px 8px;
+  margin-top: -2px;
+  border-radius: 999px;
+  background: rgb(255 255 255 / 0.85);
+  box-shadow: inset 0 0 0 2px var(--color-ink);
+}
+.turn-pill {
+  padding: 3px 12px;
+  border-radius: 999px;
+  background: rgb(255 255 255 / 0.9);
+  box-shadow: 0 3px 0 rgb(29 35 64 / 0.4), inset 0 0 0 2px var(--color-ink);
+  white-space: nowrap;
+}
+
+.own-card {
+  min-width: calc(150px * var(--u));
+  max-width: calc(210px * var(--u));
+  padding: 5px 8px 6px;
   border-radius: 14px;
+  background: rgb(255 255 255 / 0.88);
+  box-shadow: 0 3px 0 rgb(29 35 64 / 0.4), inset 0 0 0 2px var(--color-ink);
 }
-.pad-shot {
+.own-dot {
+  width: calc(22px * var(--u));
+  height: calc(22px * var(--u));
+  border-radius: 999px;
+  box-shadow: inset 0 0 0 2px var(--color-ink);
+}
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: rgb(255 255 255 / 0.9);
+  box-shadow: inset 0 0 0 2px var(--color-ink);
+  font-size: 11px;
+  line-height: 1.3;
+  white-space: nowrap;
+}
+.chip-btn { cursor: pointer; pointer-events: auto; }
+
+.fuel { width: calc(54px * var(--u)); filter: drop-shadow(0 3px 0 rgb(29 35 64 / 0.4)); }
+.pad-btn, .hud :deep(.hud-round) { touch-action: none; -webkit-touch-callout: none; user-select: none; }
+.move-btn {
+  width: calc(60px * var(--u));
+  aspect-ratio: 1;
+  background-size: 100% 100%;
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 3rem;
-  height: 3rem;
-  border: 3px solid var(--color-ink);
-  border-radius: 999px;
-  background: var(--color-paper);
-  box-shadow: 0 3px 0 var(--color-ink);
+  filter: drop-shadow(0 3px 0 rgb(29 35 64 / 0.5));
+  -webkit-tap-highlight-color: transparent;
 }
-.pad-shot[aria-pressed='true'] {
-  background: var(--color-sun);
-  box-shadow: 0 0 0 3px var(--color-paper), 0 3px 0 3px var(--color-ink);
-}
-.pad-shot:disabled:not([aria-pressed='true']) { opacity: 0.6; }
-.pad-fire {
-  width: 5.75rem;
-  height: 5.75rem;
-}
-/* 手機橫拿（高度很矮）：控制面板縮到最小，把畫面留給戰場；中間資訊面板半透明 */
-@media (max-height: 420px) {
-  .pad-root { row-gap: 0; padding-bottom: max(0.35rem, env(safe-area-inset-bottom)); }
-  .dpad { width: 5.9rem; height: 5.9rem; }
-  .dpad .pad-key { border-radius: 10px; }
-  .pad-shots { gap: 0.25rem; }
-  .pad-pass { height: 1.5rem; padding: 0 0.5rem; font-size: 0.65rem; }
-  .pad-fire { width: 4rem; height: 4rem; }
-  .pad-fire span { font-size: 0.9rem; }
-  .pad-fire span + span { display: none; }
-  .pad-shot { width: 2rem; height: 2rem; border-width: 2px; box-shadow: 0 2px 0 var(--color-ink); }
-  .pad-shot span { width: 1.4rem; height: 1.4rem; }
-  .pad-shot img { width: 1rem; height: 1rem; }
-  /* 資訊面板壓成單行：血量 / 燃料小條 + 力道條 + 數值，不再佔兩層高度 */
-  .pad-info { display: flex; align-items: center; gap: 0.4rem; opacity: 0.85; padding: 0.15rem 0.5rem; margin-bottom: 0.1rem; border-radius: 0.9rem; }
-  .pad-info .pad-hide-short { display: none; }
-  .pad-info-row1 { flex-shrink: 0; gap: 0.3rem; }
-  .pad-info-row1 .hp-track { margin-left: 0; width: 2.2rem; height: 0.6rem; }
-  .pad-info-row2 { flex: 1; margin-top: 0; min-width: 0; }
-  .pad-info-row2 > b { width: 2.6rem; font-size: 0.85rem; }
-  .pad-info .power-track { height: 1rem; }
-  .pad-info > div:not(.pad-info-row1):not(.pad-info-row2) { display: none; }
-}
-.hp-track {
-  border: 2.5px solid var(--color-ink);
-  border-radius: 999px;
-  background: var(--color-mist);
-  overflow: hidden;
-}
-.power-row {
-  border-top: 2.5px dashed rgb(29 35 64 / 0.18);
-}
-.panel-switch { background: var(--color-paper); }
-.panel-switch > button { padding: 0.1rem 0.75rem; line-height: 1.35; }
-.cockpit-cell {
-  border-left: 2.5px dashed rgb(29 35 64 / 0.18);
-  padding-left: 0.75rem;
-}
-@media (min-width: 1024px) {
-  .cockpit-cell { padding-left: 1rem; }
-}
-@media (max-width: 767px) {
-  .power-row {
-  border-top: 2.5px dashed rgb(29 35 64 / 0.18);
-}
-.cockpit-cell { border-left: 0; padding-left: 0; }
-}
+.move-btn:active:not(:disabled) { transform: translateY(3px); filter: none; }
+.move-btn:disabled { filter: grayscale(0.9) opacity(0.7); }
+.move-btn img { filter: drop-shadow(0 2px 0 rgb(29 35 64 / 0.45)); }
 
-kbd {
-  display: inline-flex;
-  min-width: 1.35rem;
-  justify-content: center;
-  margin: 0 0.1rem;
-  padding: 0 0.3rem;
-  border: 2px solid var(--color-ink);
-  border-radius: 6px;
-  background: var(--color-paper);
-  color: var(--color-ink);
-  box-shadow: 0 2px 0 var(--color-ink);
-  font-family: var(--font-num);
-  font-size: 12px;
-  line-height: 1.25;
-  text-shadow: none;
-}
-
-.shot-chip {
-  display: inline-flex;
-  flex-shrink: 0;
+.slot {
+  width: calc(46px * var(--u));
+  aspect-ratio: 1;
+  background-size: 100% 100%;
+  display: flex;
   align-items: center;
-  gap: 0.4rem;
-  padding: 0.2rem 0.4rem 0.2rem 0.25rem;
-  border: 3px solid var(--color-ink);
+  justify-content: center;
+  filter: drop-shadow(0 3px 0 rgb(29 35 64 / 0.4));
+}
+.slot:disabled:not([aria-pressed='true']) { opacity: 0.6; }
+.slot-dot {
+  width: 56%;
+  aspect-ratio: 1;
   border-radius: 999px;
-  background: var(--color-paper);
-  font-size: 0.875rem;
-  cursor: pointer;
-  transition: transform 0.08s ease;
-}
-.shot-chip[aria-pressed='true'] {
-  background: var(--color-sun);
-  box-shadow: 0 3px 0 var(--color-ink);
-  transform: translateY(-2px);
-}
-.shot-chip:disabled { cursor: default; }
-.shot-chip:disabled:not([aria-pressed='true']) { color: var(--color-ink-soft); }
-
-.power-track {
-  border: 3px solid var(--color-ink);
-  border-radius: 999px;
-  background: var(--color-paper);
-  box-shadow: inset 0 3px 0 rgb(29 35 64 / 0.1);
-  overflow: visible;
-}
-.power-fill {
-  border-radius: 999px;
-  background: linear-gradient(90deg, var(--color-grass), var(--color-sun) 55%, var(--color-coral));
-  box-shadow: inset 0 -4px 0 rgb(29 35 64 / 0.15), inset 0 3px 0 rgb(255 255 255 / 0.45);
-  transition: width 0.12s ease-out;
-}
-.power-fill.is-charging { transition: none; }
-
-.fire-btn.is-charging { animation: fire-throb 0.35s ease-in-out infinite alternate; }
-@keyframes fire-throb {
-  from { transform: translateY(2px) scale(0.97); }
-  to { transform: translateY(2px) scale(1.02); }
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2px;
+  box-shadow: inset 0 0 0 2px var(--color-ink);
 }
 
-.timer-hurry { animation: hurry 0.5s ease-in-out infinite alternate; }
-@keyframes hurry {
-  from { transform: scale(1); }
-  to { transform: scale(1.1); }
+.dial { width: calc(150px * var(--u)); filter: drop-shadow(0 3px 0 rgb(29 35 64 / 0.4)); }
+.fire-ring { width: calc(96px * var(--u)); font-size: calc(17px * var(--u)); }
+
+.banner-plate {
+  width: min(80vw, calc(250px * var(--u)));
+  aspect-ratio: 290 / 90;
+  background-size: 100% 100%;
+  background-repeat: no-repeat;
+  filter: drop-shadow(0 4px 0 rgb(29 35 64 / 0.45));
 }
+.banner-text {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4em;
+  font-family: var(--font-num);
+  font-size: calc(22px * var(--u));
+  font-weight: 800;
+  -webkit-text-stroke: 5px var(--color-ink);
+  paint-order: stroke fill;
+}
+.banner-dot { width: 0.5em; height: 0.5em; border-radius: 999px; box-shadow: 0 0 0 3px var(--color-ink); }
 
 .dots { display: inline-flex; gap: 2px; }
 .dots i {
@@ -882,6 +530,9 @@ kbd {
   from { opacity: 0; transform: scale(0.6); }
   to { opacity: 1; transform: scale(1); }
 }
-
 .result-pop { animation: banner-in 0.45s cubic-bezier(0.2, 1.6, 0.4, 1); }
+.result-title { -webkit-text-stroke: 4px var(--color-ink); paint-order: stroke fill; }
+@media (prefers-reduced-motion: reduce) {
+  .banner-enter-active, .result-pop { animation: none; }
+}
 </style>
