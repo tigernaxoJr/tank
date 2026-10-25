@@ -100,7 +100,7 @@ function openGarage(): void {
     <img :src="cloudSmallUrl" alt="" class="cloud cloud--b pointer-events-none absolute" draggable="false" />
 
     <!-- 左上：指揮官牌；右上：作戰手冊 -->
-    <header class="relative z-10 flex items-start gap-2">
+    <header class="desk-zoom relative z-10 flex items-start gap-2">
       <div class="commander flex items-center gap-2">
         <span class="commander-avatar flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-full bg-sky">
           <span v-if="randomTank" class="font-num text-xl font-extrabold text-white">?</span>
@@ -126,7 +126,7 @@ function openGarage(): void {
     </header>
 
     <!-- 主體：直放上下排；橫放左（Logo + 主角坦克）右（三個入口） -->
-    <div class="relative z-10 flex min-h-0 flex-1 flex-col items-center justify-between gap-2 lg:flex-row phone:flex-row">
+    <div class="desk-zoom desk-main relative z-10 flex min-h-0 flex-1 flex-col items-center justify-between gap-2 lg:flex-row phone:flex-row">
       <section class="flex min-h-0 flex-1 flex-col items-center justify-center gap-1 lg:items-start lg:pl-12 phone:items-start phone:pl-9">
         <img :src="logoUrl" alt="TANK ARTILLERY" draggable="false" class="logo w-[min(78vw,420px)] phone:w-[min(40vw,260px)]" />
         <button type="button" class="hero relative flex flex-col items-center" aria-label="更換戰車" @click="openGarage">
@@ -254,6 +254,14 @@ function openGarage(): void {
 </template>
 
 <style scoped>
+/* 桌機 / 大螢幕橫放：整體放大，主區兩側留邊（手機基準尺寸在大螢幕上太小太空） */
+@media (min-width: 1024px) and (min-height: 641px) and (orientation: landscape) {
+  .desk-zoom { zoom: 1.25; }
+  .desk-main { padding-inline: 4%; }
+}
+@media (min-width: 1280px) and (min-height: 801px) and (orientation: landscape) {
+  .desk-zoom { zoom: 1.5; }
+}
 .commander {
   padding: 4px 12px 4px 4px;
   border-radius: 999px;

@@ -139,7 +139,7 @@ function pickTank(choice: TankChoice): void {
   position: absolute;
   bottom: 6px;
   left: 50%;
-  width: 220px;
+  width: min(220px, 96%);
   height: 44px;
   translate: -50% 0;
   border-radius: 50%;

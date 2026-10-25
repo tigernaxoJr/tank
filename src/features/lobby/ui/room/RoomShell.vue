@@ -64,6 +64,16 @@ const TABS: { id: Tab; label: string }[] = [
 .zone::-webkit-scrollbar { display: none; }
 .tabs { display: none; }
 
+/* 桌機 / 大螢幕橫放：內容限寬置中、垂直置中，並整體放大（手機基準尺寸在大螢幕上太小太空） */
+@media (min-width: 1024px) and (min-height: 641px) and (orientation: landscape) {
+  .room { width: 100%; max-width: 1400px; margin-inline: auto; }
+  .zones { align-items: center; zoom: 1.08; grid-template-columns: minmax(0, 0.85fr) minmax(0, 1.7fr) minmax(0, 1fr); }
+  .zone { max-height: 100%; }
+}
+@media (min-width: 1280px) and (min-height: 801px) and (orientation: landscape) {
+  .zones { zoom: 1.4; }
+}
+
 /* 直放（平板直拿）或視窗很窄（< 700px）：三區改成分頁，一次顯示一區；手機直拿由 index.html 的轉橫提示擋下 */
 @media (max-width: 699px), (orientation: portrait) and (max-width: 1023px) {
   .zones { display: block; }
