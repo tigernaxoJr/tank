@@ -28,11 +28,11 @@
    - 威力要拆成**地形破壞力**與**對坦克破壞力**兩個獨立數值；砲彈可附帶狀態特效（中毒、冰凍 / 減速等，以回合計、確定性結算、不得硬控），規格與建議見 `docs/06` §三之二。
    - 原則是「血量愈少輸出愈高」，砲彈之間不得有嚴格優劣；調整 `tankRegistry` / `projectileRegistry` 數值後必須執行 `node tools/balance/duel_sim.mjs` 確認各配對勝率在約 40%~60%。詳見 [`docs/06-gameplay-reference-and-physics.md`](./docs/06-gameplay-reference-and-physics.md) §三。
 6. **全畫面街機駕駛艙 HUD 與零捲動守則**：
-   - 戰鬥畫面必須以 `100dvh`（`fixed inset-0`）全視窗呈現，所有儀表板與控制項直接疊加在遊戲畫布上（禁止傳統 HTML 表單滑桿與網頁捲動），且對戰設定區必須支援直覺選車。
+   - 戰鬥畫面必須以 `100dvh`（`fixed inset-0`）全視窗呈現，所有儀表板與控制項直接疊加在遊戲畫布上（禁止傳統 HTML 表單滑桿與網頁捲動），且對戰設定區必須支援直覺選車。戰場中央完全留空，UI 只占四個角落與上緣，以手機橫放為基準設計；元件規格見 [`docs/07-ui-redesign-spec.md`](./docs/07-ui-redesign-spec.md)。
 7. **遊戲大廳美學與零表單捲動守則 (Lobby Visual Style: Sky, War, Joy)**：
    - 大廳走「天空 (Sky) × 戰爭 (War) × 歡樂 (Joy)」明亮街機風格，主色為湛藍、陽光金、暖橘與亮白，**嚴禁使用果青色 (Murky Teal / Cyan-green) 等濁色調**。
-   - 大廳 UI 採「卡通粗描邊」視覺系統（深墨色粗外框、色塊上疊每種表面專屬的手工紋理、硬陰影，token 與 `.toon-*` 元件類別集中在 `src/style.css`，新元件只能組合它們）。
-   - 地圖禁止下拉捲動表單，改以地圖卡（左右箭頭切換）+ 彈窗圖庫；坦克採「我的戰車卡」2.5D 展示台；大廳動態載入地圖視差圖層維持遊戲質感。詳見 [`docs/02-architecture-and-subagent-guide.md`](./docs/02-architecture-and-subagent-guide.md)。
+   - UI 一律使用 `src/shared/ui/` 的元件（`GameButton`、`UiPanel`、`ModalSheet`、`IconGlyph`）加 `public/assets/ui2/` 的 agy 生成素材（色票 token 在 `src/style.css` 的 `@theme`）；新元件只能組合它們，不得另開一套樣式。
+   - 地圖禁止下拉捲動表單，改以地圖票券（左右箭頭切換）+ 彈窗圖庫；坦克採「戰車展示台」（平台立繪、環形數值、彈藥槽）；大廳動態載入地圖視差圖層維持遊戲質感。詳見 [`docs/02-architecture-and-subagent-guide.md`](./docs/02-architecture-and-subagent-guide.md)。
 8. **Git Commit 鐵律**：
    - 在使用者給出明確的 commit 指令前，**絕對禁止**自行執行 `git commit`。
 
@@ -67,6 +67,6 @@
 | 測試 | Vitest（`pnpm test`，測試在 `src/test/`；Rust 核心用 `pnpm run test:rust`） |
 | 連線 | PeerJS (WebRTC P2P) + 輕量信令伺服器 (`server/`, Node.js)；`@noble/hashes`（SHA-256，連線對戰的彈藥承諾 / 揭露） |
 | 核心運算 | Rust → WebAssembly (`crates/tank-core`, `wasm-pack`) |
-| 美術資產管線 | Blender 算繪 (`tools/blender`)、Kenney 烘焙 (`tools/assets/bake_kenney_assets.py`, Pillow)、原創地圖主題、Q 版坦克/砲彈與大廳/HUD 紋理程式繪製 (`tools/assets/paint_map_themes.mjs`、`tools/assets/paint_units.mjs`、`tools/assets/paint_ui.mjs`, `@resvg/resvg-js` devDependency)、vtracer / magick / svgo / rembg、TRELLIS.2（Colab 批次生成帶貼圖高模，`tools/colab`）、pymeshlab（`tools/blender/lowpoly` 降面烘焙，uv + Python 3.12 的 `.venv`）、網頁版 Gemini 生圖 + Pillow / OpenCV 去背切割與表情圖集（`tools/sprites2d`）（見 [`docs/04-art-asset-pipeline.md`](./docs/04-art-asset-pipeline.md)） |
+| 美術資產管線 | Blender 算繪 (`tools/blender`)、Kenney 烘焙 (`tools/assets/bake_kenney_assets.py`, Pillow)、原創地圖主題、Q 版坦克/砲彈程式繪製 (`tools/assets/paint_map_themes.mjs`、`tools/assets/paint_units.mjs`, `@resvg/resvg-js` devDependency)、UI 素材（agy 生圖 sprite sheet + `tools/assets/agy-ui/slice_ui.py` 洋紅去背切割，見 [`docs/07-ui-redesign-spec.md`](./docs/07-ui-redesign-spec.md)）、vtracer / magick / svgo / rembg、TRELLIS.2（Colab 批次生成帶貼圖高模，`tools/colab`）、pymeshlab（`tools/blender/lowpoly` 降面烘焙，uv + Python 3.12 的 `.venv`）、網頁版 Gemini 生圖 + Pillow / OpenCV 去背切割與表情圖集（`tools/sprites2d`）（見 [`docs/04-art-asset-pipeline.md`](./docs/04-art-asset-pipeline.md)） |
 | 素材授權 | Kenney CC0 + 專案原創程式繪製美術（地圖主題、坦克、砲彈；見 `CREDITS.md`） |
 - 新增、移除或升級上述任一技術時，**必須同步更新本表**與 [`docs/README.md`](./docs/README.md)。

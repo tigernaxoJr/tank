@@ -19,6 +19,9 @@
 7. **[TODO-peerjs-signaling-server.md](./TODO-peerjs-signaling-server.md)**  
    自建輕量 PeerJS 信令伺服器（`server/` + `docker-compose.yml`）與前端環境變數彈性切換 / 自動 Fallback 規格，以及房間目錄 API（房間列表，僅自建伺服器可用）。
 
+8. **[07-ui-redesign-spec.md](./07-ui-redesign-spec.md)**  
+   進入遊戲 / 房間 / 戰鬥 HUD 重新設計規格：手機橫放優先、戰場優先的版面、元件盤點、agy 素材 sheet 格線規格與實作順序。
+
 ## 待辦清單
 尚未完成的工作統一維護於根目錄 [`todo.md`](../todo.md)。
 

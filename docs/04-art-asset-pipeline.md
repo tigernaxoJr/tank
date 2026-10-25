@@ -206,29 +206,15 @@ pnpm run paint:units   # node tools/assets/paint_units.mjs
    * 彈體 sheet：泡泡與墨汁是半透明與帶尾巴的形狀，同一個洋紅去背公式仍可用；泡泡縮到寬 60、墨汁雷縮到寬 92，放進 `public/assets/units/projectiles/`。
 8. **砲管與車身接縫（海馬教訓，2026-10-25）**：海馬車身頭部帶封死的吻部殘樁、砲管另有圓球與金環，兩件各自完整，砲管抬起時接縫張開、看起來像分離。之後生新坦克改走「先生整台基準圖，再用基準圖拆成車身（砲口畫成開口的圓環護套）與砲管（底端素圓柱、多留約 20% 藏在護套後）」，砲管轉 14° / 45° / 80° 合成檢查通過才定轉軸。prompt 範本與驗收清單見 [`tools/sprites2d/prompt_tank_parts.md`](../tools/sprites2d/prompt_tank_parts.md)。海馬現有素材尚未依此重做（待辦）。
 
-## 七、大廳與 HUD 紋理：`tools/assets/paint_ui.mjs`
+## 七、大廳與 HUD 素材（已改為 agy 生圖，舊程序化紋理已移除）
 
-```bash
-pnpm run paint:ui   # node tools/assets/paint_ui.mjs
-```
+2026-10 起，大廳、房間與戰鬥 HUD 的 UI 素材不再由程式繪製（舊的 `tools/assets/paint_ui.mjs` 與 `src/assets/ui/*.svg` 紋理、`.toon-*` 元件類別已刪除），改走：
 
-* **流程**：種子 PRNG 產生 SVG 到 `src/assets/ui/`（SVGO 壓縮），由 `src/style.css` 與 Vue 元件以相對路徑 / `@/assets/ui/...` 引用，Vite 打包時自動加雜湊；不經點陣化，任何解析度都清晰。
-* **產出與用途**（每種表面各自設計，不共用同一張圖）：
+1. 先把整批需求設計好、蒐集齊，再請 `agy` 一次生一張洋紅底 sprite sheet（`tools/assets/agy-ui/*.prompt.txt`，格線規格與驗收見 [`07-ui-redesign-spec.md`](./07-ui-redesign-spec.md) §四；agy 鐵則見本文 §八：一次一個、重用 session、失敗就停手、成敗都要回報）。
+2. `python -I tools/assets/agy-ui/slice_ui.py [--preview <dir>]`：洋紅轉軟 alpha（連柔影一起去）、依連通區塊切件並命名，輸出到 `public/assets/ui2/<sheet>/<name>.png` 與 `manifest.json`；個別素材的修色（珊瑚按下態、選中光暈、計時環預畫弧線、雷達青色轉藍）都寫在腳本裡，重切會自動套用。
+3. 檢視：腳本的 `--preview` 會輸出白 / 深 / 灰三種背景的檢視圖，檢查洋紅邊與風格一致性；不合格由人決定是否重生。
 
-  | 檔案 | 用在哪 | 材質設計 |
-  | :--- | :--- | :--- |
-  | `paper.svg`（192 無縫，透明疊層） | `.toon-panel` | 奶油紙：短彎紙漿纖維（暖暗 + 亮白兩種）、少量樹皮斑點 |
-  | `card.svg`（96 無縫，透明疊層） | `.toon-btn`、`.toon-input`、`.toon-segment` | 卡紙：微微起伏的橫向簾紋、每 24 px 一道鏈紋、細孔 |
-  | `plate.svg`（128 無縫，透明疊層） | `.toon-panel--plate`（戰鬥操控面板） | 髮絲紋金屬：長短不一的亮 / 暗細線、少量刮痕；四角鉚釘在 CSS 以 radial-gradient 畫 |
-  | `stage_sky.svg` | 我的戰車展示台 | 網點漸淡的天空、右上白色日暈與光芒、墨線卡通雲（受光面縮小偏左上，露出月牙形陰影）、黃綠遠丘與小樹 |
-  | `stage_turf.svg` | 展示台上的草皮台 | 墨線橢圓、亮綠草面 + 受光弧、前緣垂草、土色底面、三朵小花 |
-  | `empty_sky.svg` | 戰局列表空狀態插圖 | 網點天空、雲、紙飛機與虛線航跡、小鳥、底部草坡 |
-
-* **守則**：
-  * 透明疊層的對比要低（纖維暗色 ≤ 0.13、亮色 ≤ 0.65 不透明度），文字在上面要一樣好讀；插圖的雲、草皮沿用坦克的墨線 `#1d2340` 與受光左上的規則。
-  * 天空上的暖色光暈只用白 / 極淡奶油色，黃色疊在藍天上會變成果青色（禁用色，見 AGENTS.md）；丘陵用黃綠，不用薄荷綠。
-  * 元件上色改 `background-color`，不要用 `background` 簡寫蓋掉紋理圖層（見 `docs/02` 視覺系統）。
-  * 檢視：先把 SVG 用 resvg 放大 2 倍看細節，再到瀏覽器大廳 / 戰鬥畫面確認實際大小下的效果。
+UI 元件見 `src/shared/ui/`，規格見 `docs/07`。
 
 ## 八、AI 生圖 + Colab TRELLIS.2 3D 原型標準流程 (AI Image to 3D Pipeline)
 
