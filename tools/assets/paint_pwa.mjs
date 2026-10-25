@@ -11,7 +11,7 @@
  *   favicon.svg                      browser tab icon
  *   splash-<w>x<h>.png               iOS apple-touch-startup-image, landscape only (the game is landscape)
  */
-import { mkdirSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { Resvg } from '@resvg/resvg-js'
@@ -107,9 +107,40 @@ function roundTile() {
   )
 }
 
-/** Landscape launch image: sky, clouds, far hills, the round emblem and the title. */
+/** 以 data URI 嵌入 public/assets/ui2 的素材（agy-ui 切出）；缺檔時回傳 null，改用舊的圓徽章版面 */
+function uiImage(sheet, name) {
+  const f = join(ROOT, 'public', 'assets', 'ui2', sheet, `${name}.png`)
+  if (!existsSync(f)) return null
+  return { uri: `data:image/png;base64,${readFileSync(f).toString('base64')}` }
+}
+
+/** Landscape launch image: sky, clouds, hills, the game logo and an empty loading bar (same look as #boot-splash in index.html). */
 function splash(w, h) {
   const u = h / 100 // layout unit: 1% of the short side
+  const logo = uiImage('title', 'logo')
+  const bar = uiImage('gauges', 'hp_bar')
+  const scenery = `<rect width="${w}" height="${h}" fill="url(#sky)"/>
+     ${cloud(w * 0.14, h * 0.2, u * 0.11)}${cloud(w * 0.86, h * 0.3, u * 0.08)}${cloud(w * 0.7, h * 0.1, u * 0.06)}
+     <path d="M0 ${h * 0.9} Q${w * 0.2} ${h * 0.84} ${w * 0.42} ${h * 0.89} T${w} ${h * 0.86} V${h} H0 Z" fill="#a6ea7e" stroke="${INK}" stroke-width="${u * 0.8}"/>
+     <path d="M0 ${h * 0.96} Q${w * 0.3} ${h * 0.92} ${w * 0.6} ${h * 0.96} T${w} ${h * 0.94} V${h} H0 Z" fill="${GRASS}" stroke="${INK}" stroke-width="${u * 0.8}"/>`
+  if (logo && bar) {
+    const lw = Math.min(w * 0.7, 88 * u)
+    const lh = lw * (448 / 1211)
+    const lx = w / 2 - lw / 2
+    const ly = h * 0.22
+    const bw = 62 * u
+    const bh = bw * (106 / 512)
+    return svg(
+      w,
+      h,
+      `${scenery}
+       <image href="${logo.uri}" x="${lx}" y="${ly}" width="${lw}" height="${lh}"/>
+       <image href="${bar.uri}" x="${w / 2 - bw / 2}" y="${ly + lh + 8 * u}" width="${bw}" height="${bh}"/>
+       <text x="${w / 2}" y="${ly + lh + 8 * u + bh + 5 * u}" text-anchor="middle" font-family="Microsoft JhengHei, PingFang TC, Noto Sans TC, sans-serif" font-weight="700"
+         font-size="${3.4 * u}" fill="${INK}" opacity=".7">空域砲決 · 回合制砲擊</text>`,
+      skyDefs,
+    )
+  }
   const badge = 46 * u
   const bx = w / 2 - badge / 2
   const by = h * 0.12
@@ -117,10 +148,7 @@ function splash(w, h) {
   return svg(
     w,
     h,
-    `<rect width="${w}" height="${h}" fill="url(#sky)"/>
-     ${cloud(w * 0.14, h * 0.2, u * 0.11)}${cloud(w * 0.86, h * 0.3, u * 0.08)}${cloud(w * 0.7, h * 0.1, u * 0.06)}
-     <path d="M0 ${h * 0.9} Q${w * 0.2} ${h * 0.84} ${w * 0.42} ${h * 0.89} T${w} ${h * 0.86} V${h} H0 Z" fill="#a6ea7e" stroke="${INK}" stroke-width="${u * 0.8}"/>
-     <path d="M0 ${h * 0.96} Q${w * 0.3} ${h * 0.92} ${w * 0.6} ${h * 0.96} T${w} ${h * 0.94} V${h} H0 Z" fill="${GRASS}" stroke="${INK}" stroke-width="${u * 0.8}"/>
+    `${scenery}
      <g transform="translate(${bx} ${by}) scale(${badge / 512})">${roundTileBody()}</g>
      <text x="${w / 2}" y="${by + badge + title * 1.25}" text-anchor="middle" font-family="Arial Black, Arial, sans-serif" font-weight="900"
        font-size="${title}" fill="#fff" stroke="${INK}" stroke-width="${title * 0.16}" paint-order="stroke" letter-spacing="${title * 0.04}">TANK ARTILLERY</text>
