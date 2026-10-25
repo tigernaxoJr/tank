@@ -22,6 +22,7 @@ a = a * (1 - spill) + np.concatenate([g, g, g], -1) * spill * 0.9
 if '--strict' in sys.argv:  # 圖裡本身有粉紅/洋紅色塊時：只去掉與 #ff00ff 幾乎相同的底色，不用「洋紅度」判斷
     dist = np.sqrt(((orig - np.array([255, 0, 255], np.float32)) ** 2).sum(-1))
     alpha = np.clip((dist - 45) / 40, 0, 1)
+    alpha = alpha * (1 - ((orig[..., 1] < 60) & (m > 70)))  # 綠值很低的飽和洋紅 = 底色染色的陰影，去掉（粉紅條紋綠值較高，不受影響）
     spill = (dist < 70).astype(np.float32)[..., None] * np.clip((m - 20) / 100, 0, 1)[..., None]  # 只處理貼近底色的邊緣滲色
     a = orig * (1 - spill) + np.concatenate([g, g, g], -1) * spill * 0.9
 rgba = np.dstack([a, alpha * 255]).clip(0, 255).astype(np.uint8)

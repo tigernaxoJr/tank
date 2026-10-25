@@ -199,6 +199,11 @@ pnpm run paint:units   # node tools/assets/paint_units.mjs
    * `--ball-auto`：球關節比砲管本體小時用（`--ball` 假設球直徑約等於砲管高度，寄居蟹的大鉗不符合）。自動偵測球心（砲管左段垂直範圍的第一個峰值，頸部之前），補透明讓球心落在寬度 8%、垂直置中；球心必須能蓋住車身砲座洞，生完圖要看球徑是否夠大。
    * 寄居蟹座標：`pivotX 36.4 / pivotY −22.4`、`face {x 25.2, y −55.2, eyeGap 20.8, eyeSize 7}`、`labelLift 15`；眼球直徑參數 `slice_expr.py --ball-px` 要用**車身貼圖眼柄頂球直徑的 2 倍**（因為圖集 `scale 0.2`、車身 `scale 0.4`；寄居蟹用 70）。
    * 專屬彈體貼圖（`shell_hermit_*.png`）不經這支腳本：同一個洋紅去背公式裁出左右兩顆、縮到寬 76 / 78（`sprite.scale 0.45`），直接放進 `public/assets/units/projectiles/`；`registry.test.ts` 會檢查 `sprite.key` 對應的檔案存在。
+7. **海馬的做法與表情 sheet 版面不同時的切法**（2026-10-25）：
+   * 車身 + 砲管 sheet：參考圖是 3/4 視角的整隻海馬，提示要求「純側視、朝右、單側履帶艙、無吻部無眼睛、吻部處只畫一塊圓形凹座；吻部另成一件、後端球關節」。切割用 `slice_sheet.py <sheet> <out> --id seahorse --hull-w 150 --accent blue --ball-auto`（海馬車身很高，寬 150 時高約 310，`sprite.scale` 用 0.34）。`--accent blue`：A 隊藍色轉銅橘、B 隊保留原圖藍色。腳本印出的 `socket_tex` 猜值不準（會落在身體中段），轉軸要在車身圖上畫格線量凹座中心（海馬是 (137, 70)），再代 `pivotX = (tx − W/2) × scale`、`pivotY = 14 − (H − ty) × scale`。
+   * 表情 sheet：Gemini 沒照 8 欄 × 4 列，給的是 6 欄 × 4 列、每個表情「近側眼 + 遠側眼」成對，且第 3 列是完整小眼球（不是只有瞳孔）。`slice_expr.py` 只吃 8 × 4，所以海馬用一支一次性腳本依像素框裁：近側眼取每對的左邊一顆；`eye_half` / `eye_sleepy` 共用半睜、`eye_hurt` 用生氣眼、`eye_dead` 用 X、`eye_closed` 用眼皮蓋下、`eye_happy` 用 ⌒；`far_wide` 把大眼的瞳孔塗白（引擎用它當白眼球再疊瞳孔）；`pupil_normal` 從小眼球裁出圓形瞳孔；`pupil_dizzy` 用程式畫螺旋。眼睛各零件寬 64，再用 `pack_face_atlas.py <dir> seahorse` 打包。海馬沒有嘴（`noMouth`）。
+   * **圖集 `scale` 手動改成 0.16**（預設 0.2）：眼睛縮小成約 10 px 才放得進海馬的頭；**重跑 `pack_face_atlas.py` 會把它改回 0.2**，要再改一次。
+   * 彈體 sheet：泡泡與墨汁是半透明與帶尾巴的形狀，同一個洋紅去背公式仍可用；泡泡縮到寬 60、墨汁雷縮到寬 92，放進 `public/assets/units/projectiles/`。
 
 ## 七、大廳與 HUD 紋理：`tools/assets/paint_ui.mjs`
 
@@ -244,6 +249,8 @@ pnpm run paint:ui   # node tools/assets/paint_ui.mjs
      - 提示須包含：本節的視角 / 背景 / 單一物件規範、色彩限制（嚴禁濁青色）、與 `refs/beetle`、`refs/seahorse` 既有 `*_tank.jpg` 對齊的畫風（光滑 3D 渲染卡通質感、蒸汽龐克黃銅鉚釘、單顆大眼、車頭朝左），以及「不得使用任何現有遊戲的美術」。
      - 一次請它產出 3 張不同方案（存成 `refs/<id>/concepts/concept_a/b/c.jpg`），由使用者挑選後，選定者再改名為 `<id>_tank.jpg`。
      - 不要加 `--dangerously-skip-permissions`（會被權限分類器拒絕）；以背景方式執行，產生期間 `-p` 不會顯示進度，圖出現在 `concepts/` 後再給使用者看。
+     - **使用 agy 的鐵則（使用者 2026-10 指定）**：① 同一時間只能有**一個** agy 在跑，嚴禁並行；② 重用同一個 session（後續呼叫加 `-c` 接續最近一次對話，或 `--conversation <ID>` 指定），不要每張圖都開新 session；③ **鐵律：一旦 agy 失敗（額度耗盡、報錯、沒產出檔案），就不得再呼叫 agy**——不重試、不換提示再試、不改開新 session，直接停手並回報使用者，是否再試由使用者決定；④ 不論成功或失敗都要回報使用者。
+     - 場景雲層（`clouds_far`）的做法：每張地圖請 agy 生一張洋紅底的元素圖集，再用 `tools/assets/agy_clouds_compose.py` 去背並錯落排成 1024x400 可銜接的雲層（`--strict` 用於圖內有粉紅/紫色時，`--tall-first` 用於高大元素，`--merge N` 用於零散小點）。
 3. **Colab 上的 TRELLIS.2 生成帶貼圖高模**（使用者自己操作，Agent 不在本機生成）：
    1. 使用者把參考圖（第 2 步的 `<id>_tank.jpg`）**上傳到 Google Drive**。
    2. 使用者在 Colab（L4 / A100，需 24GB 以上顯存；左側「密鑰」要有 `HF_TOKEN`）執行 [`tools/colab/trellis2_batch_folder.ipynb`](../tools/colab/trellis2_batch_folder.ipynb)：把 Drive 資料夾內**所有圖片**依序轉成 `<檔名>.glb`（約 100 萬面、4096 貼圖的高模）存回同一資料夾；`TARGETS` 預設 `[10000]`，會多輸出一份 Colab 內直接降到 1 萬面的 `<檔名>_10000.glb`（只當對照用，正式以第 4 步為準），設 `[]` 則只輸出高模。單張版是 [`trellis2_image_to_glb.ipynb`](../tools/colab/trellis2_image_to_glb.ipynb)。
