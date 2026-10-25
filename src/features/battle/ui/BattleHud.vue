@@ -449,7 +449,7 @@ onUnmounted(() => {
 }
 .chip-btn { cursor: pointer; pointer-events: auto; }
 
-.fuel { width: calc(54px * var(--u)); filter: drop-shadow(0 3px 0 rgb(29 35 64 / 0.4)); }
+.fuel { width: calc(50px * var(--u)); font-size: calc(15px * var(--u)); filter: drop-shadow(0 3px 0 rgb(29 35 64 / 0.4)); }
 .pad-btn, .hud :deep(.hud-round) { touch-action: none; -webkit-touch-callout: none; user-select: none; }
 .move-btn {
   width: calc(60px * var(--u));
