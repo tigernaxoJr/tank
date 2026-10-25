@@ -53,6 +53,9 @@ const VIEW_TARGET_H = 640
 const MIN_ZOOM = 0.5
 /** 坦克車身底部相對容器原點的位移（容器原點 = 地表上方 TANK_GROUND_OFFSET） */
 const HULL_BASE_Y = 14
+/** 血條與名牌相對車底線的位置（車底之下，不遮車身） */
+const HP_BAR_Y = 4
+const NAME_TAG_Y = 22
 
 type BackdropFile = (typeof BACKDROP_FILES)[number]
 
@@ -842,7 +845,7 @@ export class BattleScene extends Phaser.Scene {
 
         const hpBarGraphics = this.add.graphics()
         const nameTag = this.add
-          .text(0, -62 - (spec.sprite.labelLift ?? 0), tank.name, {
+          .text(0, HULL_BASE_Y + NAME_TAG_Y, tank.name, {
             fontFamily: 'system-ui, sans-serif',
             fontSize: '11px',
             fontStyle: 'bold',
@@ -978,7 +981,8 @@ export class BattleScene extends Phaser.Scene {
     const barH = 7
     const barX = -barW / 2
     const lift = spec.sprite.labelLift ?? 0
-    const barY = -48 - lift
+    // 血條與名牌一律掛在車底，不擋住車身與表情
+    const barY = HULL_BASE_Y + HP_BAR_Y
     const hpPct = Math.max(0, Math.min(1, tank.hp / tank.maxHp))
     const fillColor = hpPct > 0.5 ? 0x22c55e : hpPct > 0.25 ? 0xfacc15 : 0xef4444
 

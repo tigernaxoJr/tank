@@ -1,0 +1,40 @@
+import { STANDARD_GRAVITY_MILLI, defineProjectile } from '../projectileBlueprint'
+
+export default defineProjectile({
+  id: 'SEAHORSE_BUBBLE',
+  sortOrder: 16,
+  name: '潮湧泡泡 (Tide Bubble)',
+  badge: '大範圍 · 不挖坑 · 濕透 2 回合',
+  description: '包著小海馬的大泡泡，爆開時潑出一大片水：傷害低、不破壞地形，但範圍內的坦克「濕透」2 回合，下一次受到的爆炸傷害 +40%。是雷鳴墨彈（或隊友）的前菜。',
+  damageRadius: 62,
+  terrainRadius: 0,
+  maxDamage: 22,
+  magnetRadius: 24,
+  directHitMultiplier: 1,
+  speedMultiplier: 1,
+  gravityMilli: STANDARD_GRAVITY_MILLI,
+  windMultiplier: 4,
+  onHit: { status: 'drenched', turns: 2, power: 40 },
+  postImpactHoldMs: 1000,
+  visual: {
+    sprite: { key: 'shell_seahorse_bubble', scale: 0.45 },
+    coreRadius: 7,
+    coreColor: 0xe0f2fe,
+    glowColor: 0x38bdf8,
+    strokeColor: 0x1e3a8a,
+    fx: {
+      glow: 'fx_glow_ice',
+      haloAlpha: 0.5,
+      trail: {
+        glowSize: 0.3,
+        glowMs: 300,
+        glowDepth: 19,
+        ring: { fill: 0xe0f2fe, stroke: 0x38bdf8 },
+        sparkChance: 0,
+      },
+      explosion: { sheet: 'fx_flash', sparks: false },
+    },
+    explosionColors: [0xffffff, 0xe0f2fe, 0x7dd3fc, 0x1d4ed8],
+    cameraShakeIntensity: 0.012,
+  },
+})

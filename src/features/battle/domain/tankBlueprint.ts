@@ -46,6 +46,8 @@ export interface FaceSpec {
   readonly atlas?: FaceAtlas
   /** 不畫嘴（蝸牛：脖子上沒有嘴的位置）；只對貼圖表情有效 */
   readonly noMouth?: boolean
+  /** 側面像（海馬）：只畫近側一顆眼睛，位置在 x / y；只對貼圖表情有效 */
+  readonly singleEye?: boolean
 }
 
 /** 傷害類型：explosion / fall / poison 已啟用；burn / movement 為預留 */
@@ -84,6 +86,8 @@ export interface TankBlueprint {
   readonly resist: Partial<Record<DamageType, number>>
   /** 被動技能（大廳說明用；實際效果由數值欄位或 idleStatus 表達） */
   readonly passive: { readonly name: string; readonly description: string }
+  /** 免疫擊退（海馬的捲尾抓地） */
+  readonly knockbackImmune?: boolean
   /** 自己的回合結束時若整回合沒有移動，掛上這個狀態（鐵壁堡壘的紮根） */
   readonly idleStatus?: HitEffect
   /** 精靈圖（以 2.5 倍繪製）的顯示縮放與砲塔轉軸（相對於坦克容器原點，原點約在車身中心上方） */

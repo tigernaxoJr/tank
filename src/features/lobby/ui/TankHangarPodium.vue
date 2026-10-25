@@ -48,6 +48,8 @@ const stats = computed(() => [
 
 /** 展示台立繪：每 rig 單位幾 px */
 const PORTRAIT_UNIT = 1.3
+/** 展示台高 160px、戰車底在 36px：頭頂留點空隙，最高 118px */
+const PORTRAIT_MAX_H = 118
 
 function hexColor(n: number): string {
   return `#${n.toString(16).padStart(6, '0')}`
@@ -96,7 +98,7 @@ function setPaint(team: TeamId): void {
       <div class="stage-zoom pointer-events-none absolute inset-0">
         <img :src="turfUrl" alt="" class="absolute bottom-2 left-1/2 h-10 w-52 max-w-none -translate-x-1/2" />
         <!-- 立繪：車身 + 砲管 + 待機表情，每 rig 單位 1.3 px，最高的鐵壁堡壘（含旗子）也不會頂到台框 -->
-        <TankPortrait v-if="!random" :tank-id="selectedTankId" :team="paint" :unit="PORTRAIT_UNIT" class="tank-bob absolute bottom-[36px] left-1/2" />
+        <TankPortrait v-if="!random" :tank-id="selectedTankId" :team="paint" :unit="PORTRAIT_UNIT" :max-height="PORTRAIT_MAX_H" class="tank-bob absolute bottom-[36px] left-1/2" />
         <span v-else class="toon-mystery tank-bob absolute bottom-[30px] left-1/2 h-20 text-5xl" aria-label="隨機戰車">?</span>
       </div>
     </div>

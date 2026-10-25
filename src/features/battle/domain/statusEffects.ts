@@ -39,6 +39,8 @@ export interface StatusEffectBlueprint {
   readonly moveFuelPermille?: (s: StatusInstance) => number
   /** 爆炸傷害減免百分比（紮根） */
   readonly explosionReductionPct?: (s: StatusInstance) => number
+  /** 受到的爆炸傷害增加百分比（濕透） */
+  readonly explosionBonusPct?: (s: StatusInstance) => number
   /** 受到一次爆炸傷害後就消失 */
   readonly consumedByExplosion?: boolean
   /** 裝甲與護盾失效（破甲） */
@@ -135,14 +137,17 @@ export function mitigateForTank(tank: HasStatuses, spec: TankBlueprint, type: Da
   if (resist >= 1) return 0
   const armor = type === 'explosion' && !hasStatusFlag(tank, 'ignoresArmor') ? spec.armor : 0
   let reducePct = 0
+  let bonusPct = 0
   if (type === 'explosion') {
     for (const s of tank.statuses) {
       const fn = STATUS_REGISTRY[s.id]?.explosionReductionPct
       if (fn) reducePct = Math.max(reducePct, fn(s))
+      const bonus = STATUS_REGISTRY[s.id]?.explosionBonusPct
+      if (bonus) bonusPct = Math.max(bonusPct, bonus(s))
     }
   }
   const afterArmor = Math.max(1, Math.round((raw - armor) * (1 - resist)))
-  const dmg = Math.max(1, Math.round((afterArmor * (100 - reducePct)) / 100))
+  const dmg = Math.max(1, Math.round((afterArmor * (100 - reducePct + bonusPct)) / 100))
   if (type === 'explosion') tank.statuses = tank.statuses.filter((s) => !STATUS_REGISTRY[s.id]?.consumedByExplosion)
   return dmg
 }

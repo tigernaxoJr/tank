@@ -1,7 +1,7 @@
 <script setup lang="ts">
 /**
  * 戰車立繪：照遊戲內的 rig 組合砲管、車身與待機表情，整組畫成一張 SVG，隨外框縮放。
- * 精靈圖以 2.5 倍繪製，rig 座標 = PNG 原尺寸 / 2.5；車身底線在 rig y = HULL_BASE_Y，砲管轉軸在圖寬 8%（同 BattleScene）。
+ * rig 座標 = PNG 原尺寸 × 該機種的 sprite.scale（多半 0.4，海馬 0.34，同 BattleScene）；車身底線在 rig y = HULL_BASE_Y，砲管轉軸在圖寬 8%（同 BattleScene）。
  * 面向左（藍隊）時整組水平鏡像，等同遊戲裡 dir = -1 的畫法。
  */
 import { computed, reactive } from 'vue'
@@ -19,11 +19,12 @@ const props = withDefaults(
     facingLeft?: boolean
     /** 每 rig 單位幾個 CSS px；不給就隨外框縮放 */
     unit?: number
+    /** 立繪最高幾 CSS px；比 unit 換算的高時改縮小（海馬這類高個子） */
+    maxHeight?: number
   }>(),
-  { barrel: true, aimDeg: 14, facingLeft: false, unit: undefined },
+  { barrel: true, aimDeg: 14, facingLeft: false, unit: undefined, maxHeight: undefined },
 )
 
-const ART_ZOOM = 2.5
 const HULL_BASE_Y = 14
 
 /** PNG 原尺寸快取（所有立繪共用） */
@@ -42,11 +43,11 @@ const sprites = computed(() => spec.value.getSprites(props.team))
 const face = computed(() => restFaceSvg(spec.value.sprite.face))
 const hull = computed(() => {
   const s = sizeOf(sprites.value.hullUrl)
-  return s && { w: s.w / ART_ZOOM, h: s.h / ART_ZOOM }
+  return s && { w: s.w * spec.value.sprite.scale, h: s.h * spec.value.sprite.scale }
 })
 const barrel = computed(() => {
   const s = sizeOf(sprites.value.barrelUrl)
-  return s && { w: s.w / ART_ZOOM, h: s.h / ART_ZOOM }
+  return s && { w: s.w * spec.value.sprite.scale, h: s.h * spec.value.sprite.scale }
 })
 /** 外框包住車身與抬起的砲管 */
 const viewBox = computed(() => {
@@ -67,7 +68,12 @@ const viewBox = computed(() => {
   }
   return [x0, y0 - 1, x1 - x0, HULL_BASE_Y - y0 + 2]
 })
-const fixedSize = computed(() => (props.unit ? { width: viewBox.value[2] * props.unit, height: viewBox.value[3] * props.unit } : {}))
+const fixedSize = computed(() => {
+  if (!props.unit) return {}
+  const [, , w, h] = viewBox.value
+  const unit = props.maxHeight ? Math.min(props.unit, props.maxHeight / h) : props.unit
+  return { width: w * unit, height: h * unit }
+})
 </script>
 
 <template>

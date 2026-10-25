@@ -361,7 +361,7 @@ export function commitFireImpact(
       }
       if (proj.knockbackPx && damageRadius > 0) {
         const d = Math.hypot(tank.x - ex, tank.y - 10 - ey)
-        if (d < damageRadius) knockBack(engine, tank, ex, Math.round((proj.knockbackPx * (damageRadius - d)) / damageRadius))
+        if (d < damageRadius && !spec.knockbackImmune) knockBack(engine, tank, ex, Math.round((proj.knockbackPx * (damageRadius - d)) / damageRadius))
       }
     }
 

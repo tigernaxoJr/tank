@@ -64,8 +64,9 @@ function atlasRestFaceSvg(spec: FaceSpec): string {
   }
   let s = ''
   for (const side of [-1, 1]) {
+    if (spec.singleEye && side === 1) continue
     const k = (side === 1 ? far : 1) * a.scale
-    const ex = spec.x + (side * spec.eyeGap) / 2
+    const ex = spec.singleEye ? spec.x : spec.x + (side * spec.eyeGap) / 2
     const reach = ((a.frames.far_wide[2] * k) / 2) * 0.3
     s += img('far_wide', ex, spec.y, k)
     s += img('pupil_normal', ex + LOOK_X * reach, spec.y + reach * 0.13, k * 0.55)

@@ -60,6 +60,8 @@ const rivalId = computed(() => {
 })
 /** 大廳插圖立繪：每 rig 單位幾 px（展示台是 1.3） */
 const PORTRAIT_UNIT = 0.9
+/** 場景高 144px、戰車底在 16px：最高 112px（再乘縮放前） */
+const PORTRAIT_MAX_H = 112
 
 function mapLabel(mapId: MapPresetId): string {
   const map = MAP_REGISTRY[mapId]
@@ -140,8 +142,8 @@ function tap(fn: () => void): void {
               :class="directoryAvailable ? 'phone:hidden' : ''"
             >
               <span v-if="randomTank" class="toon-mystery absolute bottom-4 left-[18%] h-12 text-3xl">?</span>
-              <TankPortrait v-else :tank-id="selectedTankId" team="A" :unit="PORTRAIT_UNIT" class="absolute bottom-4 left-[7%]" :style="{ transform: 'scale(0.8)', transformOrigin: '50% 100%' }" />
-              <TankPortrait :tank-id="rivalId" team="B" facing-left :unit="PORTRAIT_UNIT" class="absolute bottom-4 right-[7%]" :style="{ transform: 'scale(0.8)', transformOrigin: '50% 100%' }" />
+              <TankPortrait v-else :tank-id="selectedTankId" team="A" :unit="PORTRAIT_UNIT" :max-height="PORTRAIT_MAX_H" class="absolute bottom-4 left-[7%]" :style="{ transform: 'scale(0.8)', transformOrigin: '50% 100%' }" />
+              <TankPortrait :tank-id="rivalId" team="B" facing-left :unit="PORTRAIT_UNIT" :max-height="PORTRAIT_MAX_H" class="absolute bottom-4 right-[7%]" :style="{ transform: 'scale(0.8)', transformOrigin: '50% 100%' }" />
               <span class="font-num absolute left-1/2 top-1/2 flex h-10 w-10 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border-[3px] border-ink bg-sun text-base font-extrabold shadow-[0_3px_0_var(--color-ink)]">VS</span>
             </div>
             <p class="text-sm text-ink-soft phone:hidden">跟朋友各用一台電腦，用 6 碼房號連線對打</p>
@@ -183,7 +185,7 @@ function tap(fn: () => void): void {
             <span class="toon-ribbon absolute -top-4 left-4" style="background: var(--color-grass); color: var(--color-ink); text-shadow: none">單機練習</span>
             <div class="scene scene--sky relative h-36 phone:h-auto phone:min-h-0 phone:flex-1 overflow-hidden rounded-2xl border-[3px] border-ink">
               <span v-if="randomTank" class="toon-mystery absolute bottom-4 left-1/2 h-12 -translate-x-1/2 text-3xl">?</span>
-              <TankPortrait v-else :tank-id="selectedTankId" team="A" :unit="PORTRAIT_UNIT" class="absolute bottom-4 left-1/2 -translate-x-1/2" />
+              <TankPortrait v-else :tank-id="selectedTankId" team="A" :unit="PORTRAIT_UNIT" :max-height="PORTRAIT_MAX_H" class="absolute bottom-4 left-1/2 -translate-x-1/2" />
             </div>
             <p class="text-sm text-ink-soft phone:text-xs">跟電腦對打，或同一台電腦輪流操作；不用連線</p>
             <button type="button" class="toon-btn toon-btn--grass mt-auto w-full py-2.5 text-xl phone:py-1.5 phone:text-lg" @click="tap(() => emit('hotseat'))">

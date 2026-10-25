@@ -83,6 +83,7 @@ const SHELLS = Object.fromEntries(
       fuse: p.fuse !== undefined,
       poison: p.onHit?.status === 'poison' ? { turns: p.onHit.turns, power: p.onHit.power } : null,
       corrode: p.onHit?.status === 'corrode' ? p.onHit.turns : 0,
+      drench: p.onHit?.status === 'drenched' ? p.onHit.power : 0,
     },
   ]),
 )
@@ -90,6 +91,7 @@ const TANKS = Object.fromEntries(
   Object.values(TANK_REGISTRY).map((t) => [
     t.id,
     {
+      id: t.id,
       hp: t.maxHp,
       mult: t.damageMultiplier,
       sens: t.windSensitivity,
@@ -170,19 +172,19 @@ function rawDamage(t, s, d) {
   return Math.trunc(((r - d) * full) / r)
 }
 // defender 的裝甲 / 爆炸抗性 / 紮根在此結算（破甲時裝甲歸零）
-function applyDefense(raw, def, corroded) {
+function applyDefense(raw, def, corroded, bonusPct = 0) {
   if (raw <= 0) return 0
   if (!def) return raw
   const afterArmor = Math.max(1, Math.round((raw - (corroded ? 0 : def.armor)) * (1 - def.resist)))
-  return Math.max(1, Math.round((afterArmor * (100 - def.rootedPct)) / 100))
+  return Math.max(1, Math.round((afterArmor * (100 - def.rootedPct + bonusPct)) / 100))
 }
 /** 一發的總傷害：所有彈體共用同一個瞄準誤差，各自加上固定偏移後結算；回傳 [傷害, 是否命中] */
-function shotOf(t, s, sigma, wind, def, corroded) {
+function shotOf(t, s, sigma, wind, def, corroded, bonusPct = 0) {
   const sh = SHELLS[s]
   const ex = gauss() * sigmaX(t, s, sigma, wind)
   const ey = gauss() * sigma
   let total = 0
-  for (const off of sh.offsets) total += applyDefense(rawDamage(t, s, Math.hypot(ex + off, ey)), def, corroded)
+  for (const off of sh.offsets) total += applyDefense(rawDamage(t, s, Math.hypot(ex + off, ey)), def, corroded, bonusPct)
   total = Math.min(sh.cap, total)
   if (sh.fuse) total = Math.round(total * FUSE_HIT_RATE)
   return [total, total > 0]
@@ -223,6 +225,7 @@ console.log(`假設：風速 ~ 離散常態 σ=${WIND_SIGMA}（截斷 ±${WIND_M
 // σ=5 為近似精準（電腦 σ→0）：不納入 40%~60% 目標，只用來檢查「好操作的一方在精準時是否偏弱」（見 docs/06 §三之一）
 for (const sigma of [5, 25, 45, 70]) {
   const best = Object.fromEntries(names.map((n) => [n, bestShot(TANKS[n], sigma)]))
+  const finisher = {}
   const label = sigma === 5 ? '（近似精準，參考用）' : ''
   console.log(`σ=${sigma}px${label}  best shell: ${JSON.stringify(best)}`)
   console.log('  win% of row vs column:', names.join(' / '))
@@ -236,7 +239,7 @@ for (const sigma of [5, 25, 45, 70]) {
       let wins = 0
       for (let i = 0; i < DUEL_N; i++) {
         const wind = sampleWind() // 本場風速，整場固定
-        const side = [a, b].map((n) => ({ t: TANKS[n], s: best[n], hp: TANKS[n].hp, shield: TANKS[n].shield, poison: null, corrode: 0 }))
+        const side = [a, b].map((n) => ({ t: TANKS[n], s: best[n], hp: TANKS[n].hp, shield: TANKS[n].shield, poison: null, corrode: 0, drench: 0 }))
         let cur = i % 2 === 0 ? 0 : 1
         for (let turn = 0; turn < 200 && side[0].hp > 0 && side[1].hp > 0; turn++) {
           const me = side[cur]
@@ -248,12 +251,17 @@ for (const sigma of [5, 25, 45, 70]) {
           }
           if (me.corrode > 0) me.corrode--
           if (me.hp > 0) {
-            const [dmg, hit] = shotOf(me.t, me.s, sigma, wind, foe.t, foe.corrode > 0)
+            // 濕透連段（海馬）：對手沒濕透就丟潮湧泡泡，濕透了就補一發最強的另一種砲彈
+            const drenchShell = me.t.shots.find((id) => SHELLS[id].drench)
+            const shell = drenchShell ? (foe.drench ? (finisher[me.t.id] ??= bestShot({ ...me.t, shots: me.t.shots.filter((id) => id !== drenchShell) }, sigma)) : drenchShell) : me.s
+            const [dmg, hit] = shotOf(me.t, shell, sigma, wind, foe.t, foe.corrode > 0, foe.drench)
+            if (foe.drench && dmg > 0) foe.drench = 0
             const absorbed = foe.corrode > 0 ? 0 : Math.min(foe.shield, dmg)
             foe.shield -= absorbed
             foe.hp -= dmg - absorbed
-            const sh = SHELLS[me.s]
+            const sh = SHELLS[shell]
             if (hit && sh.poison) foe.poison = { turns: Math.max(foe.poison?.turns ?? 0, sh.poison.turns), power: sh.poison.power }
+            if (hit && sh.drench) foe.drench = sh.drench
             if (hit && sh.corrode) foe.corrode = Math.max(foe.corrode, sh.corrode)
           }
           cur = 1 - cur

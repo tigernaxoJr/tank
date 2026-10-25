@@ -156,6 +156,21 @@ describe('狀態效果', () => {
     commitFireImpact(s2.state, directPlan(s2.state, v2, 'HERMIT_CLAW'), s2.core)
     expect(v2.statuses.some((s) => s.id === 'pinched')).toBe(false)
   })
+  it('潮湧泡泡：命中後濕透，下一次爆炸傷害 +40% 並用掉；之後不會立刻再濕透', () => {
+    const { state, core } = setupBattle(1024, 'harvest_plains', duel('seahorse', 'bastion'))
+    const victim = state.tanks.p2
+    commitFireImpact(state, directPlan(state, victim, 'SEAHORSE_BUBBLE'), core)
+    expect(victim.statuses.some((s) => s.id === 'drenched')).toBe(true)
+    const hp = victim.hp
+    commitFireImpact(state, directPlan(state, victim, 'SEAHORSE_BOLT'), core)
+    const raw = PROJECTILE_REGISTRY.SEAHORSE_BOLT.maxDamage - TANK_REGISTRY.bastion.armor
+    expect(hp - victim.hp).toBe(Math.round((raw * 140) / 100))
+    expect(victim.statuses.some((s) => s.id === 'drenched')).toBe(false)
+    victim.hp = TANK_REGISTRY.bastion.maxHp
+    const hp2 = victim.hp
+    commitFireImpact(state, directPlan(state, victim, 'SEAHORSE_BOLT'), core)
+    expect(hp2 - victim.hp).toBe(raw) // 沒有加成
+  })
   it('鐵壁堡壘紮根：整回合沒移動，下一次爆炸傷害打折且用掉；移動過就沒有', () => {
     const { state, core } = setupBattle(1024, 'harvest_plains', duel('bastion', 'hawkeye'))
     const bastion = state.tanks.p1
@@ -258,6 +273,13 @@ describe('地形效果', () => {
     const { carves, blasts } = commitFireImpact(state, groundPlan(state, x, y, 'BURROW_DRILL'), core)
     expect(blasts[0]!.y).toBe(y + PROJECTILE_REGISTRY.BURROW_DRILL.terrainDepth!)
     expect(carves[0].y).toBe(blasts[0]!.y)
+  })
+  it('海馬的捲尾抓地：免疫擊退', () => {
+    const { state, core } = setupBattle(1024, 'harvest_plains', duel('burrower', 'seahorse'))
+    const victim = state.tanks.p2
+    const x0 = victim.x
+    commitFireImpact(state, groundPlan(state, x0 - 20, victim.y + TANK_GROUND_OFFSET, 'BURROW_QUAKE'), core)
+    expect(victim.x).toBe(x0)
   })
   it('震波彈不挖坑，把範圍內的坦克推離爆心', () => {
     const { state, core } = setupBattle(1024, 'harvest_plains', duel('burrower', 'hawkeye'))

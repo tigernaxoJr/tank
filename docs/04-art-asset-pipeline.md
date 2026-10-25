@@ -202,8 +202,9 @@ pnpm run paint:units   # node tools/assets/paint_units.mjs
 7. **海馬的做法與表情 sheet 版面不同時的切法**（2026-10-25）：
    * 車身 + 砲管 sheet：參考圖是 3/4 視角的整隻海馬，提示要求「純側視、朝右、單側履帶艙、無吻部無眼睛、吻部處只畫一塊圓形凹座；吻部另成一件、後端球關節」。切割用 `slice_sheet.py <sheet> <out> --id seahorse --hull-w 150 --accent blue --ball-auto`（海馬車身很高，寬 150 時高約 310，`sprite.scale` 用 0.34）。`--accent blue`：A 隊藍色轉銅橘、B 隊保留原圖藍色。腳本印出的 `socket_tex` 猜值不準（會落在身體中段），轉軸要在車身圖上畫格線量凹座中心（海馬是 (137, 70)），再代 `pivotX = (tx − W/2) × scale`、`pivotY = 14 − (H − ty) × scale`。
    * 表情 sheet：Gemini 沒照 8 欄 × 4 列，給的是 6 欄 × 4 列、每個表情「近側眼 + 遠側眼」成對，且第 3 列是完整小眼球（不是只有瞳孔）。`slice_expr.py` 只吃 8 × 4，所以海馬用一支一次性腳本依像素框裁：近側眼取每對的左邊一顆；`eye_half` / `eye_sleepy` 共用半睜、`eye_hurt` 用生氣眼、`eye_dead` 用 X、`eye_closed` 用眼皮蓋下、`eye_happy` 用 ⌒；`far_wide` 把大眼的瞳孔塗白（引擎用它當白眼球再疊瞳孔）；`pupil_normal` 從小眼球裁出圓形瞳孔；`pupil_dizzy` 用程式畫螺旋。眼睛各零件寬 64，再用 `pack_face_atlas.py <dir> seahorse` 打包。海馬沒有嘴（`noMouth`）。
-   * **圖集 `scale` 手動改成 0.16**（預設 0.2）：眼睛縮小成約 10 px 才放得進海馬的頭；**重跑 `pack_face_atlas.py` 會把它改回 0.2**，要再改一次。
+   * **圖集 `scale` 手動改成 0.14**（預設 0.2）：眼睛縮小成約 9 px 才放得進海馬的頭；**重跑 `pack_face_atlas.py` 會把它改回 0.2**，要再帶 `--scale 0.14` 或手動改。海馬是側面像，`FaceSpec.singleEye: true` 只畫近側一顆眼（位置在 `face.x / y`，`eyeGap` 不再使用）。
    * 彈體 sheet：泡泡與墨汁是半透明與帶尾巴的形狀，同一個洋紅去背公式仍可用；泡泡縮到寬 60、墨汁雷縮到寬 92，放進 `public/assets/units/projectiles/`。
+8. **砲管與車身接縫（海馬教訓，2026-10-25）**：海馬車身頭部帶封死的吻部殘樁、砲管另有圓球與金環，兩件各自完整，砲管抬起時接縫張開、看起來像分離。之後生新坦克改走「先生整台基準圖，再用基準圖拆成車身（砲口畫成開口的圓環護套）與砲管（底端素圓柱、多留約 20% 藏在護套後）」，砲管轉 14° / 45° / 80° 合成檢查通過才定轉軸。prompt 範本與驗收清單見 [`tools/sprites2d/prompt_tank_parts.md`](../tools/sprites2d/prompt_tank_parts.md)。海馬現有素材尚未依此重做（待辦）。
 
 ## 七、大廳與 HUD 紋理：`tools/assets/paint_ui.mjs`
 

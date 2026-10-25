@@ -257,8 +257,13 @@ export class TankFace {
     }
     const spiral = e.eyes === 'spiral'
     ;[-1, 1].forEach((side, i) => {
+      if (this.spec.singleEye && side === dir) {
+        this.eyeImgs[i].setVisible(false)
+        this.pupilImgs[i].setVisible(false)
+        return
+      }
       const k = (side === dir ? far : 1) * a.scale
-      const ex = cx + (side * eyeGap) / 2
+      const ex = this.spec.singleEye ? cx : cx + (side * eyeGap) / 2
       this.eyeImgs[i].setFrame(frame).setPosition(ex, cy).setScale(k).setFlipX(dir < 0).setVisible(true)
       const p = this.pupilImgs[i]
       if (withPupil || spiral) {
