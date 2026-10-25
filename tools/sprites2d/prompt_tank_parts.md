@@ -37,6 +37,20 @@ No ball, no ring, no cap, no decoration at the base end; the decoration belongs 
 Flat solid {#FF00FF} background, no shadow, no text.
 ```
 
+## 步驟 4：肢體零件（尾巴、鰭、觸角、旗子等，一件一張）
+
+附步驟 1、2 的圖當參考：
+
+```
+Same style, same colors and same light direction as the reference, same scale as the body image.
+Draw ONLY the {零件名稱，例如 tail}, pure side view facing right, in its neutral resting pose.
+The root end (where it attaches to the body) must be drawn fully, as a plain rounded stub with about 20% extra length,
+because the root will be hidden behind the body.
+Do not draw any part of the body. Flat solid {#FF00FF} background, no shadow, no text.
+```
+
+錨點（掛在車身上的位置）與旋轉中心用肉眼在車身圖上量，不要請 AI 決定；動作範圍由程式補間參數決定。
+
 ## 驗收（必做，prompt 只能降低失敗率）
 
 1. 去背、切割後把車身與砲管以砲管轉軸（collar 圓心）對齊，在 14° / 45° / 80° 三個仰角各合成一張。
