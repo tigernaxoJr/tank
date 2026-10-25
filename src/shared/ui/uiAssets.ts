@@ -8,5 +8,6 @@ export type UiIconName =
   | 'link' | 'trophy' | 'skull' | 'target' | 'refresh' | 'question' | 'person' | 'clock'
 
 export function uiUrl(sheet: UiSheet, name: string): string {
-  return `${import.meta.env.BASE_URL}assets/ui2/${sheet}/${name}.png`
+  // base 是 './'：放進 CSS 變數的相對網址會以樣式表（/assets/*.css）為基準，變成 assets/assets/...，所以轉成絕對網址
+  return new URL(`${import.meta.env.BASE_URL}assets/ui2/${sheet}/${name}.png`, document.baseURI).href
 }
