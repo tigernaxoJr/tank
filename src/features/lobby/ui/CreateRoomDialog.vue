@@ -1,6 +1,7 @@
 <script setup lang="ts">
+import { GameButton, IconGlyph, ModalSheet } from '@/shared/ui'
 import type { DisconnectPolicy, MapPresetId } from '@/shared/kernel/types'
-import MapPickerCard from './MapPickerCard.vue'
+import MapTicket from './room/MapTicket.vue'
 
 defineProps<{
   open: boolean
@@ -21,69 +22,55 @@ const roomName = defineModel<string>('roomName', { required: true })
 </script>
 
 <template>
-  <Teleport to="body">
-    <div
-      v-if="open"
-      class="fixed inset-0 z-40 flex items-center justify-center bg-ink/50 p-4 font-toon phone:px-3 phone:pb-2 phone:pt-6"
-      @click.self="emit('cancel')"
-    >
-      <div class="toon-panel pop relative grid w-full max-w-3xl grid-cols-1 gap-5 p-5 pt-8 md:grid-cols-[1fr_1.1fr] phone:grid-cols-[1fr_1.1fr] phone:gap-4 phone:p-3 phone:pt-6">
-        <span class="toon-ribbon absolute -top-5 left-1/2 -translate-x-1/2 px-6 text-xl" style="background: var(--color-sun); color: var(--color-ink); text-shadow: none">
-          開新戰局
-        </span>
-
-        <div class="flex flex-col gap-4 phone:gap-2.5">
-          <label class="block space-y-1.5 phone:space-y-1">
-            <span class="text-base phone:text-sm">房間名稱</span>
-            <input
-              v-model="roomName"
-              type="text"
-              maxlength="24"
-              :placeholder="`${captain} 的戰局`"
-              class="toon-input w-full text-lg phone:py-1 phone:text-base"
-              @keyup.enter="emit('confirm')"
-            />
-          </label>
-
-          <div class="space-y-1.5 phone:space-y-1">
-            <span class="text-base phone:text-sm">有人斷線時</span>
-            <div class="toon-segment text-sm">
-              <button type="button" :aria-pressed="disconnectPolicy === 'forfeit'" @click="emit('select-policy', 'forfeit')">算他陣亡</button>
-              <button type="button" :aria-pressed="disconnectPolicy === 'bot'" @click="emit('select-policy', 'bot')">電腦接手</button>
-            </div>
-          </div>
-
-          <div class="flex items-center gap-2 rounded-xl bg-mist px-3 py-2 text-sm text-ink-soft phone:py-1 phone:text-xs">
-            <span class="font-num text-lg font-extrabold text-ink">5v5</span>
-            每隊最多 5 人；開房後把 6 碼房號傳給朋友。
-          </div>
-
-          <div class="mt-auto flex gap-3">
-            <button type="button" class="toon-btn flex-1 py-2 text-lg phone:py-1.5" @click="emit('cancel')">取消</button>
-            <button type="button" class="toon-btn toon-btn--sun flex-[2] py-2 text-xl phone:py-1.5" @click="emit('confirm')">開房！</button>
-          </div>
-        </div>
-
-        <div class="space-y-1.5 phone:space-y-1">
-          <span class="text-base phone:text-sm">戰場</span>
-          <MapPickerCard
-            :map-id="mapId"
-            editable
-            @select="(id) => emit('select-map', id)"
-            @open-gallery="emit('open-gallery')"
+  <ModalSheet :open="open" title="開新戰局" size="md" :z="40" @close="emit('cancel')">
+    <div class="grid grid-cols-1 gap-3 sm:grid-cols-[1fr_1.1fr] phone:grid-cols-[1fr_1.1fr]">
+      <div class="flex flex-col gap-2.5">
+        <label class="block space-y-1">
+          <span class="text-sm">房間名稱</span>
+          <input
+            v-model="roomName"
+            type="text"
+            maxlength="24"
+            :placeholder="`${captain} 的戰局`"
+            class="name-input w-full text-base"
+            @keyup.enter="emit('confirm')"
           />
+        </label>
+
+        <div class="space-y-1">
+          <span class="text-sm">有人斷線時</span>
+          <div class="flex gap-2">
+            <GameButton :variant="disconnectPolicy === 'forfeit' ? 'gold' : 'white'" class="flex-1 text-sm" @click="emit('select-policy', 'forfeit')">算他陣亡</GameButton>
+            <GameButton :variant="disconnectPolicy === 'bot' ? 'gold' : 'white'" class="flex-1 text-sm" @click="emit('select-policy', 'bot')">電腦接手</GameButton>
+          </div>
         </div>
+
+        <p class="note text-xs text-ink/70"><b class="font-num text-base text-ink">5v5</b> 每隊最多 5 人；開房後把 6 碼房號傳給朋友。</p>
+      </div>
+
+      <div class="space-y-1">
+        <span class="text-sm">戰場</span>
+        <MapTicket :map-id="mapId" editable @select="(id) => emit('select-map', id)" @open-gallery="emit('open-gallery')" />
       </div>
     </div>
-  </Teleport>
+
+    <template #footer>
+      <div class="flex gap-3">
+        <GameButton variant="white" class="flex-1" @click="emit('cancel')">取消</GameButton>
+        <GameButton variant="gold" class="flex-[2] text-xl" @click="emit('confirm')"><IconGlyph name="shell" :size="24" /> 開房！</GameButton>
+      </div>
+    </template>
+  </ModalSheet>
 </template>
 
 <style scoped>
-.pop {
-  animation: pop 0.18s cubic-bezier(0.2, 1.4, 0.4, 1);
+.name-input {
+  padding: 0.35rem 0.75rem;
+  border-radius: 12px;
+  border: 3px solid var(--color-ink);
+  background: #fff;
+  outline: none;
 }
-@keyframes pop {
-  from { transform: scale(0.9); opacity: 0; }
-  to { transform: scale(1); opacity: 1; }
-}
+.name-input:focus { border-color: var(--color-sky-deep); }
+.note { padding: 6px 10px; border-radius: 12px; background: rgb(232 243 255 / 0.9); }
 </style>

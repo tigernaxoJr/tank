@@ -5,6 +5,7 @@
  */
 import { computed } from 'vue'
 import { PROJECTILE_REGISTRY, getTankSpec } from '@/features/battle'
+import { GameButton } from '@/shared/ui'
 import type { BulletType, TankArchetypeId } from '@/shared/kernel/types'
 import { splitDisplayName } from './displayNames'
 
@@ -30,22 +31,21 @@ function choose(slot: number, bullet: BulletType): void {
 
 <template>
   <div class="space-y-3">
-    <p class="text-sm text-ink-soft">開戰後不可更換；對手要等你開火才看得到。</p>
-    <div v-for="(label, slot) in slots" :key="label" class="space-y-1.5">
+    <p class="text-sm text-ink/70">開戰後不可更換；對手要等你開火才看得到。</p>
+    <div v-for="(label, slot) in slots" :key="label" class="space-y-1">
       <div class="text-base">{{ label }}</div>
       <div class="flex flex-wrap gap-2">
-        <button
+        <GameButton
           v-for="proj in pool"
           :key="proj.id"
-          type="button"
+          :variant="picks[slot] === proj.id ? 'gold' : 'white'"
           :disabled="disabled"
           :title="proj.description"
-          class="toon-btn rounded-xl px-3 py-1 text-sm"
-          :class="picks[slot] === proj.id ? 'toon-btn--sun' : ''"
+          class="text-sm"
           @click="choose(slot, proj.id)"
         >
           {{ splitDisplayName(proj.name).zh }}
-        </button>
+        </GameButton>
       </div>
     </div>
   </div>

@@ -1,11 +1,12 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
-import { MAP_REGISTRY, MapPreview, TANK_LIST } from '@/features/battle'
+import { MAP_REGISTRY, MapPreview } from '@/features/battle'
 import { soundController } from '@/features/audio'
+import { GameButton, IconGlyph, UiPanel, uiUrl } from '@/shared/ui'
 import type { BulletType, MapPresetId, TankArchetypeId } from '@/shared/kernel/types'
 import type { RoomListing } from '../infra/roomDirectory'
 import type { SignalingEndpointInfo } from '../infra/peerAdapter'
-import TankHangarPodium from './TankHangarPodium.vue'
+import TankStand from './room/TankStand.vue'
 import TankPortrait from './TankPortrait.vue'
 import { splitDisplayName } from './displayNames'
 import type { TankChoice } from './tankChoice'
@@ -43,6 +44,14 @@ const joinCode = defineModel<string>('joinCode', { required: true })
 
 const buildId = __BUILD_ID__
 const query = ref('')
+const showRooms = ref(false)
+const showGarage = ref(false)
+
+const logoUrl = uiUrl('title', 'logo')
+const flagUrl = uiUrl('title', 'flag')
+const sandbagsUrl = uiUrl('title', 'sandbags')
+const cloudBigUrl = uiUrl('title', 'cloud_big')
+const cloudSmallUrl = uiUrl('title', 'cloud_small')
 
 // 可加入的排前面，其餘依建立時間（新的在前）
 const rows = computed(() => {
@@ -53,15 +62,9 @@ const rows = computed(() => {
     .sort((a, b) => Number(joinable(b)) - Number(joinable(a)) || a.ageSec - b.ageSec)
 })
 
-// 連線對戰插圖的對手：清單裡下一台，塗藍隊色（隨機時固定，免得洩漏抽到的機種）
-const rivalId = computed(() => {
-  const i = props.randomTank ? 0 : TANK_LIST.findIndex((t) => t.id === props.selectedTankId)
-  return TANK_LIST[(i + 1) % TANK_LIST.length].id
-})
-/** 大廳插圖立繪：每 rig 單位幾 px（展示台是 1.3） */
-const PORTRAIT_UNIT = 0.9
-/** 場景高 144px、戰車底在 16px：最高 112px（再乘縮放前） */
-const PORTRAIT_MAX_H = 112
+/** 主角坦克立繪：每 rig 單位幾 px 與最高 px（横放手機靠 CSS 縮小外框） */
+const PORTRAIT_UNIT = 1.6
+const PORTRAIT_MAX_H = 150
 
 function mapLabel(mapId: MapPresetId): string {
   const map = MAP_REGISTRY[mapId]
@@ -72,24 +75,35 @@ function joinable(room: RoomListing): boolean {
   return room.status === 'waiting' && room.players < room.maxPlayers
 }
 
-function tap(fn: () => void): void {
+/** 快速開戰：有可加入的公開戰局就直接進，沒有就自己開一局 */
+function quickPlay(): void {
+  const open = rows.value.find(joinable)
+  if (open) emit('join-room', open)
+  else emit('create')
+}
+
+function openRooms(): void {
+  showRooms.value = true
+  emit('refresh')
+}
+
+function openGarage(): void {
   soundController.play('ui_click')
-  fn()
+  showGarage.value = true
 }
 </script>
 
 <template>
-  <div class="relative flex min-h-full flex-col gap-5 lg:h-full lg:min-h-0 phone:h-full phone:min-h-0 phone:gap-1">
-    <!-- 頂欄：標題字 + 玩家牌 -->
-    <header class="flex flex-wrap items-center gap-3 phone:flex-nowrap phone:gap-2">
-      <div class="mr-auto flex flex-col items-start gap-3 phone:min-w-0 phone:flex-row phone:items-center">
-        <h1 class="toon-title font-num text-[2.1rem] font-extrabold leading-none phone:text-2xl">TANK ARTILLERY</h1>
-        <span class="toon-pill bg-sun text-sm phone:truncate phone:text-xs">空域砲決 · 回合制砲擊</span>
-      </div>
+  <div class="title-scene relative flex min-h-[340px] flex-1 flex-col overflow-hidden font-toon">
+    <!-- 背景點綴：雲飄過（背景本身是大廳的地圖視差圖層） -->
+    <img :src="cloudBigUrl" alt="" class="cloud cloud--a pointer-events-none absolute" draggable="false" />
+    <img :src="cloudSmallUrl" alt="" class="cloud cloud--b pointer-events-none absolute" draggable="false" />
 
-      <div class="toon-panel flex items-center gap-2 rounded-full py-1 pl-1 pr-2 phone:shrink-0 phone:py-0.5">
-        <span class="flex h-10 w-10 phone:h-8 phone:w-8 items-center justify-center rounded-full border-[3px] border-ink bg-sky">
-          <span v-if="randomTank" class="toon-mystery h-7 text-base">?</span>
+    <!-- 左上：指揮官牌；右上：作戰手冊 -->
+    <header class="relative z-10 flex items-start gap-2">
+      <div class="commander flex items-center gap-2">
+        <span class="commander-avatar flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-full bg-sky">
+          <span v-if="randomTank" class="font-num text-xl font-extrabold text-white">?</span>
           <TankPortrait v-else :tank-id="selectedTankId" team="A" :barrel="false" :unit="0.4" />
         </span>
         <input
@@ -98,219 +112,205 @@ function tap(fn: () => void): void {
           maxlength="16"
           placeholder="Commander"
           aria-label="玩家名稱"
-          class="w-32 bg-transparent text-lg outline-none phone:w-24 phone:text-base placeholder:text-ink-soft/50"
+          class="w-32 bg-transparent text-lg outline-none placeholder:text-ink-soft/50 phone:w-28"
         />
         <span
-          class="h-3 w-3 shrink-0 rounded-full border-2 border-ink"
+          class="h-3 w-3 shrink-0 rounded-full"
           :class="signaling.mode === 'fallback-public' ? 'bg-sun' : 'bg-grass'"
           :title="`信令：${signaling.label}`"
         />
       </div>
-      <button
-        type="button"
-        title="作戰手冊"
-        aria-label="作戰手冊"
-        class="toon-btn toon-btn--sky h-11 w-11 rounded-full p-0 text-xl phone:h-9 phone:w-9 phone:shrink-0"
-        @click="tap(() => emit('guide'))"
-      >
-        ?
-      </button>
+      <GameButton variant="white" round class="ml-auto" aria-label="作戰手冊" title="作戰手冊" @click="emit('guide')">
+        <IconGlyph name="question" :size="26" />
+      </GameButton>
     </header>
 
-    <!-- 手機橫放：戰車、入口、戰局列表三欄並排，一屏放完 -->
-    <div class="grid grid-cols-1 gap-5 lg:min-h-0 lg:flex-1 lg:grid-cols-[340px_minmax(0,1fr)] phone:min-h-0 phone:flex-1 phone:grid-cols-[minmax(0,1fr)_minmax(0,2fr)] phone:gap-3">
-      <aside class="min-h-0 pt-4 lg:overflow-y-auto lg:pb-2 phone:overflow-y-auto phone:pb-1 phone:[scrollbar-width:none] phone:[&::-webkit-scrollbar]:hidden">
-        <TankHangarPodium
-          :selected-tank-id="selectedTankId"
-          :random="randomTank"
-          :loadout-picks="loadoutPicks"
-          @select-tank="(c) => emit('select-tank', c)"
-          @change-loadout="(p) => emit('change-loadout', p)"
-        />
-      </aside>
-
-      <div class="flex min-h-0 flex-col gap-5 pt-4 lg:pb-2 phone:grid phone:grid-cols-2 phone:grid-rows-1 phone:gap-3 phone:pb-1">
-        <!-- 兩個主要入口：連線對戰、單機練習 -->
-        <div
-          class="grid grid-cols-1 gap-5 md:grid-cols-2 phone:min-h-0"
-          :class="directoryAvailable ? 'phone:grid-cols-1 phone:grid-rows-[auto_minmax(0,1fr)]' : 'phone:col-span-2 phone:grid-cols-2 phone:grid-rows-1'"
-        >
-          <section class="toon-panel relative flex flex-col gap-3 p-4 pt-6 phone:gap-2 phone:p-2.5 phone:pt-5">
-            <span class="toon-ribbon absolute -top-4 left-4">連線對戰</span>
-            <div
-              class="scene scene--stage relative h-36 overflow-hidden rounded-2xl border-[3px] border-ink phone:h-auto phone:min-h-0 phone:flex-1"
-              :class="directoryAvailable ? 'phone:hidden' : ''"
-            >
-              <span v-if="randomTank" class="toon-mystery absolute bottom-4 left-[18%] h-12 text-3xl">?</span>
-              <TankPortrait v-else :tank-id="selectedTankId" team="A" :unit="PORTRAIT_UNIT" :max-height="PORTRAIT_MAX_H" class="absolute bottom-4 left-[7%]" :style="{ transform: 'scale(0.8)', transformOrigin: '50% 100%' }" />
-              <TankPortrait :tank-id="rivalId" team="B" facing-left :unit="PORTRAIT_UNIT" :max-height="PORTRAIT_MAX_H" class="absolute bottom-4 right-[7%]" :style="{ transform: 'scale(0.8)', transformOrigin: '50% 100%' }" />
-              <span class="font-num absolute left-1/2 top-1/2 flex h-10 w-10 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border-[3px] border-ink bg-sun text-base font-extrabold shadow-[0_3px_0_var(--color-ink)]">VS</span>
-            </div>
-            <p class="text-sm text-ink-soft phone:hidden">跟朋友各用一台電腦，用 6 碼房號連線對打</p>
-            <div class="flex items-center gap-2">
-              <input
-                v-model="joinCode"
-                type="text"
-                maxlength="6"
-                placeholder="房號"
-                aria-label="6 碼房號"
-                class="toon-input font-num min-w-0 flex-1 py-1.5 text-center text-lg phone:py-1 phone:text-base phone:tracking-[0.2em] font-extrabold uppercase tracking-[0.3em]"
-                @keyup.enter="emit('join-code')"
-              />
-              <button
-                type="button"
-                :disabled="joinCode.trim().length !== 6"
-                class="toon-btn toon-btn--sky shrink-0 px-4 py-1.5 text-lg phone:px-3 phone:py-1 phone:text-base"
-                @click="emit('join-code')"
-              >
-                加入
-              </button>
-            </div>
-            <div class="flex items-center gap-2 text-xs text-ink-soft">
-              <span class="h-0 flex-1 border-t-[3px] border-dashed border-ink/20" />或<span class="h-0 flex-1 border-t-[3px] border-dashed border-ink/20" />
-            </div>
-            <button type="button" class="toon-btn toon-btn--sun w-full py-2.5 text-xl phone:py-1.5 phone:text-lg" @click="tap(() => emit('create'))">
-              ＋ 開新戰局
-            </button>
-            <div
-              v-if="errorMessage"
-              class="flex items-center justify-between gap-3 rounded-xl border-[3px] border-ink bg-coral px-3 py-1.5 text-sm text-white"
-            >
-              <span>{{ errorMessage }}</span>
-              <button type="button" class="shrink-0 underline cursor-pointer" @click="emit('dismiss-error')">關閉</button>
-            </div>
-          </section>
-
-          <section class="toon-panel relative flex flex-col gap-3 p-4 pt-6 phone:gap-2 phone:p-2.5 phone:pt-5">
-            <span class="toon-ribbon absolute -top-4 left-4" style="background: var(--color-grass); color: var(--color-ink); text-shadow: none">單機練習</span>
-            <div class="scene scene--sky relative h-36 phone:h-auto phone:min-h-0 phone:flex-1 overflow-hidden rounded-2xl border-[3px] border-ink">
-              <span v-if="randomTank" class="toon-mystery absolute bottom-4 left-1/2 h-12 -translate-x-1/2 text-3xl">?</span>
-              <TankPortrait v-else :tank-id="selectedTankId" team="A" :unit="PORTRAIT_UNIT" :max-height="PORTRAIT_MAX_H" class="absolute bottom-4 left-1/2 -translate-x-1/2" />
-            </div>
-            <p class="text-sm text-ink-soft phone:text-xs">跟電腦對打，或同一台電腦輪流操作；不用連線</p>
-            <button type="button" class="toon-btn toon-btn--grass mt-auto w-full py-2.5 text-xl phone:py-1.5 phone:text-lg" @click="tap(() => emit('hotseat'))">
-              開始練習
-            </button>
-          </section>
-        </div>
-
-        <!-- 戰局列表：伺服器有提供時才出現，排在主要入口之後 -->
-        <section v-if="directoryAvailable" class="toon-panel relative flex min-h-[220px] flex-1 flex-col gap-3 p-4 pt-6 phone:min-h-0 phone:gap-2 phone:p-2.5 phone:pt-5">
-          <span class="toon-ribbon absolute -top-4 left-4" style="background: var(--color-paper); color: var(--color-ink); text-shadow: none">
-            公開戰局
-            <span class="font-num rounded-full border-2 border-ink bg-sun px-1.5 text-sm leading-tight">{{ rooms.length }}</span>
+    <!-- 主體：直放上下排；橫放左（Logo + 主角坦克）右（三個入口） -->
+    <div class="relative z-10 flex min-h-0 flex-1 flex-col items-center justify-between gap-2 lg:flex-row phone:flex-row">
+      <section class="flex min-h-0 flex-1 flex-col items-center justify-center gap-1 lg:items-start lg:pl-12 phone:items-start phone:pl-9">
+        <img :src="logoUrl" alt="TANK ARTILLERY" draggable="false" class="logo w-[min(78vw,420px)] phone:w-[min(40vw,260px)]" />
+        <button type="button" class="hero relative flex flex-col items-center" aria-label="更換戰車" @click="openGarage">
+          <img :src="sandbagsUrl" alt="" draggable="false" class="sandbags absolute -bottom-1 -left-12 w-24 phone:-left-9 phone:w-16" />
+          <img :src="flagUrl" alt="" draggable="false" class="flag absolute -right-10 bottom-1 w-14 phone:-right-8 phone:w-10" />
+          <span v-if="randomTank" class="font-num flex h-24 w-24 items-center justify-center rounded-full bg-sky text-5xl font-extrabold text-white">?</span>
+          <TankPortrait v-else :tank-id="selectedTankId" team="A" :unit="PORTRAIT_UNIT" :max-height="PORTRAIT_MAX_H" class="hero-tank phone:scale-[0.8]" />
+          <span class="hero-tag mt-1 flex items-center gap-1 text-sm">
+            <IconGlyph name="gear" :size="16" /> 點坦克換車
           </span>
+        </button>
+      </section>
 
+      <nav class="flex w-full max-w-xs flex-col items-stretch gap-3 pb-2 lg:w-72 phone:w-60 phone:gap-2 phone:pb-0">
+        <GameButton variant="gold" class="cta text-2xl phone:text-xl" @click="quickPlay">
+          <IconGlyph name="shell" :size="30" /> 快速開戰
+        </GameButton>
+        <div class="grid grid-cols-2 gap-3 phone:gap-2">
+          <GameButton variant="white" @click="openRooms">
+            <IconGlyph name="link" :size="22" /> 房間
+          </GameButton>
+          <GameButton variant="sky" @click="emit('hotseat')">
+            <IconGlyph name="robot" :size="22" /> 練習
+          </GameButton>
+        </div>
+      </nav>
+    </div>
+
+    <!-- 房間抽屜：房號輸入、開新戰局、公開戰局 -->
+    <Transition name="sheet">
+      <div v-if="showRooms" class="absolute inset-0 z-30 flex items-stretch justify-end bg-ink/40" @click.self="showRooms = false">
+        <UiPanel class="sheet-panel flex h-full w-[min(440px,100%)] flex-col">
+          <div class="flex items-center gap-2 pb-2">
+            <h2 class="font-num text-xl font-extrabold">加入戰局</h2>
+            <GameButton variant="white" round class="ml-auto" aria-label="關閉" @click="showRooms = false">
+              <IconGlyph name="close" :size="22" />
+            </GameButton>
+          </div>
           <div class="flex items-center gap-2">
             <input
-              v-model="query"
+              v-model="joinCode"
               type="text"
-              placeholder="搜尋房號或名稱"
-              class="toon-input w-56 py-1 text-sm phone:w-auto phone:min-w-0 phone:flex-1"
+              maxlength="6"
+              placeholder="輸入 6 碼房號"
+              aria-label="6 碼房號"
+              class="code-input font-num min-w-0 flex-1 text-center text-xl font-extrabold uppercase tracking-[0.25em]"
+              @keyup.enter="emit('join-code')"
             />
-            <button
-              type="button"
-              title="重新整理"
-              aria-label="重新整理"
-              :disabled="loading"
-              class="toon-btn h-9 w-9 rounded-full p-0 text-lg phone:h-8 phone:w-8 phone:shrink-0"
-              @click="tap(() => emit('refresh'))"
-            >
-              <span :class="loading ? 'inline-block animate-spin' : ''">↻</span>
-            </button>
+            <GameButton variant="sky" :disabled="joinCode.trim().length !== 6" @click="emit('join-code')">加入</GameButton>
           </div>
+          <GameButton variant="gold" class="mt-3" @click="emit('create')"><IconGlyph name="plus" :size="22" /> 開新戰局</GameButton>
 
-          <div class="min-h-0 flex-1 overflow-y-auto pr-1">
-            <div v-if="rows.length" class="grid grid-cols-1 gap-3 pb-2 xl:grid-cols-2">
-              <button
-                v-for="room in rows"
-                :key="room.code"
-                type="button"
-                :disabled="!joinable(room)"
-                class="room-card group flex items-stretch gap-3 rounded-2xl border-[3px] border-ink bg-paper p-2 text-left phone:gap-2 phone:p-1.5"
-                @click="emit('join-room', room)"
-              >
-                <MapPreview
-                  v-if="MAP_REGISTRY[room.mapId]"
-                  :map="MAP_REGISTRY[room.mapId]"
-                  :width="124"
-                  :height="72"
-                  class="h-[72px] w-[124px] shrink-0 rounded-xl border-[3px] border-ink phone:h-[52px] phone:w-[84px]"
-                />
-                <span class="flex min-w-0 flex-1 flex-col">
-                  <span class="flex items-center gap-1.5">
-                    <span class="font-num shrink-0 rounded-md bg-ink px-1.5 text-xs font-bold tracking-wider text-sun">{{ room.code }}</span>
-                    <span class="truncate text-lg leading-tight phone:text-base">{{ room.name }}</span>
-                  </span>
-                  <span class="truncate text-sm text-ink-soft">{{ room.hostName }} · {{ mapLabel(room.mapId) }}</span>
-                  <span class="mt-auto flex items-center gap-2">
-                    <span class="flex gap-[3px]">
-                      <span
-                        v-for="i in room.maxPlayers"
-                        :key="i"
-                        class="h-2.5 w-2.5 rounded-full border-2 border-ink"
-                        :class="i <= room.players ? 'bg-team-a' : 'bg-paper'"
-                      />
-                    </span>
-                    <span
-                      class="toon-pill ml-auto text-xs"
-                      :class="joinable(room) ? 'bg-grass' : room.status === 'playing' ? 'bg-coral text-white' : 'bg-mist'"
-                    >
-                      {{ joinable(room) ? '可加入' : room.status === 'playing' ? '對戰中' : '已滿' }}
-                    </span>
-                  </span>
-                </span>
-              </button>
+          <div v-if="directoryAvailable" class="mt-3 flex min-h-0 flex-1 flex-col">
+            <div class="mb-1 flex items-center gap-2 text-sm text-ink-soft">
+              公開戰局 <b class="font-num">{{ rooms.length }}</b>
+              <input v-model="query" type="text" placeholder="搜尋" class="code-input min-w-0 flex-1 text-sm" />
+              <GameButton variant="white" round aria-label="重新整理" :disabled="loading" @click="emit('refresh')">
+                <IconGlyph name="refresh" :size="22" :class="loading ? 'animate-spin' : ''" />
+              </GameButton>
             </div>
-            <div v-else class="flex h-full items-center justify-center py-4 text-center text-sm text-ink-soft">
-              {{ query ? '找不到符合的戰局' : '現在還沒有公開的戰局，自己開一局吧！' }}
-            </div>
+            <ul class="min-h-0 flex-1 space-y-2 overflow-y-auto pr-1">
+              <li v-for="room in rows" :key="room.code">
+                <button type="button" :disabled="!joinable(room)" class="room-row flex w-full items-center gap-2 text-left" @click="emit('join-room', room)">
+                  <MapPreview v-if="MAP_REGISTRY[room.mapId]" :map="MAP_REGISTRY[room.mapId]" :width="96" :height="56" class="h-14 w-24 shrink-0 rounded-lg" />
+                  <span class="min-w-0 flex-1">
+                    <span class="flex items-center gap-1.5">
+                      <span class="font-num rounded bg-ink px-1.5 text-xs font-bold tracking-wider text-sun">{{ room.code }}</span>
+                      <span class="truncate">{{ room.name }}</span>
+                    </span>
+                    <span class="block truncate text-xs text-ink-soft">{{ room.hostName }} · {{ mapLabel(room.mapId) }} · {{ room.players }}/{{ room.maxPlayers }}</span>
+                  </span>
+                  <span class="shrink-0 text-xs" :class="joinable(room) ? 'text-grass' : 'text-coral'">
+                    {{ joinable(room) ? '可加入' : room.status === 'playing' ? '對戰中' : '已滿' }}
+                  </span>
+                </button>
+              </li>
+              <li v-if="!rows.length" class="py-4 text-center text-sm text-ink-soft">{{ query ? '找不到符合的戰局' : '還沒有公開的戰局，自己開一局吧！' }}</li>
+            </ul>
           </div>
-        </section>
+        </UiPanel>
       </div>
-    </div>
+    </Transition>
+
+    <!-- 車庫抽屜：換車與砲彈（沿用現有展示台，房間重寫時一併換掉） -->
+    <Transition name="sheet">
+      <div v-if="showGarage" class="absolute inset-0 z-30 flex items-stretch justify-start bg-ink/40" @click.self="showGarage = false">
+        <UiPanel class="sheet-panel flex h-full w-[min(380px,100%)] flex-col">
+          <div class="flex items-center gap-2 pb-2">
+            <h2 class="font-num text-xl font-extrabold">我的戰車</h2>
+            <GameButton variant="white" round class="ml-auto" aria-label="關閉" @click="showGarage = false">
+              <IconGlyph name="close" :size="22" />
+            </GameButton>
+          </div>
+          <div class="min-h-0 flex-1 overflow-y-auto pt-3">
+            <TankStand
+              :selected-tank-id="selectedTankId"
+              :random="randomTank"
+              :loadout-picks="loadoutPicks"
+              @select-tank="(c) => emit('select-tank', c)"
+              @change-loadout="(p) => emit('change-loadout', p)"
+            />
+          </div>
+        </UiPanel>
+      </div>
+    </Transition>
+
+    <p v-if="errorMessage" class="error-toast absolute inset-x-0 bottom-3 z-20 mx-auto flex w-fit max-w-[90%] items-center gap-2 text-white">
+      <span>{{ errorMessage }}</span>
+      <button type="button" class="underline" @click="emit('dismiss-error')">關閉</button>
+    </p>
 
     <!-- 建置版本（不顯眼）：確認 PWA 是否還在吃舊快取 -->
     <span class="pointer-events-none absolute bottom-0.5 right-1.5 select-none font-mono text-[9px] text-ink/30">{{ buildId }}</span>
 
     <!-- 連線中遮罩 -->
-    <div v-if="connecting" class="absolute inset-0 z-20 flex items-center justify-center bg-ink/40">
-      <div class="toon-panel flex flex-col items-center gap-3 px-10 py-6">
-        <span v-if="randomTank" class="toon-mystery tank-drive h-12 text-3xl">?</span>
-        <TankPortrait v-else :tank-id="selectedTankId" team="A" :barrel="false" :unit="PORTRAIT_UNIT" class="tank-drive" />
+    <div v-if="connecting" class="absolute inset-0 z-40 flex items-center justify-center bg-ink/45">
+      <UiPanel class="flex flex-col items-center gap-3 px-6 py-3">
+        <span v-if="randomTank" class="font-num tank-drive flex h-14 w-14 items-center justify-center rounded-full bg-sky text-3xl font-extrabold text-white">?</span>
+        <TankPortrait v-else :tank-id="selectedTankId" team="A" :barrel="false" :unit="0.9" class="tank-drive" />
         <div class="text-xl">{{ connectingCode ? `正在加入 ${connectingCode}` : '正在開房' }}…</div>
-        <button type="button" class="toon-btn px-5 py-1" @click="emit('cancel-connect')">取消</button>
-      </div>
+        <GameButton variant="white" @click="emit('cancel-connect')">取消</GameButton>
+      </UiPanel>
     </div>
   </div>
 </template>
 
 <style scoped>
-.room-card {
-  box-shadow: 0 4px 0 var(--color-ink);
-  transition: transform 0.1s ease, box-shadow 0.1s ease;
+.commander {
+  padding: 4px 12px 4px 4px;
+  border-radius: 999px;
+  background: rgb(255 255 255 / 0.85);
+  box-shadow: 0 3px 0 rgb(29 35 64 / 0.5), inset 0 0 0 2px var(--color-ink);
+}
+.commander-avatar { box-shadow: inset 0 0 0 2px var(--color-ink); }
+.logo { filter: drop-shadow(0 4px 0 rgb(29 35 64 / 0.35)); }
+.hero { cursor: pointer; -webkit-tap-highlight-color: transparent; padding: 0 3rem; }
+.hero-tank { transition: transform 0.15s ease; animation: idle 2.4s ease-in-out infinite alternate; }
+.hero-tag {
+  padding: 1px 10px;
+  border-radius: 999px;
+  background: rgb(255 255 255 / 0.85);
+  box-shadow: inset 0 0 0 2px var(--color-ink);
+}
+.flag { transform-origin: 8% 100%; animation: wave 2.6s ease-in-out infinite alternate; }
+.cta { min-height: 64px; }
+.cloud { opacity: 0.95; animation: drift linear infinite; }
+.cloud--a { width: 190px; top: 14%; left: -220px; animation-duration: 70s; }
+.cloud--b { width: 120px; top: 34%; left: -140px; animation-duration: 95s; animation-delay: -40s; }
+.sheet-panel { padding: 0.25rem 0.5rem; }
+.code-input {
+  padding: 0.4rem 0.75rem;
+  border-radius: 12px;
+  border: 3px solid var(--color-ink);
+  background: #fff;
+  outline: none;
+}
+.code-input:focus { border-color: var(--color-sky-deep); }
+.room-row {
+  padding: 4px 8px 4px 4px;
+  border-radius: 12px;
+  background: rgb(255 255 255 / 0.8);
+  box-shadow: inset 0 0 0 2px var(--color-ink);
   cursor: pointer;
 }
-.room-card:hover:not(:disabled) {
-  transform: translateY(-2px);
-  box-shadow: 0 6px 0 var(--color-ink);
-  background: #fffbe0;
+.room-row:disabled { opacity: 0.55; cursor: not-allowed; }
+.error-toast {
+  padding: 6px 14px;
+  border-radius: 999px;
+  background: var(--color-coral);
+  box-shadow: 0 3px 0 rgb(29 35 64 / 0.5), inset 0 0 0 2px var(--color-ink);
 }
-.room-card:disabled {
-  cursor: not-allowed;
-  opacity: 0.6;
-}
-.scene--sky {
-  background: url('@/assets/ui/empty_sky.svg') center bottom / cover no-repeat, #cdeaff;
-}
-.scene--stage {
-  background: url('@/assets/ui/stage_sky.svg') center bottom / cover no-repeat, #bfe4ff;
-}
-.tank-drive {
-  animation: drive 0.6s ease-in-out infinite alternate;
-}
+.tank-drive { animation: drive 0.6s ease-in-out infinite alternate; }
+.sheet-enter-active, .sheet-leave-active { transition: opacity 0.18s ease; }
+.sheet-enter-active .sheet-panel, .sheet-leave-active .sheet-panel { transition: transform 0.22s ease; }
+.sheet-enter-from, .sheet-leave-to { opacity: 0; }
+.sheet-enter-from .sheet-panel, .sheet-leave-to .sheet-panel { transform: translateX(40px); }
+@keyframes idle { from { transform: translateY(0); } to { transform: translateY(-3px); } }
+@keyframes wave { from { transform: rotate(-3deg); } to { transform: rotate(4deg) skewX(-3deg); } }
+@keyframes drift { from { transform: translateX(0); } to { transform: translateX(calc(100vw + 400px)); } }
 @keyframes drive {
   from { transform: translateX(-10px) rotate(-2deg); }
   to { transform: translateX(10px) rotate(2deg); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .cloud, .flag, .hero-tank, .tank-drive { animation: none; }
 }
 </style>

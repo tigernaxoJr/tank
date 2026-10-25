@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { TANK_LIST, buildTankCard } from '@/features/battle'
 import { soundController } from '@/features/audio'
+import { ModalSheet } from '@/shared/ui'
 import type { TeamId } from '@/shared/kernel/types'
 import { splitDisplayName } from './displayNames'
 import { RANDOM_TANK, type TankChoice } from './tankChoice'
@@ -25,81 +26,83 @@ function pick(choice: TankChoice): void {
   emit('pick', choice)
   emit('close')
 }
-
-function close(): void {
-  soundController.play('ui_click')
-  emit('close')
-}
 </script>
 
 <template>
-  <Teleport to="body">
-    <div
-      v-if="open"
-      class="fixed inset-0 z-50 flex items-center justify-center bg-ink/50 p-4 font-toon text-ink"
-      @click.self="close"
-    >
-      <div class="toon-panel relative flex max-h-full w-full max-w-2xl flex-col gap-4 p-5 pt-7">
-        <span class="toon-ribbon absolute -top-4 left-5">{{ title }}</span>
-        <button
-          type="button"
-          aria-label="關閉"
-          class="toon-btn absolute -right-3 -top-3 h-10 w-10 rounded-full p-0 text-xl"
-          @click="close"
-        >
-          ✕
-        </button>
-
-        <div class="grid min-h-0 grid-cols-2 gap-3 overflow-y-auto p-1 sm:grid-cols-4">
-          <button
-            v-for="t in tiles"
-            :key="t.spec.id"
-            type="button"
-            class="toon-btn flex-col items-stretch gap-1 rounded-2xl p-2 text-left"
-            :class="selected === t.spec.id ? 'toon-btn--sun' : ''"
-            @click="pick(t.spec.id)"
+  <ModalSheet :open="open" :title="title" size="lg" @close="emit('close')">
+    <div class="grid grid-cols-2 gap-2.5 p-1 sm:grid-cols-4 phone:grid-cols-4 phone:gap-2">
+      <button
+        v-for="t in tiles"
+        :key="t.spec.id"
+        type="button"
+        class="tile flex flex-col gap-1 text-left"
+        :class="selected === t.spec.id ? 'on' : ''"
+        :aria-pressed="selected === t.spec.id"
+        @click="pick(t.spec.id)"
+      >
+        <span class="flex h-14 items-center justify-center phone:h-12">
+          <TankPortrait :tank-id="t.spec.id" :team="team" :facing-left="team === 'B'" class="h-full w-full" />
+        </span>
+        <span class="truncate text-base leading-none">{{ t.label.zh }}</span>
+        <span class="truncate text-xs text-ink/60 phone:hidden">{{ t.spec.subtitle }}</span>
+        <span class="mt-0.5 flex flex-col gap-1">
+          <span
+            v-for="bar in [
+              { r: t.card.hpRatio, c: 'var(--color-grass)' },
+              { r: t.card.firepowerRatio, c: 'var(--color-coral)' },
+              { r: t.card.mobilityRatio, c: 'var(--color-sky)' },
+            ]"
+            :key="bar.c"
+            class="bar"
           >
-            <span class="flex h-14 items-center justify-center">
-              <TankPortrait :tank-id="t.spec.id" :team="team" :facing-left="team === 'B'" class="h-14 w-full" />
-            </span>
-            <span class="truncate text-lg leading-none">{{ t.label.zh }}</span>
-            <span class="truncate text-xs text-ink-soft">{{ t.spec.subtitle }}</span>
-            <span class="mt-1 flex flex-col gap-1">
-              <span
-                v-for="bar in [
-                  { r: t.card.hpRatio, c: 'var(--color-grass)' },
-                  { r: t.card.firepowerRatio, c: 'var(--color-coral)' },
-                  { r: t.card.mobilityRatio, c: 'var(--color-sky)' },
-                ]"
-                :key="bar.c"
-                class="h-2.5 overflow-hidden rounded-full border-2 border-ink bg-paper"
-              >
-                <span class="block h-full" :style="{ width: `${Math.max(8, Math.round(bar.r * 100))}%`, background: bar.c }" />
-              </span>
-            </span>
-          </button>
+            <span class="block h-full rounded-full" :style="{ width: `${Math.max(8, Math.round(bar.r * 100))}%`, background: bar.c }" />
+          </span>
+        </span>
+      </button>
 
-          <button
-            type="button"
-            class="toon-btn flex-col items-stretch gap-1 rounded-2xl p-2 text-left"
-            :class="selected === RANDOM_TANK ? 'toon-btn--sun' : ''"
-            @click="pick(RANDOM_TANK)"
-          >
-            <span class="flex h-14 items-center justify-center">
-              <span class="toon-mystery h-12 text-3xl">?</span>
-            </span>
-            <span class="truncate text-lg leading-none">隨機</span>
-            <span class="truncate text-xs text-ink-soft">開打時才揭曉</span>
-            <span class="mt-1 text-xs leading-snug text-ink-soft">從所有戰車中抽一台，帶它存好的彈藥上場</span>
-          </button>
-        </div>
-
-        <div class="flex justify-center gap-4 text-xs text-ink-soft">
-          <span class="flex items-center gap-1"><i class="h-2 w-4 rounded-full border-2 border-ink bg-grass" />耐久</span>
-          <span class="flex items-center gap-1"><i class="h-2 w-4 rounded-full border-2 border-ink bg-coral" />火力</span>
-          <span class="flex items-center gap-1"><i class="h-2 w-4 rounded-full border-2 border-ink bg-sky" />機動</span>
-        </div>
-      </div>
+      <button type="button" class="tile flex flex-col gap-1 text-left" :class="selected === RANDOM_TANK ? 'on' : ''" :aria-pressed="selected === RANDOM_TANK" @click="pick(RANDOM_TANK)">
+        <span class="flex h-14 items-center justify-center phone:h-12">
+          <span class="mystery font-num">?</span>
+        </span>
+        <span class="truncate text-base leading-none">隨機</span>
+        <span class="text-xs leading-snug text-ink/60">開打時才揭曉；從所有戰車抽一台</span>
+      </button>
     </div>
-  </Teleport>
+
+    <template #footer>
+      <div class="flex justify-center gap-4 text-xs text-ink/70">
+        <span class="flex items-center gap-1"><i class="legend bg-grass" />耐久</span>
+        <span class="flex items-center gap-1"><i class="legend bg-coral" />火力</span>
+        <span class="flex items-center gap-1"><i class="legend bg-sky" />機動</span>
+      </div>
+    </template>
+  </ModalSheet>
 </template>
+
+<style scoped>
+.tile {
+  padding: 8px;
+  border-radius: 16px;
+  background: #fff;
+  box-shadow: 0 3px 0 rgb(29 35 64 / 0.4), inset 0 0 0 2.5px var(--color-ink);
+  cursor: pointer;
+  transition: transform 0.1s ease;
+}
+.tile:hover { transform: translateY(-2px); }
+.tile.on { background: #fff4c4; box-shadow: 0 3px 0 rgb(29 35 64 / 0.4), inset 0 0 0 2.5px var(--color-ink), 0 0 0 3px var(--color-sun); }
+.bar { height: 8px; border-radius: 999px; background: #e8f3ff; box-shadow: inset 0 0 0 1.5px rgb(29 35 64 / 0.7); overflow: hidden; }
+.legend { width: 16px; height: 8px; border-radius: 999px; box-shadow: inset 0 0 0 1.5px var(--color-ink); }
+.mystery {
+  width: 48px;
+  height: 48px;
+  border-radius: 999px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--color-sky);
+  color: #fff;
+  font-size: 1.9rem;
+  font-weight: 800;
+  box-shadow: inset 0 0 0 3px var(--color-ink);
+}
+</style>

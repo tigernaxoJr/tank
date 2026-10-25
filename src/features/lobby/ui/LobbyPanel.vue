@@ -4,19 +4,17 @@ import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
 import {
   MAP_REGISTRY,
   getTankSpec,
-  BOT_LEVEL_SPECS,
   tankAt,
   type LoadoutSecret,
   type MapBlueprint,
 } from '@/features/battle'
 import { soundController } from '@/features/audio'
 import LobbyBackdrop from './LobbyBackdrop.vue'
-import MapPickerCard from './MapPickerCard.vue'
 import StageSelectModal from './StageSelectModal.vue'
-import TankHangarPodium from './TankHangarPodium.vue'
 import TacticalGuideModal from './TacticalGuideModal.vue'
 import LobbyHub from './LobbyHub.vue'
 import RoomView from './RoomView.vue'
+import HotseatRoom from './HotseatRoom.vue'
 import CreateRoomDialog from './CreateRoomDialog.vue'
 import TankPickerModal from './TankPickerModal.vue'
 import { splitDisplayName } from './displayNames'
@@ -763,129 +761,36 @@ onUnmounted(() => {
     />
 
     <!-- 單機練習：同機輪流或讓電腦接手任一隊 -->
-    <div v-else class="flex min-h-full flex-col gap-5 lg:h-full lg:min-h-0 phone:h-full phone:min-h-0 phone:gap-1">
-      <header class="flex items-center gap-3">
-        <button
-          type="button"
-          aria-label="返回大廳"
-          class="toon-btn h-11 w-11 shrink-0 rounded-full p-0 text-2xl phone:h-9 phone:w-9"
-          @click="gameMode = 'p2p'; soundController.play('ui_click')"
-        >
-          ‹
-        </button>
-        <div class="flex min-w-0 flex-col items-start gap-3.5 phone:flex-row phone:items-center">
-          <h1 class="toon-title text-[1.9rem] leading-none phone:text-2xl">單機練習</h1>
-          <p class="text-sm leading-none text-ink-soft phone:truncate phone:text-xs">同一台電腦輪流操作，或讓電腦接手任一隊</p>
-        </div>
-      </header>
-
-      <!-- 直立窄螢幕整頁往下捲、三塊依序排；寬螢幕與手機橫放鎖在一個畫面內，三欄並排 -->
-      <div class="grid grid-cols-1 gap-5 lg:min-h-0 lg:flex-1 lg:grid-cols-[320px_minmax(0,1fr)_300px] phone:min-h-0 phone:flex-1 phone:grid-cols-[minmax(0,0.95fr)_minmax(0,1.55fr)_minmax(0,0.9fr)] phone:gap-3">
-        <aside class="min-h-0 pt-4 lg:overflow-y-auto lg:pb-2 phone:overflow-y-auto phone:pb-1">
-          <TankHangarPodium
-            :selected-tank-id="session.selectedTankId"
-            :random="randomTank"
-            :loadout-picks="loadoutPicks"
-            @select-tank="selectTankArchetype"
-            @change-loadout="handlePickLoadout"
-          />
-        </aside>
-
-        <section class="toon-panel relative mt-4 flex min-h-0 flex-col gap-3 p-4 pt-6 lg:mb-2 phone:mb-1 phone:p-2.5 phone:pt-5">
-          <span class="toon-ribbon absolute -top-4 left-4">隊伍</span>
-          <div class="grid min-h-0 flex-1 grid-cols-1 content-start gap-x-5 gap-y-4 overflow-y-auto p-1 xl:grid-cols-2 phone:gap-y-2">
-            <div
-              v-for="team in ([
-                { id: 'A', label: '橘隊', color: 'var(--color-team-a)' },
-                { id: 'B', label: '藍隊', color: 'var(--color-team-b)' },
-              ] as const)"
-              :key="team.id"
-              class="flex flex-col gap-2"
-            >
-              <div class="flex items-center gap-2">
-                <span class="toon-pill shrink-0 px-3 text-base text-white" :style="{ background: team.color, textShadow: '0 2px 0 rgb(29 35 64 / .35)' }">
-                  {{ team.label }}
-                </span>
-                <span class="font-num text-sm text-ink-soft">{{ teamCount[team.id] }} 台</span>
-              </div>
-
-              <!-- 每席同一個大小：左邊點了跳出選車彈窗，右邊設定操控方（玩家 / 電腦 / 空位）與這台電腦的難度 -->
-              <div
-                v-for="(seat, i) in hotseatSeats[team.id]"
-                :key="`${team.id}-${i}`"
-                class="seat-card flex h-16 items-center gap-2 rounded-2xl border-[3px] border-ink px-2 phone:h-12 phone:gap-1.5 phone:px-1.5"
-                :class="seat.control === 'empty' ? 'seat-card--empty' : 'bg-paper'"
-              >
-                <span class="font-num w-6 shrink-0 text-center text-base font-extrabold phone:w-5 phone:text-sm">{{ team.id }}{{ i + 1 }}</span>
-                <template v-if="seat.control === 'empty'">
-                  <span class="min-w-0 flex-1 text-sm text-ink-soft">空位</span>
-                  <button type="button" class="toon-btn shrink-0 px-2.5 py-1 text-sm" @click="setSeatControl(team.id, i, 'player'); soundController.play('ui_click')">＋ 玩家</button>
-                  <button type="button" class="toon-btn toon-btn--sky shrink-0 px-2.5 py-1 text-sm" @click="setSeatControl(team.id, i, 'bot'); soundController.play('ui_click')">＋ 電腦</button>
-                </template>
-                <template v-else>
-                  <button type="button" class="seat-tank flex min-w-0 flex-1 items-center gap-2 rounded-xl py-1 text-left" @click="openSlotPicker(team.id, i)">
-                    <span class="flex h-10 w-12 shrink-0 items-center justify-center rounded-lg border-[2.5px] border-ink phone:h-8 phone:w-10" :style="{ background: team.color }">
-                      <img v-if="slotTank(team.id, i).url" :src="slotTank(team.id, i).url!" alt="" class="h-6 w-auto" :class="team.id === 'B' ? '-scale-x-100' : ''" />
-                      <span v-else class="toon-mystery h-7 text-lg">?</span>
-                    </span>
-                    <span class="min-w-0 flex-1 leading-tight">
-                      <span class="block truncate text-base phone:text-sm">{{ slotTank(team.id, i).name }}</span>
-                      <span class="block truncate text-xs text-ink-soft">{{ team.id === 'A' && i === 0 ? '我的戰車 ›' : '換車 ›' }}</span>
-                    </span>
-                  </button>
-                  <div class="flex w-[7.5rem] shrink-0 flex-col gap-1 phone:w-[6.5rem]">
-                    <div class="toon-segment whitespace-nowrap text-xs [&>button]:px-1">
-                      <button type="button" :aria-pressed="seat.control === 'player'" @click="setSeatControl(team.id, i, 'player'); soundController.play('ui_click')">玩家</button>
-                      <button type="button" :aria-pressed="seat.control === 'bot'" @click="setSeatControl(team.id, i, 'bot'); soundController.play('ui_click')">電腦</button>
-                      <button
-                        type="button"
-                        aria-label="改成空位"
-                        title="改成空位"
-                        :disabled="!canEmpty(team.id, i)"
-                        @click="setSeatControl(team.id, i, 'empty'); soundController.play('ui_click')"
-                      >
-                        ✕
-                      </button>
-                    </div>
-                    <!-- 難度列固定佔位，玩家席淡出，每張卡高度一致 -->
-                    <div class="flex items-center gap-1 text-xs transition-opacity" :class="seat.control === 'bot' ? '' : 'invisible'">
-                      <button type="button" aria-label="降低難度" class="seat-step" @click="cycleSeatLevel(team.id, i, -1)">‹</button>
-                      <span class="flex-1 text-center">{{ BOT_LEVEL_SPECS[seat.level].label }}</span>
-                      <button type="button" aria-label="提高難度" class="seat-step" @click="cycleSeatLevel(team.id, i, 1)">›</button>
-                    </div>
-                  </div>
-                </template>
-              </div>
-            </div>
-          </div>
-        </section>
-
-        <section class="toon-panel relative mt-4 flex min-h-0 flex-col gap-3 p-4 pt-6 lg:mb-2 phone:mb-1 phone:gap-2 phone:p-2.5 phone:pt-5">
-          <span class="toon-ribbon absolute -top-4 left-4" style="background: var(--color-grass); color: var(--color-ink); text-shadow: none">戰場</span>
-          <MapPickerCard
-            :map-id="session.selectedMapId"
-            editable
-            @select="selectMapPreset"
-            @open-gallery="showStageModal = true"
-          />
-          <div class="mt-auto pt-2 phone:pt-0">
-            <button type="button" class="toon-btn toon-btn--sun w-full py-3 text-2xl phone:py-1.5 phone:text-xl" @click="handleStartHotseatBattle">
-              開打！
-            </button>
-            <p class="mt-2 text-center text-sm text-ink-soft phone:mt-1 phone:text-xs">{{ hotseatStartLabel }}</p>
-          </div>
-        </section>
-      </div>
-
-      <TankPickerModal
-        :open="slotPicker !== null"
-        :title="slotPicker ? `${slotPicker.team}${slotPicker.index + 1} · 選擇戰車` : ''"
-        :selected="slotPicker ? slotChoice(slotPicker.team, slotPicker.index) : RANDOM_TANK"
-        :team="slotPicker?.team ?? 'A'"
-        @pick="(c) => slotPicker && setHotseatSlotTank(slotPicker.team, slotPicker.index, c)"
-        @close="slotPicker = null"
-      />
-    </div>
+    <HotseatRoom
+      v-else
+      :seats="hotseatSeats"
+      :team-count="teamCount"
+      :slot-tank="slotTank"
+      :can-empty="canEmpty"
+      :start-label="hotseatStartLabel"
+      :selected-tank-id="session.selectedTankId"
+      :random-tank="randomTank"
+      :loadout-picks="loadoutPicks"
+      :map-id="session.selectedMapId"
+      @back="gameMode = 'p2p'; soundController.play('ui_click')"
+      @start="handleStartHotseatBattle"
+      @set-control="(team, index, control) => { setSeatControl(team, index, control); soundController.play('ui_click') }"
+      @step-level="cycleSeatLevel"
+      @pick-seat-tank="openSlotPicker"
+      @select-tank="selectTankArchetype"
+      @change-loadout="handlePickLoadout"
+      @select-map="selectMapPreset"
+      @open-gallery="showStageModal = true"
+    />
+    <TankPickerModal
+      v-if="lobbyView === 'hotseat'"
+      :open="slotPicker !== null"
+      :title="slotPicker ? `${slotPicker.team}${slotPicker.index + 1} · 選擇戰車` : ''"
+      :selected="slotPicker ? slotChoice(slotPicker.team, slotPicker.index) : RANDOM_TANK"
+      :team="slotPicker?.team ?? 'A'"
+      @pick="(c) => slotPicker && setHotseatSlotTank(slotPicker.team, slotPicker.index, c)"
+      @close="slotPicker = null"
+    />
   </section>
 </template>
 
@@ -896,32 +801,5 @@ onUnmounted(() => {
     padding-left: max(0.75rem, env(safe-area-inset-left));
     padding-right: max(0.75rem, env(safe-area-inset-right));
   }
-}
-.seat-card {
-  box-shadow: 0 3px 0 var(--color-ink);
-}
-.seat-card--empty {
-  border-style: dashed;
-  background: rgb(255 255 255 / 0.45);
-  box-shadow: none;
-}
-.seat-tank {
-  cursor: pointer;
-  transition: background-color 0.1s ease;
-}
-.seat-tank:hover {
-  background-color: #fffbe0;
-}
-.seat-step {
-  width: 1.4rem;
-  height: 1.4rem;
-  border: 2px solid var(--color-ink);
-  border-radius: 9999px;
-  background-color: var(--color-paper);
-  line-height: 1;
-  cursor: pointer;
-}
-.seat-step:hover {
-  background-color: var(--color-sun);
 }
 </style>
