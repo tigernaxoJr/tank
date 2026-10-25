@@ -14,6 +14,8 @@ ap.add_argument("sheet"); ap.add_argument("out")
 ap.add_argument("--hull-w", type=float, default=240)
 ap.add_argument("--id", default="snailer")
 ap.add_argument("--ball", action="store_true", help="ball-joint barrel: pad right so the ball center sits at 8 percent of width (engine barrel origin)")
+ap.add_argument("--accent", choices=["blue", "orange"], default="blue", help="color drawn on the sheet: blue -> team A turns it orange; orange -> team B turns it blue")
+ap.add_argument("--ball-auto", action="store_true", help="like --ball but the ball joint is smaller than the barrel: detect its center (first vertical-extent peak before the neck) and pad so it lands at 8 percent of width, vertically centered")
 args = ap.parse_args()
 os.makedirs(args.out, exist_ok=True)
 
@@ -55,6 +57,20 @@ if args.ball:
     padded = Image.new("RGBA", (max(W, barrel.width), barrel.height), (0, 0, 0, 0))
     padded.paste(barrel, (0, 0))
     barrel = padded
+if args.ball_auto:
+    a = np.asarray(barrel)[..., 3] > 128
+    ext = a.sum(0)
+    lo, hi = int(a.shape[1] * 0.05), int(a.shape[1] * 0.35)
+    neck = lo + int(np.argmin(ext[lo:hi]))
+    cx = int(np.argmax(ext[:neck]))
+    rows = np.where(a[:, cx])[0]
+    cy = (rows[0] + rows[-1]) / 2
+    W = max(round(cx / 0.08), barrel.width)
+    H = round(2 * max(cy, barrel.height - cy))
+    padded = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+    padded.paste(barrel, (0, round(H / 2 - cy)))
+    barrel = padded
+    print("ball center", cx, cy, "pad", W, H)
 k = args.hull_w / hull.width
 def rs(im): return im.resize((max(1, round(im.width * k)), max(1, round(im.height * k))), Image.LANCZOS)
 hull_s, barrel_s = rs(hull), rs(barrel)
@@ -70,7 +86,18 @@ def team_a(im):
     a[..., :3] = cv2.cvtColor(hsv.astype(np.uint8), cv2.COLOR_HSV2RGB_FULL)
     return Image.fromarray(a, "RGBA")
 
-for team, f in (("b", lambda x: x), ("a", team_a)):
+def team_b_from_orange(im):
+    """橘色飾件（色相 15~34、飽和 > 200）-> 藍；珊瑚紅身體（色相 < 15）與黃銅（色相 > 42）不動"""
+    a = np.asarray(im).copy()
+    hsv = cv2.cvtColor(a[..., :3], cv2.COLOR_RGB2HSV_FULL).astype(np.float32)
+    h = hsv[..., 0] * 360 / 255
+    m = (h >= 15) & (h <= 34) & (hsv[..., 1] > 200)
+    hsv[..., 0][m] = 214 * 255 / 360
+    a[..., :3] = cv2.cvtColor(hsv.astype(np.uint8), cv2.COLOR_HSV2RGB_FULL)
+    return Image.fromarray(a, "RGBA")
+
+teams = (("b", lambda x: x), ("a", team_a)) if args.accent == "blue" else (("a", lambda x: x), ("b", team_b_from_orange))
+for team, f in teams:
     f(hull_s).save(f"{args.out}/{args.id}_{team}_hull.png")
     f(barrel_s).save(f"{args.out}/{args.id}_{team}_barrel.png")
 

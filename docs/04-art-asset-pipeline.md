@@ -194,6 +194,11 @@ pnpm run paint:units   # node tools/assets/paint_units.mjs
 3. **人工檢查**（一定要做）：在白、深、灰三種背景上看去背邊緣有沒有洋紅色邊；轉軸（球心）與臉座標要用肉眼在遊戲或檢視頁上確認，不要請 AI 決定。
 4. **貼圖表情**：`FaceSpec.atlas` 有值時，`TankFace` 用圖集畫眼睛與嘴（眼白 / 眼皮 / 表情用貼圖，**瞳孔貼圖仍由程式移動以追視線**，冷汗與暈眩星星仍用程式畫）；`noMouth: true` 則不畫嘴（蝸牛）。`face.x / y` 是兩個眼柄頂球的中點、`eyeGap` 是兩球中心距，眼睛貼圖會蓋住車身貼圖上的光滑圓頭。沒有 `atlas` 的坦克維持原本的程序化畫法。需要的影格見 `tankFace.ts` 的 `drawTextured`（`eye_*`、`far_wide`、`pupil_normal / dizzy`、`mouth_*`）。大廳靜態臉（`faceSvg.ts`）同樣支援。
 5. 蝸牛座標：`pivotX 35.2 / pivotY −34`、`face {x 26.4, y −59.8, eyeGap 12.7}`、`labelLift 32`。
+6. **`slice_sheet.py` 的選項**（寄居蟹加入，預設行為與蝸牛相同）：
+   * `--accent orange`：sheet 上畫的是**橘色**陣營飾件時用。A 隊維持原圖，B 隊把色相 15°~34°、飽和度 > 200 的橘色轉成藍（珊瑚紅身體色相 < 15°、黃銅 > 42°，不會被轉到）；預設 `--accent blue` 是蝸牛的做法（B 隊維持藍、A 隊藍轉橘）。
+   * `--ball-auto`：球關節比砲管本體小時用（`--ball` 假設球直徑約等於砲管高度，寄居蟹的大鉗不符合）。自動偵測球心（砲管左段垂直範圍的第一個峰值，頸部之前），補透明讓球心落在寬度 8%、垂直置中；球心必須能蓋住車身砲座洞，生完圖要看球徑是否夠大。
+   * 寄居蟹座標：`pivotX 36.4 / pivotY −22.4`、`face {x 25.2, y −55.2, eyeGap 20.8, eyeSize 7}`、`labelLift 15`；眼球直徑參數 `slice_expr.py --ball-px` 要用**車身貼圖眼柄頂球直徑的 2 倍**（因為圖集 `scale 0.2`、車身 `scale 0.4`；寄居蟹用 70）。
+   * 專屬彈體貼圖（`shell_hermit_*.png`）不經這支腳本：同一個洋紅去背公式裁出左右兩顆、縮到寬 76 / 78（`sprite.scale 0.45`），直接放進 `public/assets/units/projectiles/`；`registry.test.ts` 會檢查 `sprite.key` 對應的檔案存在。
 
 ## 七、大廳與 HUD 紋理：`tools/assets/paint_ui.mjs`
 

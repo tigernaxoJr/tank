@@ -122,6 +122,40 @@ describe('狀態效果', () => {
     expect(victim.shield).toBe(shield) // 護盾沒吸收
     expect(victim.hp).toBe(hp - PROJECTILE_REGISTRY.SCORPION_ACID.maxDamage)
   })
+  it('鉗擊彈：夾住期間裝甲與護盾失效', () => {
+    const { state, core } = setupBattle(1024, 'harvest_plains', duel('hermit', 'frostback'))
+    const victim = state.tanks.p2
+    commitFireImpact(state, directPlan(state, victim, 'HERMIT_CLAW'), core)
+    expect(victim.statuses.some((s) => s.id === 'pinched')).toBe(true)
+    expect(hasStatusFlag(victim, 'ignoresArmor')).toBe(true)
+    const shield = victim.shield
+    const hp = victim.hp
+    commitFireImpact(state, directPlan(state, victim, 'HERMIT_CLAW'), core)
+    expect(victim.shield).toBe(shield) // 護盾沒吸收
+    expect(victim.hp).toBe(hp - PROJECTILE_REGISTRY.HERMIT_CLAW.maxDamage)
+  })
+  it('鉗擊彈：接下來 2 回合燃料上限 −30%，仍能行動；結束後 1 回合免疫', () => {
+    const { state, core } = setupBattle(1024, 'harvest_plains', duel('hermit', 'zephyr'))
+    const victim = state.tanks.p2
+    commitFireImpact(state, directPlan(state, victim, 'HERMIT_CLAW'), core)
+    const full = victim.maxMoveFuel
+    const fuels: number[] = []
+    for (let i = 0; i < 3; i++) {
+      endTurn(state)
+      fuels.push(victim.moveFuel)
+      expect(state.phase).toBe('AIMING')
+      expect(state.activePlayer).toBe('p2')
+      endTurn(state)
+    }
+    expect(fuels).toEqual([Math.floor(full * 0.7), Math.floor(full * 0.7), full])
+    // 免疫期間再次命中不會掛上夾住
+    const s2 = setupBattle(1024, 'harvest_plains', duel('hermit', 'zephyr'))
+    const v2 = s2.state.tanks.p2
+    commitFireImpact(s2.state, directPlan(s2.state, v2, 'HERMIT_CLAW'), s2.core)
+    for (let i = 0; i < 4; i++) endTurn(s2.state) // p2 第二個夾住回合結束 → 免疫
+    commitFireImpact(s2.state, directPlan(s2.state, v2, 'HERMIT_CLAW'), s2.core)
+    expect(v2.statuses.some((s) => s.id === 'pinched')).toBe(false)
+  })
   it('鐵壁堡壘紮根：整回合沒移動，下一次爆炸傷害打折且用掉；移動過就沒有', () => {
     const { state, core } = setupBattle(1024, 'harvest_plains', duel('bastion', 'hawkeye'))
     const bastion = state.tanks.p1
@@ -167,6 +201,15 @@ describe('射擊樣式與飛行行為', () => {
     const victim = s2.state.tanks.p2
     const { damageByPlayer } = commitFireImpact(s2.state, directPlan(s2.state, victim, 'ZEPHYR_SCATTER', 5), s2.core)
     expect(damageByPlayer.p2).toBe(PROJECTILE_REGISTRY.ZEPHYR_SCATTER.damageCapPerTank)
+  })
+  it('連發彈殼節一次 3 顆彈丸，同一發對同一台坦克有傷害上限', () => {
+    const { state, core } = setupBattle(1024, 'harvest_plains', duel('hermit', 'hawkeye'))
+    const plan = prepareFireTrajectory(state, fire('HERMIT_BURST'), core)!
+    expect(plan.shots).toHaveLength(3)
+    const s2 = setupBattle(1024, 'harvest_plains', duel('hermit', 'hawkeye'))
+    const victim = s2.state.tanks.p2
+    const { damageByPlayer } = commitFireImpact(s2.state, directPlan(s2.state, victim, 'HERMIT_BURST', 3), s2.core)
+    expect(damageByPlayer.p2).toBe(PROJECTILE_REGISTRY.HERMIT_BURST.damageCapPerTank)
   })
   it('冰錐彈落地碎成 3 片，各自往前飛', () => {
     const { state, core } = setupBattle(1024, 'harvest_plains', duel('frostback', 'hawkeye'))

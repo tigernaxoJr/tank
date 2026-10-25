@@ -397,6 +397,24 @@ describe('電腦 AI', () => {
       expect(clampAim(tank, plan!.angle), tank.id).toBe(plan!.angle)
     }
   })
+  it('抽到的砲彈打不到遠方目標時改用打得到的砲彈（短射程鉗擊彈 → 連發彈殼節）', () => {
+    const roster: RosterSlot[] = ROSTER_1V1.map((r) => (r.id === 'p1' ? { ...r, isBot: true, botLevel: 'perfect' as const, tankId: 'hermit' } : r))
+    const { state, core } = setupBattle(1024, 'harvest_plains', roster)
+    // 亂數 0.9 會抽到副彈鉗擊彈；開局距離遠，鉗擊彈打不到
+    const far = planBotShot(state, core, 'p1', () => 0.9)
+    expect(far).not.toBeNull()
+    expect(far!.bulletType).toBe('HERMIT_BURST')
+    expect(far!.score).toBeLessThan(80)
+  })
+  it('抽到的砲彈打得到目標時維持原選擇（近距離仍用鉗擊彈）', () => {
+    const roster: RosterSlot[] = ROSTER_1V1.map((r) => (r.id === 'p1' ? { ...r, isBot: true, botLevel: 'perfect' as const, tankId: 'hermit' } : r))
+    const { state, core } = setupBattle(1024, 'harvest_plains', roster)
+    state.tanks.p1.x = state.tanks.p2.x - 220
+    const near = planBotShot(state, core, 'p1', () => 0.9)
+    expect(near).not.toBeNull()
+    expect(near!.bulletType).toBe('HERMIT_CLAW')
+    expect(near!.score).toBeLessThan(80)
+  })
   it('perfect 等級能找到擊中敵方的射擊參數', () => {
     const roster: RosterSlot[] = ROSTER_1V1.map((r) => (r.id === 'p1' ? { ...r, isBot: true, botLevel: 'perfect' as const } : r))
     const { state, core } = setupBattle(1024, 'harvest_plains', roster)

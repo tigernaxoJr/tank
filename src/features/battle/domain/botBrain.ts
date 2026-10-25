@@ -31,6 +31,8 @@ export interface BotShotPlan {
 }
 
 const BLOCKED_SCORE = 1000
+/** 最佳落點離目標超過這個距離 (px) 就視為「這種砲彈打不到」，改試其他砲彈（遠方目標 vs 短射程砲彈、被地形擋住） */
+const UNREACHABLE_PX = 80
 /** 移動後預估誤差至少要改善這麼多才值得花燃料 */
 const MOVE_GAIN_PX = 25
 
@@ -61,11 +63,15 @@ function pickTarget(state: BattleState, bot: TankEntity): TankEntity | null {
 /** 殘血門檻：目標血量不高於此值時，電腦改用單發傷害最高的砲彈補刀 */
 const FINISHER_HP = 40
 
-function pickBullet(bot: TankEntity, target: TankEntity, random: () => number): BulletType {
-  // 電腦只用會造成傷害的砲彈（築壘、偵察這類輔助彈留給玩家）
+/** 電腦只用會造成傷害的砲彈（築壘、偵察這類輔助彈留給玩家）；全都沒有傷害時退回所有可用砲彈 */
+function damagingShots(bot: TankEntity): readonly BulletType[] {
   const all = availableShots(bot)
   const damaging = all.filter((id) => (PROJECTILE_REGISTRY[id]?.maxDamage ?? 0) > 0)
-  const shots = damaging.length > 0 ? damaging : all
+  return damaging.length > 0 ? damaging : all
+}
+
+function pickBullet(bot: TankEntity, target: TankEntity, random: () => number): BulletType {
+  const shots = damagingShots(bot)
   // 目標殘血時優先用單發傷害最高的砲彈（不指定特定彈種）；否則在可用砲彈中隨機
   if (target.hp <= FINISHER_HP) {
     return shots.reduce((best, id) => (PROJECTILE_REGISTRY[id].maxDamage > PROJECTILE_REGISTRY[best].maxDamage ? id : best))
@@ -87,74 +93,91 @@ export function planBotShot(
   const target = pickTarget(state, bot)
   if (!target) return null
 
-  const bulletType = pickBullet(bot, target, random)
-  const proj = PROJECTILE_REGISTRY[bulletType]
-  // 避免炸到自己只需要看傷害範圍
-  const blast = proj.damageRadius + getTankSpec(bot.tankId).damageRadiusBonus
+  const level = BOT_LEVEL_SPECS[bot.botLevel ?? 'hard']
+  const botSpec = getTankSpec(bot.tankId)
   const facingRight = target.x >= bot.x
 
   type Aim = { angle: number; power: number; score: number }
-  const found: { best: Aim | null } = { best: null }
-  // 彈道經過目標就算打中（截斷路徑），與開火結算一樣走 traceShell，跳彈 / 高拋 / 碎裂都算得準
-  const targetY = target.y - 10
-  const throughTarget = (hit: TrajectoryHit): TrajectoryHit => {
-    const i = hit.path.findIndex((p) => (p.x - target.x) ** 2 + (p.y - targetY) ** 2 <= TANK_HIT_RADIUS * TANK_HIT_RADIUS)
-    return i < 0 ? hit : { ...hit, hitX: hit.path[i].x, hitY: hit.path[i].y, hitTank: true, impactedTerrain: false, path: hit.path.slice(0, i + 1) }
-  }
-  const consider = (angle: number, power: number): void => {
-    const { vxMilli, vyMilli } = launchVelocity(angle, power, proj.speedMultiplier)
-    const traced = traceShell(
-      core,
-      {
-        startX: bot.x,
-        startY: bot.y - MUZZLE_RISE,
-        vxMilli,
-        vyMilli,
-        windMilli: effectiveWindMilli(state.wind, proj.windMultiplier, getTankSpec(bot.tankId)),
-        gravityMilli: proj.gravityMilli,
-        maxSteps: 1200,
-      },
-      proj.flight,
-      throughTarget,
-    )
-    // 碎裂彈取最接近目標的那一片
-    let hit: TrajectoryHit | null = null
-    let best = Infinity
-    for (const t of traced) {
-      if (!t.hit.hitTank && !t.hit.impactedTerrain) continue
-      const d = (t.hit.hitX - target.x) ** 2 + (t.hit.hitY - target.y) ** 2
-      if (d < best) {
-        best = d
-        hit = t.hit
+  /** 用指定砲彈暴力搜尋最佳（仰角, 力道）；不用亂數，所以可以多試幾種砲彈而不影響亂數序列 */
+  const searchAim = (bulletType: BulletType): Aim | null => {
+    const proj = PROJECTILE_REGISTRY[bulletType]
+    // 避免炸到自己只需要看傷害範圍
+    const blast = proj.damageRadius + botSpec.damageRadiusBonus
+    const found: { best: Aim | null } = { best: null }
+    // 彈道經過目標就算打中（截斷路徑），與開火結算一樣走 traceShell，跳彈 / 高拋 / 碎裂都算得準
+    const targetY = target.y - 10
+    const throughTarget = (hit: TrajectoryHit): TrajectoryHit => {
+      const i = hit.path.findIndex((p) => (p.x - target.x) ** 2 + (p.y - targetY) ** 2 <= TANK_HIT_RADIUS * TANK_HIT_RADIUS)
+      return i < 0 ? hit : { ...hit, hitX: hit.path[i].x, hitY: hit.path[i].y, hitTank: true, impactedTerrain: false, path: hit.path.slice(0, i + 1) }
+    }
+    const consider = (angle: number, power: number): void => {
+      const { vxMilli, vyMilli } = launchVelocity(angle, power, proj.speedMultiplier)
+      const traced = traceShell(
+        core,
+        {
+          startX: bot.x,
+          startY: bot.y - MUZZLE_RISE,
+          vxMilli,
+          vyMilli,
+          windMilli: effectiveWindMilli(state.wind, proj.windMultiplier, getTankSpec(bot.tankId)),
+          gravityMilli: proj.gravityMilli,
+          maxSteps: 1200,
+        },
+        proj.flight,
+        throughTarget,
+      )
+      // 碎裂彈取最接近目標的那一片
+      let hit: TrajectoryHit | null = null
+      let best = Infinity
+      for (const t of traced) {
+        if (!t.hit.hitTank && !t.hit.impactedTerrain) continue
+        const d = (t.hit.hitX - target.x) ** 2 + (t.hit.hitY - target.y) ** 2
+        if (d < best) {
+          best = d
+          hit = t.hit
+        }
+      }
+      if (!hit) return
+      let score = Math.sqrt(best)
+      // 避免炸到自己
+      const sx = hit.hitX - bot.x
+      const sy = hit.hitY - bot.y
+      if (sx * sx + sy * sy < (blast + 20) * (blast + 20)) score += BLOCKED_SCORE
+      // 同分時偏好較低力道（彈道較穩定、受風影響小）
+      score += power * 0.01
+      if (!found.best || score < found.best.score) found.best = { angle, power, score }
+    }
+    // 只搜尋這台車打得出去的仰角（世界仰角 = 相對仰角 - 坡度的方向；粗搜以相對仰角為準）
+    for (let elev = Math.max(20, botSpec.aimMinDeg); elev <= Math.min(84, botSpec.aimMaxDeg); elev += 4) {
+      for (let power = 18; power <= 100; power += 2) consider(facingRight ? elev : 180 - elev, power)
+    }
+    if (found.best && level.refine) {
+      // 粗搜格點解析度有限；變態等級在最佳解附近細化：角度 1°（人類最小單位），力道 ±1 以 0.01 為步長
+      const { angle: a0, power: p0 } = found.best
+      for (let da = -4; da <= 4; da++) {
+        for (let dp = -100; dp <= 100; dp++) {
+          const power = quantizePower(p0 + dp * 0.01)
+          if (power >= 10 && power <= 100) consider(a0 + da, power)
+        }
       }
     }
-    if (!hit) return
-    let score = Math.sqrt(best)
-    // 避免炸到自己
-    const sx = hit.hitX - bot.x
-    const sy = hit.hitY - bot.y
-    if (sx * sx + sy * sy < (blast + 20) * (blast + 20)) score += BLOCKED_SCORE
-    // 同分時偏好較低力道（彈道較穩定、受風影響小）
-    score += power * 0.01
-    if (!found.best || score < found.best.score) found.best = { angle, power, score }
+    return found.best
   }
-  // 只搜尋這台車打得出去的仰角（世界仰角 = 相對仰角 - 坡度的方向；粗搜以相對仰角為準）
-  const botSpec = getTankSpec(bot.tankId)
-  for (let elev = Math.max(20, botSpec.aimMinDeg); elev <= Math.min(84, botSpec.aimMaxDeg); elev += 4) {
-    for (let power = 18; power <= 100; power += 2) consider(facingRight ? elev : 180 - elev, power)
-  }
-  const level = BOT_LEVEL_SPECS[bot.botLevel ?? 'hard']
-  if (found.best && level.refine) {
-    // 粗搜格點解析度有限；變態等級在最佳解附近細化：角度 1°（人類最小單位），力道 ±1 以 0.01 為步長
-    const { angle: a0, power: p0 } = found.best
-    for (let da = -4; da <= 4; da++) {
-      for (let dp = -100; dp <= 100; dp++) {
-        const power = quantizePower(p0 + dp * 0.01)
-        if (power >= 10 && power <= 100) consider(a0 + da, power)
+
+  const bulletType = pickBullet(bot, target, random)
+  let chosen = bulletType
+  let aim = searchAim(bulletType)
+  // 抽到的砲彈打不到（例如射程短的鉗擊彈遇到遠方目標）就改試其他會造成傷害的砲彈，取落點最接近目標的
+  if (!aim || aim.score > UNREACHABLE_PX) {
+    for (const id of damagingShots(bot)) {
+      if (id === bulletType) continue
+      const alt = searchAim(id)
+      if (alt && (!aim || alt.score < aim.score)) {
+        aim = alt
+        chosen = id
       }
     }
   }
-  const aim = found.best
   if (!aim) return null
 
   const jitter = (range: number) => Math.round((random() * 2 - 1) * range)
@@ -163,7 +186,7 @@ export function planBotShot(
     // 搜尋用的是世界角度；換回相對車體的砲管角（車體傾斜時兩者不同）
     angle: clampAim(botSpec, aim.angle + bot.slopeDeg + jitter(level.angle)),
     power: quantizePower(Math.max(10, Math.min(100, aim.power + jitter(level.power)))),
-    bulletType,
+    bulletType: chosen,
     score: aim.score,
   }
 }

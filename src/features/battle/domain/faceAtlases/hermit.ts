@@ -1,0 +1,40 @@
+import type { FaceAtlas } from '../tankBlueprint'
+
+/** tools/sprites2d/pack_face_atlas.py 產生（來源：2D 生圖表情 sheet）；影格 = [x, y, w, h] */
+export const HERMIT_FACE: FaceAtlas = {
+  key: 'hermit_face',
+  url: './assets/units/tanks/hermit_face.png',
+  size: [512, 242],
+  /** 圖集像素 → 遊戲像素（眼球直徑 56px × 0.2 ≈ 眼柄頂球 11px） */
+  scale: 0.2,
+  frames: {
+    eye_closed: [0, 0, 71, 71],
+    eye_dead: [413, 0, 70, 70],
+    eye_half: [0, 73, 70, 70],
+    eye_happy: [73, 0, 71, 71],
+    eye_hurt: [146, 0, 71, 71],
+    eye_open: [72, 73, 70, 70],
+    eye_sleepy: [219, 0, 71, 71],
+    eye_wide: [292, 0, 71, 71],
+    far_blank: [356, 73, 56, 56],
+    far_closed: [414, 73, 56, 56],
+    far_dead: [0, 145, 56, 56],
+    far_half: [58, 145, 56, 56],
+    far_happy: [116, 145, 56, 56],
+    far_hurt: [174, 145, 56, 56],
+    far_sleepy: [232, 145, 56, 56],
+    far_wide: [290, 145, 56, 56],
+    fx_star: [144, 73, 69, 66],
+    fx_sweat: [365, 0, 46, 71],
+    mouth_flat: [204, 203, 66, 13],
+    mouth_frown: [110, 203, 70, 23],
+    mouth_laugh: [215, 73, 78, 61],
+    mouth_open: [348, 145, 42, 52],
+    mouth_smile: [41, 203, 67, 32],
+    mouth_tongue: [392, 145, 73, 49],
+    pupil_big: [295, 73, 59, 59],
+    pupil_dizzy: [467, 145, 42, 42],
+    pupil_normal: [0, 203, 39, 39],
+    pupil_small: [182, 203, 20, 19],
+  },
+}
