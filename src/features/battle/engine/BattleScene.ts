@@ -35,6 +35,8 @@ import {
 import { traceShell } from '../domain/shellFlight'
 import { hasStatusFlag, visibleStatuses } from '../domain/statusEffects'
 import { TANK_LIST, effectiveWindMilli, getTankSpec } from '../domain/tankRegistry'
+import type { TankPart } from '../domain/tankBlueprint'
+import { HULL_BASE_Y, partMotion, partPlacement, rigPivot } from '../domain/tankRig'
 import { TankFace } from './tankFace'
 import { BattleCameraManager } from './systems/BattleCameraManager'
 import { ProjectileFxSystem } from './systems/ProjectileFxSystem'
@@ -51,8 +53,6 @@ const AIM_PREVIEW_STEPS = 60
 /** 戰場鏡頭縮放：畫面高度低於 VIEW_TARGET_H 時拉遠（手機橫拿），最遠縮到 MIN_ZOOM；高度足夠就維持 1:1 */
 const VIEW_TARGET_H = 640
 const MIN_ZOOM = 0.5
-/** 坦克車身底部相對容器原點的位移（容器原點 = 地表上方 TANK_GROUND_OFFSET） */
-const HULL_BASE_Y = 14
 /** 血條與名牌相對車底線的位置（車底之下，不遮車身） */
 const HP_BAR_Y = 4
 const NAME_TAG_Y = 22
@@ -68,11 +68,24 @@ interface ParallaxLayer {
   factorY: number
 }
 
+/** 車身以外的獨立零件（旗子、艙蓋、護套前圈）；x / y 是面向右時的 rig 座標 */
+interface TankPartActor {
+  def: TankPart
+  img: Phaser.GameObjects.Image
+  x: number
+  y: number
+}
+
 interface TankVisualActor {
   container: Phaser.GameObjects.Container
   rig: Phaser.GameObjects.Container
   barrel: Phaser.GameObjects.Image
   hull: Phaser.GameObjects.Image
+  /** 砲塔轉軸（rig 座標，面向右） */
+  pivot: { x: number; y: number }
+  parts: TankPartActor[]
+  /** 上次開火的時間（毫秒，game loop 時鐘），-1 = 還沒開過火；零件的 pop 動作用 */
+  firedAt: number
   nameTag: Phaser.GameObjects.Text
   /** 名牌上方的狀態圖示列（中毒、冰凍…），文字 = 圖示 + 剩餘回合 */
   statusTag: Phaser.GameObjects.Text
@@ -191,6 +204,7 @@ export class BattleScene extends Phaser.Scene {
         const sprites = tank.getSprites(team)
         this.load.image(`${tank.id}_${team}_hull`, sprites.hullUrl)
         this.load.image(`${tank.id}_${team}_barrel`, sprites.barrelUrl)
+        for (const [id, url] of Object.entries(sprites.partUrls)) this.load.image(`${tank.id}_${team}_part_${id}`, url)
       }
       const atlas = tank.sprite.face.atlas
       if (atlas) this.load.image(atlas.key, atlas.url)
@@ -841,7 +855,20 @@ export class BattleScene extends Phaser.Scene {
         // 貼地陰影：畫在地表上、跟著坡度轉，腳少、底盤高的機種（毒蠍）才不會看起來浮空
         const shadowW = hull.width * spec.sprite.scale * 0.82
         const shadow = this.add.ellipse(0, HULL_BASE_Y - 1.5, shadowW, 7, 0x241e33, 0.24)
-        rig.add([shadow, barrel, hull, ...face.objects])
+        const hullTex = { w: hull.width, h: hull.height }
+        const pivot = rigPivot(spec.sprite, hullTex)
+        const parts: TankPartActor[] = (spec.sprite.parts ?? []).map((def) => {
+          const p = partPlacement(spec.sprite, hullTex, def)
+          const img = this.add.image(p.x, p.y, `${spec.id}_${tank.team}_part_${def.id}`).setOrigin(p.ox, p.oy)
+          return { def, img, x: p.x, y: p.y }
+        })
+        // 圖層：陰影 < 砲管（預設在車身後面）< 車身 < 零件 < 臉；barrelZ = front 時砲管改在車身與 overHull 零件之上，overBarrel 零件最上
+        const over = (z: TankPart['z']) => parts.filter((p) => p.def.z === z).map((p) => p.img)
+        rig.add(
+          spec.sprite.barrelZ === 'front'
+            ? [shadow, hull, ...over('overHull'), barrel, ...over('overBarrel'), ...face.objects]
+            : [shadow, barrel, hull, ...over('overHull'), ...over('overBarrel'), ...face.objects],
+        )
 
         const hpBarGraphics = this.add.graphics()
         const nameTag = this.add
@@ -875,6 +902,9 @@ export class BattleScene extends Phaser.Scene {
           rig,
           barrel,
           hull,
+          pivot,
+          parts,
+          firedAt: -1,
           nameTag,
           statusTag,
           statusKey: '',
@@ -953,8 +983,21 @@ export class BattleScene extends Phaser.Scene {
     barrel
       .setTexture(`${spec.id}_${tank.team}_barrel`)
       .setScale(spec.sprite.scale)
-      .setPosition(facingLeft ? -spec.sprite.pivotX : spec.sprite.pivotX, spec.sprite.pivotY)
+      .setPosition(facingLeft ? -actor.pivot.x : actor.pivot.x, actor.pivot.y)
       .setFlipY(facingLeft)
+
+    // 零件跟車身一起鏡像（x 取負、flipX；旋轉方向也反向）；殘骸半透明、動作停止
+    const mirror = facingLeft ? -1 : 1
+    for (const part of actor.parts) {
+      const m = isDead ? { dy: 0, rotDeg: 0 } : partMotion(part.def, time, actor.firedAt)
+      part.img
+        .setTexture(`${spec.id}_${tank.team}_part_${part.def.id}`)
+        .setScale(spec.sprite.scale)
+        .setFlipX(facingLeft)
+        .setPosition(part.x * mirror, part.y + m.dy)
+        .setRotation(Phaser.Math.DegToRad(m.rotDeg) * mirror)
+        .setAlpha(isDead ? 0.55 : 1)
+    }
 
     if (isDead) {
       // 殘骸：半透明、砲管低垂、持續冒黑煙
@@ -1159,6 +1202,7 @@ export class BattleScene extends Phaser.Scene {
     this.lastShooterId = shooterId
     if (shooterActor) {
       this.tweens.add({ targets: shooterActor.rig, scaleX: 0.92, duration: 70, yoyo: true })
+      shooterActor.firedAt = this.game.loop.time
       shooterActor.face.trigger('fire', this.game.loop.time)
     }
 

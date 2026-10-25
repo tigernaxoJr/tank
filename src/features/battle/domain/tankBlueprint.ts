@@ -50,6 +50,23 @@ export interface FaceSpec {
   readonly singleEye?: boolean
 }
 
+/**
+ * 車身以外的獨立零件（旗子、艙蓋、護套前圈…）。座標一律用**車身貼圖像素**（左上為原點，量圖的格線座標直接填），
+ * 由 tankRig.ts 換算成 rig 座標。美術檔固定為 `<tank>_<a|b>_<id>.png`。
+ */
+export interface TankPart {
+  readonly id: string
+  /** overHull = 畫在車身上面；overBarrel = 連砲管也蓋過（護套前圈，讓砲管底端藏在環後面） */
+  readonly z: 'overHull' | 'overBarrel'
+  /** 零件上的 origin 點要對到車身貼圖的哪個像素 */
+  readonly at: readonly [number, number]
+  /** 零件圖的錨點（0~1，寬高比例），預設 [0.5, 0.5] */
+  readonly origin?: readonly [number, number]
+  readonly motion?:
+    | { readonly kind: 'sway'; readonly ampDeg: number; readonly periodMs: number }
+    | { readonly kind: 'pop'; readonly on: 'fire'; readonly dy: number; readonly rotDeg: number; readonly ms: number }
+}
+
 /** 傷害類型：explosion / fall / poison 已啟用；burn / movement 為預留 */
 export type DamageType = 'explosion' | 'fall' | 'poison' | 'burn' | 'movement'
 
@@ -93,8 +110,15 @@ export interface TankBlueprint {
   /** 精靈圖（以 2.5 倍繪製）的顯示縮放與砲塔轉軸（相對於坦克容器原點，原點約在車身中心上方） */
   readonly sprite: {
     readonly scale: number
-    readonly pivotX: number
-    readonly pivotY: number
+    /** 砲塔轉軸（rig 座標）；有 pivotTex 時可省略 */
+    readonly pivotX?: number
+    readonly pivotY?: number
+    /** 砲塔轉軸（車身貼圖像素），由 tankRig.rigPivot 換算；與 pivotX / pivotY 擇一 */
+    readonly pivotTex?: readonly [number, number]
+    /** 砲管與車身的圖層順序：behind = 砲管在車身後面（預設）；front = 砲管在車身上面（護套前圈那類拆件設計） */
+    readonly barrelZ?: 'behind' | 'front'
+    /** 獨立零件（選填）；拆件設計見 docs/04 */
+    readonly parts?: readonly TankPart[]
     readonly face: FaceSpec
     /** 名牌、血條、狀態圖示與回合箭頭整體上移 (px)，貼圖特別高的機種用（預設 0；蝸牛迫擊的殼頂與旗子比一般坦克高約 20px） */
     readonly labelLift?: number
@@ -102,21 +126,32 @@ export interface TankBlueprint {
   getSprites(team: TeamId): {
     readonly hullUrl: string
     readonly barrelUrl: string
+    /** 縮圖用（大廳、座位、HUD 小圖）：有零件的坦克是整台靜止姿勢的烘焙圖，否則就是 hullUrl */
+    readonly iconUrl: string
+    /** 零件 id -> 圖片網址（沒有零件時為空） */
+    readonly partUrls: Readonly<Record<string, string>>
   }
 }
 
 /** 藍圖資料（不含由 id 推得的 getSprites） */
 export type TankSpec = Omit<TankBlueprint, 'getSprites'>
 
-/** 美術檔固定放 public/assets/units/tanks/<id>_<a|b>_<hull|barrel>.png（tools/assets/paint_units.mjs 產生） */
+/**
+ * 美術檔固定放 public/assets/units/tanks/<id>_<a|b>_<hull|barrel>.png（tools/assets/paint_units.mjs 產生）；
+ * 有零件的坦克另有 <id>_<a|b>_<零件 id>.png 與縮圖 <id>_<a|b>_icon.png。
+ */
 export function defineTank(spec: TankSpec): TankBlueprint {
   return {
     ...spec,
     getSprites(team: TeamId) {
       const t = team === 'A' ? 'a' : 'b'
+      const base = `./assets/units/tanks/${spec.id}_${t}_`
+      const parts = spec.sprite.parts ?? []
       return {
-        hullUrl: `./assets/units/tanks/${spec.id}_${t}_hull.png`,
-        barrelUrl: `./assets/units/tanks/${spec.id}_${t}_barrel.png`,
+        hullUrl: `${base}hull.png`,
+        barrelUrl: `${base}barrel.png`,
+        iconUrl: parts.length > 0 ? `${base}icon.png` : `${base}hull.png`,
+        partUrls: Object.fromEntries(parts.map((p) => [p.id, `${base}${p.id}.png`])),
       }
     },
   }

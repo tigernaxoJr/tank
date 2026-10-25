@@ -78,7 +78,7 @@ const activeName = computed(() => stripBotMark(activeTank.value?.name))
 const panelTank = computed(() => props.state.tanks[props.panelPlayerId])
 const panelTeam = computed<TeamId>(() => panelTank.value?.team ?? 'A')
 const panelTankSpec = computed(() => (panelTank.value ? getTankSpec(panelTank.value.tankId) : TANK_LIST[0]))
-const panelSpriteUrl = computed(() => panelTankSpec.value.getSprites(panelTeam.value).hullUrl)
+const panelSpriteUrl = computed(() => panelTankSpec.value.getSprites(panelTeam.value).iconUrl)
 const panelName = computed(() => stripBotMark(panelTank.value?.name))
 /** 駕駛艙坦克身上的狀態（中毒、冰凍、破甲、紮根、偵察）與剩餘回合 */
 const panelStatuses = computed(() => (panelTank.value ? visibleStatuses(panelTank.value) : []))

@@ -148,7 +148,7 @@ function slotTank(team: TeamId, index: number): { url: string | null; name: stri
   const choice = slotChoice(team, index)
   if (choice === RANDOM_TANK) return { url: null, name: '隨機' }
   const spec = getTankSpec(choice)
-  return { url: spec.getSprites(team).hullUrl, name: splitDisplayName(spec.name).zh }
+  return { url: spec.getSprites(team).iconUrl, name: splitDisplayName(spec.name).zh }
 }
 
 function openSlotPicker(team: TeamId, index: number): void {

@@ -23,6 +23,7 @@ export {
   type LoadoutSecret,
 } from './domain/loadout'
 export { restFaceSvg } from './engine/faceSvg'
+export { HULL_BASE_Y, partPlacement, rigPivot } from './domain/tankRig'
 export { buildTankCard, type ShotCard, type TankCard } from './domain/tankStats'
 export {
   MAP_REGISTRY,

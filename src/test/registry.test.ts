@@ -22,8 +22,8 @@ describe('註冊表一致性', () => {
   it('坦克美術檔與彈體精靈都存在', () => {
     for (const t of TANK_LIST) {
       for (const team of ['A', 'B'] as const) {
-        const { hullUrl, barrelUrl } = t.getSprites(team)
-        for (const url of [hullUrl, barrelUrl]) expect(existsSync(`public/${url.slice(2)}`), url).toBe(true)
+        const { hullUrl, barrelUrl, iconUrl, partUrls } = t.getSprites(team)
+        for (const url of [hullUrl, barrelUrl, iconUrl, ...Object.values(partUrls)]) expect(existsSync(`public/${url.slice(2)}`), url).toBe(true)
       }
     }
     for (const p of PROJECTILE_LIST) {

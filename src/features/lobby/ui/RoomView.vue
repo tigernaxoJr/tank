@@ -72,7 +72,7 @@ const countOf = (team: TeamId) => props.roster.filter((r) => r.team === team).le
 const canEditRoom = computed(() => props.isHost && !props.locked)
 
 function hullUrl(slot: RosterSlot): string {
-  return getTankSpec(slot.tankId).getSprites(slot.team).hullUrl
+  return getTankSpec(slot.tankId).getSprites(slot.team).iconUrl
 }
 
 function tankLabel(slot: RosterSlot): string {

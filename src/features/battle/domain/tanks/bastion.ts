@@ -22,5 +22,16 @@ export default defineTank({
   passive: { name: '紮根', description: '整個回合沒有移動，下一次受到的爆炸傷害 −20%。' },
   idleStatus: { status: 'rooted', turns: 1, power: 20 },
   shots: ['BASTION_MORTAR', 'BASTION_RAMPART'],
-  sprite: { scale: 0.4, pivotX: -2.1, pivotY: -44.2, face: { x: 24.2, y: -16.6, eyeGap: 12, eyeSize: 7, lid: 0xd3c9b2, iris: 0xc07a2a, farScale: 0.78, rest: 0.82, mouthDy: 13, restMouth: 'flat', brow: 'block' } },
+  sprite: {
+    scale: 0.4,
+    // 座標都是車身貼圖像素（280×250）；砲管在車身上面、護套前圈再蓋在砲管上，砲管底端就藏在環後面
+    pivotTex: [207, 103],
+    barrelZ: 'front',
+    parts: [
+      { id: 'collar', z: 'overBarrel', at: [171, 67], origin: [0, 0] },
+      { id: 'flag', z: 'overHull', at: [55, 6], origin: [0.18, 1], motion: { kind: 'sway', ampDeg: 4, periodMs: 2600 } },
+      { id: 'lid', z: 'overHull', at: [130, 70], origin: [0.5, 1], motion: { kind: 'pop', on: 'fire', dy: 7, rotDeg: 10, ms: 260 } },
+    ],
+    face: { x: 4, y: -32, eyeGap: 12, eyeSize: 7, lid: 0xd3c9b2, iris: 0xc07a2a, farScale: 0.78, rest: 0.82, mouthDy: 13, restMouth: 'flat', brow: 'block' },
+  },
 })
