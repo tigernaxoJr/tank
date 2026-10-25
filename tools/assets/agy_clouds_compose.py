@@ -1,5 +1,5 @@
 """agy / web chat 生的洋紅底雲朵圖集 → 去背切開 → 錯落排成可左右銜接的 1024x400 clouds_far 層。
-用法: python -I tools/assets/agy_clouds_compose.py <sheet.png> <out.png> [--scale 0.8] [--tall-first] [--strict] [--backup <old.png>]
+用法: python -I tools/assets/agy_clouds_compose.py <sheet.png> <out.png> [--scale 0.8] [--tall-first] [--strict] [--merge 15] [--backup <old.png>]
 雲全落在上半部（遊戲裡此層只顯示高 220 的帶狀區），分兩列、各自水平均分，第二列錯開半格；邊緣留白故自然銜接。
 """
 import sys, shutil
@@ -26,7 +26,8 @@ if '--strict' in sys.argv:  # 圖裡本身有粉紅/洋紅色塊時：只去掉�
     a = orig * (1 - spill) + np.concatenate([g, g, g], -1) * spill * 0.9
 rgba = np.dstack([a, alpha * 255]).clip(0, 255).astype(np.uint8)
 
-solid = cv2.dilate((alpha > 0.5).astype(np.uint8), np.ones((15, 15), np.uint8))
+MERGE = int(sys.argv[sys.argv.index('--merge') + 1]) if '--merge' in sys.argv else 15  # 火星這類零散小點要加大，才會併成一組
+solid = cv2.dilate((alpha > 0.5).astype(np.uint8), np.ones((MERGE, MERGE), np.uint8))
 n, lab, stats, _ = cv2.connectedComponentsWithStats(solid)
 pieces = []
 for i in range(1, n):
