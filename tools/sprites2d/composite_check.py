@@ -17,6 +17,7 @@ ap.add_argument("--id", default="bastion"); ap.add_argument("--team", default="a
 ap.add_argument("--pivot", required=True)
 ap.add_argument("--angles", default="14,45,80,90")
 ap.add_argument("--flag"); ap.add_argument("--lid")
+ap.add_argument("--flag-origin", default="0.18,1"); ap.add_argument("--lid-origin", default="0.5,1")
 ap.add_argument("--zoom", type=int, default=2)
 ap.add_argument("--icon-out", help="also bake the thumbnail <id>_<team>_icon.png into this dir: hull + flag + lid at rest, no barrel, tightly cropped "
                 "(anchors must match the tank blueprint's parts; flag origin 0.18 / 1, lid origin 0.5 / 1)")
@@ -31,6 +32,7 @@ def load(name):
     return Image.open(p).convert("RGBA") if os.path.exists(p) else None
 
 
+FO, LO = nums(args.flag_origin), nums(args.lid_origin)
 hull, barrel, collar, flag, lid = (load(n) for n in ("hull", "barrel", "collar", "flag", "lid"))
 meta = json.load(open(f"{args.parts}/parts_meta.json"))
 px, py = nums(args.pivot)
@@ -50,10 +52,10 @@ for ang in nums(args.angles):
         base.alpha_composite(collar, (PAD + cx, PAD + cy))
     if flag is not None and args.flag:
         fx, fy = nums(args.flag)
-        base.alpha_composite(flag, (round(PAD + fx - flag.width * 0.18), round(PAD + fy - flag.height)))
+        base.alpha_composite(flag, (round(PAD + fx - flag.width * FO[0]), round(PAD + fy - flag.height * FO[1])))
     if lid is not None and args.lid:
         lx, ly = nums(args.lid)
-        base.alpha_composite(lid, (round(PAD + lx - lid.width / 2), round(PAD + ly - lid.height)))
+        base.alpha_composite(lid, (round(PAD + lx - lid.width * LO[0]), round(PAD + ly - lid.height * LO[1])))
     bg = Image.new("RGBA", (W, H), (150, 160, 175, 255))
     bg.alpha_composite(base)
     d = ImageDraw.Draw(bg)
@@ -66,10 +68,10 @@ if args.icon_out:
     icon.alpha_composite(hull, (PAD, PAD))
     if flag is not None and args.flag:
         fx, fy = nums(args.flag)
-        icon.alpha_composite(flag, (round(PAD + fx - flag.width * 0.18), round(PAD + fy - flag.height)))
+        icon.alpha_composite(flag, (round(PAD + fx - flag.width * FO[0]), round(PAD + fy - flag.height * FO[1])))
     if lid is not None and args.lid:
         lx, ly = nums(args.lid)
-        icon.alpha_composite(lid, (round(PAD + lx - lid.width / 2), round(PAD + ly - lid.height)))
+        icon.alpha_composite(lid, (round(PAD + lx - lid.width * LO[0]), round(PAD + ly - lid.height * LO[1])))
     icon = icon.crop(icon.getbbox())
     os.makedirs(args.icon_out, exist_ok=True)
     icon.save(f"{args.icon_out}/{args.id}_{args.team}_icon.png")

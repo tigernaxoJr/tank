@@ -84,7 +84,7 @@ function effectText(proj: ProjectileBlueprint): string {
   if (proj.pattern) parts.push(`${pelletCount(proj)} 顆散射`)
   if (proj.terrainOp === 'fill') parts.push('堆出土丘')
   if (proj.terrainDepth) parts.push(`鑽地 ${proj.terrainDepth}px`)
-  if (proj.knockbackPx) parts.push(`擊退 ${proj.knockbackPx}px`)
+  if (proj.knockbackPx) parts.push(proj.knockbackPx > 0 ? `擊退 ${proj.knockbackPx}px` : `拉近 ${-proj.knockbackPx}px`)
   if (proj.onHit) {
     const st = STATUS_REGISTRY[proj.onHit.status]
     if (st) parts.push(`${st.icon}${st.name} ${proj.onHit.turns} 回合`)

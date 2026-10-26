@@ -93,7 +93,7 @@ export interface ProjectileBehavior {
   readonly terrainDepth?: number
   /** 一次開火對同一台坦克的爆炸傷害上限（散彈全中時避免一發秒殺，docs/06 §三之一）；省略 = 不設限 */
   readonly damageCapPerTank?: number
-  /** 擊退 (px)：爆炸範圍內的坦克被沿地形往外推，愈靠近爆心推得愈遠；可能被推下懸崖 */
+  /** 擊退 (px)：爆炸範圍內的坦克被沿地形往外推，愈靠近爆心推得愈遠；可能被推下懸崖；負值 = 反過來把範圍內的坦克拉向射手（舌鞭彈），拉到離射手 60 px 為止 */
   readonly knockbackPx?: number
   /** 命中（受到傷害）的坦克被掛上的狀態 */
   readonly onHit?: HitEffect

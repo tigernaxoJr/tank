@@ -1,0 +1,35 @@
+import { STANDARD_GRAVITY_MILLI, defineProjectile } from '../projectileBlueprint'
+
+export default defineProjectile({
+  id: 'HOPPER_MUD',
+  sortOrder: 23,
+  name: '泥巴彈 (Mud Splat)',
+  badge: '泥濘 2 回合 · 堆土',
+  description: '一坨泥巴砸在目標身上，對手 2 回合移動燃料上限 −40%（仍可開砲），並在落點堆出一小塊土；結束後 1 回合免疫。',
+  damageRadius: 40,
+  terrainRadius: 22,
+  maxDamage: 28,
+  magnetRadius: 22,
+  directHitMultiplier: 1,
+  speedMultiplier: 1,
+  gravityMilli: STANDARD_GRAVITY_MILLI,
+  windMultiplier: 4,
+  terrainOp: 'fill',
+  onHit: { status: 'mired', turns: 2, power: 40 },
+  postImpactHoldMs: 1000,
+  visual: {
+    sprite: { key: 'shell_hopper_mud', scale: 0.42 },
+    coreRadius: 7,
+    coreColor: 0xd6b88a,
+    glowColor: 0xa16207,
+    strokeColor: 0x451a03,
+    fx: {
+      glow: 'fx_glow_fire',
+      haloAlpha: 0.35,
+      trail: { glowSize: 0.22, glowMs: 220, glowDepth: 19, sparkChance: 0.15 },
+      explosion: { sheet: 'fx_puff', sparks: false },
+    },
+    explosionColors: [0xffffff, 0xd6b88a, 0xa16207, 0x451a03],
+    cameraShakeIntensity: 0.008,
+  },
+})

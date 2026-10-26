@@ -20,6 +20,9 @@ ap.add_argument("--barrel-trim", type=int, default=0, help="crop this many sheet
 ap.add_argument("--barrel-scale", help="sx,sy applied to the barrel after the common scale (AI draws it thicker than the collar opening)")
 ap.add_argument("--collar", help="cx,cy,half_w,half_h of the collar ring on the final hull image; also writes the front-ring overlay part")
 ap.add_argument("--trim-boxes", help="x0,y0,x1,y1;... regions of the final hull image where team color recoloring applies (default fits bastion)")
+ap.add_argument("--hue-max", type=float, default=40, help="upper hue (deg) of the orange accent; lower it when golden-yellow shading gets recolored")
+ap.add_argument("--min-v", type=int, default=60, help="min HSV value of accent pixels; raise it when dark brown would be caught")
+ap.add_argument("--part-scale", help="name=factor,... extra scale for individual parts after the common scale, e.g. flag=0.5")
 ap.add_argument("--accent", choices=["blue", "orange"], default="orange", help="color drawn on the sheet: orange -> team A keeps it, team B turns it blue")
 args = ap.parse_args()
 os.makedirs(args.out, exist_ok=True)
@@ -40,14 +43,22 @@ out = np.dstack([np.clip(R, 0, 255), np.clip(G, 0, 255), np.clip(B, 0, 255), alp
 mask = (alpha > 0.5).astype(np.uint8)
 n, lab, stats, _ = cv2.connectedComponentsWithStats(mask, connectivity=8)
 comps = [(i, *stats[i]) for i in range(1, n) if stats[i][cv2.CC_STAT_AREA] > 800]
-assert len(comps) == 4, f"expect 4 parts, got {[(c[0], c[1:5]) for c in comps]}"
+assert len(comps) in (4, 5), f"expect 4 or 5 parts, got {[(c[0], c[1:5]) for c in comps]}"
 comps.sort(key=lambda c: -c[5])
 hull_c = comps[0]
 rest = comps[1:]
-flag_c = max(rest, key=lambda c: c[4] / c[3])          # 最高窄（h / w 最大）
-rest = [c for c in rest if c is not flag_c]
-barrel_c = max(rest, key=lambda c: c[3])               # 剩下較寬的是砲管
-lid_c = [c for c in rest if c is not barrel_c][0]
+extra_c = None
+if len(comps) == 5:
+    # 5 件：車身最大、砲管最寬扁，其餘三件依由左到右順序為 flag / lid / extra
+    barrel_c = max(rest, key=lambda c: c[3] / c[4])
+    others = sorted([c for c in rest if c is not barrel_c], key=lambda c: c[1])
+    flag_c, lid_c, extra_c = others
+    rest = []
+else:
+  flag_c = max(rest, key=lambda c: c[4] / c[3])          # 最高窄（h / w 最大）
+  rest = [c for c in rest if c is not flag_c]
+  barrel_c = max(rest, key=lambda c: c[3])               # 剩下較寬的是砲管
+  lid_c = [c for c in rest if c is not barrel_c][0]
 
 
 def crop(c, trim_left=0):
@@ -67,6 +78,8 @@ def crop(c, trim_left=0):
 
 
 parts = {"hull": crop(hull_c), "barrel": crop(barrel_c, args.barrel_trim), "flag": crop(flag_c), "lid": crop(lid_c)}
+if extra_c is not None:
+    parts["extra"] = crop(extra_c)
 k = args.hull_w / parts["hull"][0].width
 
 
@@ -80,7 +93,7 @@ def team_b_from_orange(im, name=""):
     a = np.asarray(im).copy()
     hsv = cv2.cvtColor(a[..., :3], cv2.COLOR_RGB2HSV_FULL).astype(np.float32)
     h = hsv[..., 0] * 360 / 255
-    m = (h >= 8) & (h <= 40) & (hsv[..., 1] > 110) & (hsv[..., 2] > 60)
+    m = (h >= 8) & (h <= args.hue_max) & (hsv[..., 1] > 110) & (hsv[..., 2] > args.min_v)
     if name == "hull":
         region = np.zeros(m.shape, bool)
         for x0, y0, x1, y1 in HULL_TRIM_BOXES:
@@ -116,7 +129,7 @@ def collar_overlay(hull_a):
     box[max(0, int(cy - hh)):int(cy + hh), max(0, int(cx - hw)):int(cx + hw)] = 1
     hsv = cv2.cvtColor(a[..., :3], cv2.COLOR_RGB2HSV_FULL).astype(np.float32)
     hue = hsv[..., 0] * 360 / 255
-    orange = ((hue >= 8) & (hue <= 40) & (hsv[..., 1] > 110) & (a[..., 3] > 128)).astype(np.uint8) * box
+    orange = ((hue >= 8) & (hue <= args.hue_max) & (hsv[..., 1] > 110) & (hsv[..., 2] > args.min_v) & (a[..., 3] > 128)).astype(np.uint8) * box
     ring = cv2.dilate(orange, np.ones((3, 3), np.uint8)) * box
     dark = ((a[..., :3].max(axis=2) < 70) & (a[..., 3] > 128)).astype(np.uint8)
     ff = dark.copy()
@@ -140,6 +153,10 @@ for name, (im, pos) in parts.items():
     if name == "barrel" and args.barrel_scale:
         sx, sy = parse_nums(args.barrel_scale, 2)
         s = s.resize((round(s.width * sx), round(s.height * sy)), Image.LANCZOS)
+    for item in (args.part_scale or "").split(","):
+        if item.startswith(name + "="):
+            f = float(item.split("=")[1])
+            s = s.resize((max(1, round(s.width * f)), max(1, round(s.height * f))), Image.LANCZOS)
     scaled[name] = s
     meta["sheet_pos"][name] = [int(pos[0]), int(pos[1])]
     meta["size"][name] = [s.width, s.height]

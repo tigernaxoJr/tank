@@ -271,10 +271,15 @@ export function prepareFireTrajectory(
 }
 
 /** 擊退：沿地形把坦克往遠離爆心的方向推（可能被推下懸崖；落差由之後的下墜結算處理） */
+/** 舌鞭彈把人拉到離射手這麼近就停 (px) */
+const PULL_STOP_PX = 60
+
 function knockBack(engine: TankCorePort, tank: TankEntity, ex: number, push: number): void {
-  if (push <= 0) return
-  const dir = tank.x === ex ? 1 : Math.sign(tank.x - ex)
-  const dest = walkAlongTerrain(engine, tank.x, groundUnderTank(engine, tank), dir * push, true, getTankSpec(tank.tankId).climbPerPx)
+  if (push === 0) return
+  const away = tank.x === ex ? 1 : Math.sign(tank.x - ex)
+  // 負值 = 往 ex（射手）拉（舌鞭彈），拉到離射手 PULL_STOP_PX 就停，不越過去
+  const dist = push > 0 ? push : -Math.min(-push, Math.max(0, Math.abs(tank.x - ex) - PULL_STOP_PX))
+  const dest = walkAlongTerrain(engine, tank.x, groundUnderTank(engine, tank), away * dist, true, getTankSpec(tank.tankId).climbPerPx)
   tank.x = dest.x
 }
 
@@ -361,7 +366,11 @@ export function commitFireImpact(
       }
       if (proj.knockbackPx && damageRadius > 0) {
         const d = Math.hypot(tank.x - ex, tank.y - 10 - ey)
-        if (d < damageRadius && !spec.knockbackImmune) knockBack(engine, tank, ex, Math.round((proj.knockbackPx * (damageRadius - d)) / damageRadius))
+        if (d < damageRadius && !spec.knockbackImmune) {
+          // 正值把人推離爆心，負值把人拉向射手（舌鞭彈）；射手自己不被拉
+          const puller = proj.knockbackPx < 0 ? state.tanks[plan.cmd.playerId] : undefined
+          if (!puller || puller.id !== tank.id) knockBack(engine, tank, puller ? puller.x : ex, Math.round((proj.knockbackPx * (damageRadius - d)) / damageRadius))
+        }
       }
     }
 
