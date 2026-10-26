@@ -187,7 +187,7 @@ pnpm run paint:units   # node tools/assets/paint_units.mjs
 
 蝸牛現在的車身、砲管與臉都來自**網頁版 Gemini 生圖**（參考圖 `tools/blender/refs/snailer/snailer_tank.jpg`），再由 `tools/sprites2d/` 的腳本切成遊戲貼圖；3D 算繪成寫實貼圖的路線因風格與其他坦克落差大，已不採用。
 
-1. **出圖**（人工；`agy` 的生圖額度常耗盡，改走網頁版）：一次生 2～3 張候選、挑最好的，下載**原圖**（不要截圖）。
+1. **出圖**（`agy` 由使用者執行，額度耗盡時改走網頁版）：每張圖只生一次，下載**原圖**（不要截圖）。
    * **車身 + 砲管 sheet**：洋紅 `#FF00FF` 純色底；左為朝右側視、**不含砲管與眼睛**的車身，眼柄頂端留光滑圓頭，車身砲口位置只畫一塊**圓形凹座圓盤（無孔、無管）**；右為水平砲管，**後端是球形關節**（球心在砲管中軸上、直徑比圓盤略大，轉動時能完全蓋住圓盤），管身單純錐形、不要伸縮節或寬環箍。曾試過「車身砲座管 + 砲管後環箍」，兩邊圓的大小對不上、轉動時露縫，所以改用球形關節。
    * **表情 sheet**：洋紅底、8 欄 × 4 列：第 1 列近側眼（睜、瞇、半睜、閉、瞪大、開心 ^、受擊 ><、陣亡 X；每格含眼柄頂球），第 2 列遠側眼（同上、無瞳孔），第 3 列瞳孔（普通、小、大、暈眩螺旋），第 4 列嘴與符號。
 2. **去背切割**：`python -I tools/sprites2d/slice_sheet.py <sheet> <out> --ball` 洋紅去背（洋紅度 `min(R,B)−G` 設門檻、邊緣去色邊並內縮 1 px）、依空白欄切成車身與砲管、縮放到車身寬 240、藍殼轉紅橘做隊伍 A、右側補透明讓球心落在砲管圖寬度 8%（引擎 `origin(0.08, 0.5)`）。`python -I tools/sprites2d/slice_expr.py <sheet> <out> --ball-px 56` 把表情 sheet 切成 28 個零件，`pack_face_atlas.py <dir> <id>` 打包成 `public/assets/units/tanks/<id>_face.png` 與 `src/features/battle/domain/faceAtlases/<id>.ts`（影格表）。
@@ -214,11 +214,24 @@ pnpm run paint:units   # node tools/assets/paint_units.mjs
    * **驗收腳本**：重製前先寫合成腳本（讀零件 + 錨點，輸出砲管 14° / 45° / 80°、肢體擺到極端角度的對照圖）；沒通過的素材不進 repo。
    * **進行順序**：先改引擎支援零件層、錨點與共用補間（用現有素材先跑通待機與後座力）→ 選海馬完整走一遍新流程當範本 → 範本通過後再一次一台重製其他機種。肢體零件的 prompt 見 [`tools/sprites2d/prompt_tank_parts.md`](../tools/sprites2d/prompt_tank_parts.md) 步驟 4。
 
+### 新增坦克零件切割（Bumble / Quillback / Hopper，2026-10-26）
+
+三台都走「基準圖 → 零件 sheet → 表情 sheet → 砲彈 sheet」，prompt 在 `tools/assets/agy-prompts/new-tanks-bumble-quillback-hopper.md`，原圖放 `tools/blender/refs/<id>/<id>_{base,parts,expr,shells}.*`（agy 輸出雖是 `.png` 但內容是 JPEG，Pillow 依內容讀取，不影響）。
+
+1. **零件 sheet 切割**：`python -I tools/sprites2d/slice_parts.py <sheet> <out> --id <id> --hull-w <寬> --accent orange --trim-boxes "<x0,y0,x1,y1;…>" --collar cx,cy,hw,hh [--barrel-scale sx,sy] [--hue-max 34] [--min-v 125~175] [--part-scale 零件=倍率,…]`。
+   * 新選項：`--hue-max`（陣營橘的色相上限，預設 40；黃色身體的金黃陰影會被誤轉成藍，Bumble / Hopper 用 34）、`--min-v`（陣營橘的最低明度，預設 60；棕色條紋 / 斑點會被誤轉，Bumble 125、Hopper 175）、`--part-scale`（切完後個別縮放零件，例如 Hopper 後腿 `flag=0.5`）。
+   * **5 件模式**：連通區塊有 5 個時，車身最大、砲管最寬扁，其餘依由左到右為 `flag` / `lid` / `extra`（Hopper）。
+   * 輸出的零件檔名固定是 `flag` / `lid` / `extra`，**放進 `public/assets/units/tanks/` 前要改成有意義的零件 id**：Bumble `flag→antenna`、`lid→wing`；Quillback `flag→spikes`、`lid→nose`；Hopper `flag→leg`（`lid` / `extra` 的喉囊不使用，不放進專案）。
+2. **砲管與護套**：這批 sheet 的砲管粗度與護套孔洞對不上（砲管比洞粗），用 `--barrel-scale 1,0.72~0.75`（Hopper 另縮長度 `0.55,0.75`）壓扁到接近洞口；護套前圈（`collar`，`z: overBarrel`）蓋在砲管上，砲管底端藏在環後面。Bumble 砲管的棕色條紋與車身棕色條紋同色，會融進車身，所以先用 `tools/sprites2d/bumble_prep.py` 把砲管範圍的棕色改成橘（陣營色，B 隊會轉藍）再切。
+3. **合成驗收與錨點**：`composite_check.py` 新增 `--flag-origin x,y`、`--lid-origin x,y`（零件的原點比例，預設 0.18,1 與 0.5,1，要與 `TankPart.origin` 一致）；`--icon-out` 會同時烘縮圖，要兩隊各跑一次（`--team a|b`）。零件錨點（刺蝟尖刺扇原點 [1,1] 貼車身背弧、跳蛙後腿 [0.5,1] 踩地線）都用肉眼在對照圖上量。
+4. **砲彈切割**：`python -I tools/sprites2d/slice_shells.py <sheet> public/assets/units/projectiles <名稱>:<寬> …`，洋紅去背後依連通區塊由左到右切開並縮放（帶尾巴 / 小蜜蜂點的彈會被併入最近的大塊），名稱就是 `projectile.visual.sprite.key`。
+5. **表情**：這批尚未做圖集。agy 的表情 sheet（Bumble / Quillback）每格墊了粉紅 / 黃色底磚（不是純洋紅），`slice_expr.py` 的洋紅去背去不掉；Gemini 網頁版的 Hopper 表情 sheet 則是成對眼睛、淺粉色格線、第 3 列瞳孔排法不同。要做圖集得重生（prompt 要求「整張純洋紅、不要格線與底磚」）或逐格手動去背，沿用海馬的一次性像素框裁切法，見上方 2D 生圖路線第 7 點。
+
 ## 七、大廳與 HUD 素材（已改為 agy 生圖，舊程序化紋理已移除）
 
 2026-10 起，大廳、房間與戰鬥 HUD 的 UI 素材不再由程式繪製（舊的 `tools/assets/paint_ui.mjs` 與 `src/assets/ui/*.svg` 紋理、`.toon-*` 元件類別已刪除），改走：
 
-1. 先把整批需求設計好、蒐集齊，再請 `agy` 一次生一張洋紅底 sprite sheet（`tools/assets/agy-ui/*.prompt.txt`，格線規格與驗收見 [`07-ui-redesign-spec.md`](./07-ui-redesign-spec.md) §四；agy 鐵則見本文 §八：一次一個、重用 session、失敗就停手、成敗都要回報）。
+1. 先把整批需求設計好、蒐集齊，再交給 `agy`（使用者執行）一次生一張洋紅底 sprite sheet（`tools/assets/agy-ui/*.prompt.txt`，格線規格與驗收見 [`07-ui-redesign-spec.md`](./07-ui-redesign-spec.md) §四；agy 作業模式見本文 §八：使用者執行、Agent 只寫 prompt 文件、每張圖只生一次）。
 2. `python -I tools/assets/agy-ui/slice_ui.py [--preview <dir>]`：洋紅轉軟 alpha（連柔影一起去）、依連通區塊切件並命名，輸出到 `public/assets/ui2/<sheet>/<name>.png` 與 `manifest.json`；個別素材的修色（珊瑚按下態、選中光暈、計時環預畫弧線、雷達青色轉藍）都寫在腳本裡，重切會自動套用。
 3. 檢視：腳本的 `--preview` 會輸出白 / 深 / 灰三種背景的檢視圖，檢查洋紅邊與風格一致性；不合格由人決定是否重生。
 
@@ -240,11 +253,11 @@ UI 元件見 `src/shared/ui/`，規格見 `docs/07`。
      - 獨立單一投射物特寫、3/4 視角、高對比淺灰純色背景。
    - **砲管設計要「可幾何分割」**：遊戲的砲管是獨立旋轉的圖，而 TRELLIS 輸出的是單一 mesh，所以要在生成後依座標把砲管切出來。設計時讓砲管是從車身伸出、朝前、與車身有明顯分界的獨立圓筒；**生成時不要把砲管與車身分開生成**（TRELLIS 每次都把輸出縮放到同一個方框，兩份模型的相對大小與位置會丟失，之後要手動對齊）。備案：實際切不乾淨時，才改畫「無砲管車身」與「單獨砲管」兩張圖分別生成、在 Blender 手動組合。（GLB 切割成精靈圖的實驗腳本已移除；蝸牛改走上面的 2D 生圖路線，車身與砲管本來就分開畫。）
    - **砲彈不生成 GLB**：砲彈在遊戲裡很小且持續旋轉，沿用 2D 做法 —— 直接從 `<id>_projectile.jpg` 以顏色距離去背、縮小成彈體圖（作法見 §六「專屬彈體圖是一次性裁切」）。因此 `tools/colab/stage.sh` 只放 `<id>_tank.jpg`；批次筆記本會把資料夾內所有圖片都轉成 3D，不要把 `_projectile.jpg` 放進 Colab 作業資料夾。
-   - **可請 agy（Antigravity CLI）代為生圖**：本機已安裝 `agy`（`C:\Users\naxo\AppData\Local\agy\bin\agy`），Agent 可用非互動模式委派生圖，例如 `agy -p "<提示>" --mode accept-edits`，在提示中指定絕對輸出路徑與檔名。
+   - **生圖用 agy（Antigravity CLI），由使用者執行**：Agent 只寫 prompt 文件，不呼叫 agy（見下方作業模式）。使用者端指令範例：`agy -p "請讀 <prompt 文件> 並依序生成" --mode accept-edits`，文件中須指定絕對輸出路徑與檔名。
      - 提示須包含：本節的視角 / 背景 / 單一物件規範、色彩限制（嚴禁濁青色）、與 `refs/beetle`、`refs/seahorse` 既有 `*_tank.jpg` 對齊的畫風（光滑 3D 渲染卡通質感、蒸汽龐克黃銅鉚釘、單顆大眼、車頭朝左），以及「不得使用任何現有遊戲的美術」。
-     - 一次請它產出 3 張不同方案（存成 `refs/<id>/concepts/concept_a/b/c.jpg`），由使用者挑選後，選定者再改名為 `<id>_tank.jpg`。
+     - 概念階段要多方案時，在 prompt 文件中明確列出每一張各自不同方向的圖（不是同一張重複生成），使用者挑選後，選定者再改名為 `<id>_tank.jpg`。
      - 不要加 `--dangerously-skip-permissions`（會被權限分類器拒絕）；以背景方式執行，產生期間 `-p` 不會顯示進度，圖出現在 `concepts/` 後再給使用者看。
-     - **使用 agy 的鐵則（使用者 2026-10 指定）**：① 同一時間只能有**一個** agy 在跑，嚴禁並行；② 重用同一個 session（後續呼叫加 `-c` 接續最近一次對話，或 `--conversation <ID>` 指定），不要每張圖都開新 session；③ **鐵律：一旦 agy 失敗（額度耗盡、報錯、沒產出檔案），就不得再呼叫 agy**——不重試、不換提示再試、不改開新 session，直接停手並回報使用者，是否再試由使用者決定；④ 不論成功或失敗都要回報使用者。
+     - **agy 作業模式（使用者 2026-10-26 起固定，取代先前「Agent 代為呼叫 agy」的做法）**：① **Agent 絕不主動呼叫 agy**；② Agent 把給 agy 的 prompt 寫成文件（放 `tools/assets/agy-prompts/<主題>.md`，文件內可列多張圖，每張圖各有輸出檔名、尺寸與格線規格），由使用者叫 agy 去讀、執行；③ **每張圖只生一次**，文件內不得重複列出相同的圖（額度有限，不用「多生幾張挑最好」的寫法）；④ agy 完成後，Agent 指定圖片要放的路徑，由使用者叫 agy 搬過去（或自行放入），Agent 再接手去背、切割與驗收；⑤ 成品不合格時由使用者決定是否重生，Agent 只修改 prompt 文件。舊鐵則（同時只跑一個、重用 session、失敗就停手）改由使用者端遵守，prompt 文件開頭註明「依序執行、同一個 session」即可。
      - 場景雲層（`clouds_far`）的做法：每張地圖請 agy 生一張洋紅底的元素圖集，再用 `tools/assets/agy_clouds_compose.py` 去背並錯落排成 1024x400 可銜接的雲層（`--strict` 用於圖內有粉紅/紫色時，`--tall-first` 用於高大元素，`--merge N` 用於零散小點）。
 3. **Colab 上的 TRELLIS.2 生成帶貼圖高模**（使用者自己操作，Agent 不在本機生成）：
    1. 使用者把參考圖（第 2 步的 `<id>_tank.jpg`）**上傳到 Google Drive**。

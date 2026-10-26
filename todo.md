@@ -65,6 +65,10 @@
 - [ ] 實機校正寄居蟹：`duel_sim.mjs` 不含「夾住」的燃料縮減與鉗擊彈短射程的價值；電腦選彈的 `UNREACHABLE_PX = 80` 也是估計值；口號待定。
 - [ ] 實機校正海馬（`docs/06` §三之十一）：臉的座標與眼睛大小是估計值、彈體飛行時的外觀還沒在遊戲裡看過、A 隊藍色轉銅橘後與橘色車身對比偏低；`duel_sim.mjs` 不含捲尾抓地與泡泡的大範圍價值；對鷹眼約 65%、σ = 70 對地鼠工兵約 36% 待實機判斷；口號待定。
 - [ ] 海馬的新彈體貼圖、表情圖集若重新生成：圖集 `scale` 要手動改回 0.16（`pack_face_atlas.py` 預設 0.2）。
+- [ ] **Bumble / Quillback / Hopper 表情圖集（agy 額度用完，之後再做）**：prompt 在 `tools/assets/agy-prompts/expr-sheets-bumble-quillback-hopper.md`（純洋紅底、無格線與底磚，三張）。agy 生完輸出到 `tools/blender/refs/<id>/<id>_expr2.png` 後，Agent 用 `slice_expr.py` 切、`pack_face_atlas.py` 打包成 `<id>_face.png` 與 `faceAtlases/<id>.ts`、接上 `FaceSpec.atlas` 並校正臉座標與 `--ball-px`。在那之前三台用程式畫的臉；Hopper 基準圖車身自帶一隻閉眼，程式眼睛疊在上面（`docs/06` §三之十二）。
+- [ ] **實機校正 Bumble / Quillback / Hopper（`docs/06` §三之十二）**：臉座標是估計值、Bumble 臉在左側（頭）而砲管在右側（尾端蜂針）看起來是否怪、Quillback 竹節砲管偏橄欖黃綠是否太濁、Hopper 後腿零件的位置與「開火下壓」動畫；舌鞭拉近與泥濘的實際手感；Quillback 偏強（模擬對部分機種約 60%~63%）。
+- [ ] **Bumble 真正的懸浮走位、Quillback 近距離反傷、Hopper 跳躍位移**：目前只有爬坡 / 免摔 / 裝甲等數值表現，三項機制都未實作（需新引擎機制，動工前先討論，`docs/06` §三之十二）。
+- [ ] 平衡模擬器補上舌鞭拉近、泥濘燃料削減的效用模型（目前視為模型外的價值）。
 - [ ] 定時彈不會下墜：地形被挖掉後標記會懸空，必要時改成跟著地表落下（需兩端一致）。
 - [ ] 其他射擊樣式構想：追蹤彈、修復彈。
 - [ ] 地鼠工兵原構想的「掘進」主動技能（花燃料往下挖洞躲藏）：需要新的連線動作訊息，目前以被動「地底老手」代替（`docs/06` §三之八.3）。
